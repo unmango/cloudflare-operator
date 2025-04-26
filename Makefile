@@ -176,4 +176,7 @@ setup-envtest: ## Download the binaries required for ENVTEST in the local bin di
 		exit 1; \
 	}
 
-LOCALBIN := $(CURDIR)/bin
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
