@@ -1,4 +1,0 @@
-## Append samples of your project ##
-resources:
-- cloudflare_v1alpha1_cloudflareddeployment.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples
