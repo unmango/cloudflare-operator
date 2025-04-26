@@ -93,14 +93,14 @@ Following the options to release and provide this solution to the users.
 
 1. Build the installer for the image built and published in the registry:
 
-```sh
-make build-installer IMG=<some-registry>/cloudflare-operator:tag
-```
+    ```sh
+    make build-installer IMG=<some-registry>/cloudflare-operator:tag
+    ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
+    **NOTE:** The makefile target mentioned above generates an 'install.yaml'
+    file in the dist directory. This file contains all the resources built
+    with Kustomize, which are necessary to install this project without its
+    dependencies.
 
 2. Using the installer
 
@@ -115,9 +115,9 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/cloudflare-operator/<ta
 
 1. Build the chart using the optional helm plugin
 
-```sh
-kubebuilder edit --plugins=helm/v1-alpha
-```
+    ```sh
+    kubebuilder edit --plugins=helm/v1-alpha
+    ```
 
 2. See that a chart was generated under 'dist/chart', and users
 can obtain this solution from there.
@@ -152,7 +152,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+  <http://www.apache.org/licenses/LICENSE-2.0>
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
