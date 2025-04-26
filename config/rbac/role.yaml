@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments
+  - cloudflareds
   verbs:
   - create
   - delete
@@ -19,13 +19,13 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/finalizers
+  - cloudflareds/finalizers
   verbs:
   - update
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/status
+  - cloudflareds/status
   verbs:
   - get
   - patch

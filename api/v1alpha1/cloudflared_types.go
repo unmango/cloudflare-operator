@@ -17,29 +17,37 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// CloudflaredDeploymentKind describes the kind of deployment to create.
+// +kubebuilder:validation:Enum=DaemonSet;Deployment
+type CloudflaredKind string
+
+const (
+	DaemonSet  CloudflaredKind = "DaemonSet"
+	Deployment CloudflaredKind = "Deployment"
+)
 
 // CloudflaredSpec defines the desired state of Cloudflared.
 type CloudflaredSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	//+kubebuilder:default:=DaemonSet
+	Kind CloudflaredKind `json:"kind,omitempty"`
 
-	// Foo is an example field of Cloudflared. Edit cloudflared_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +optional
+	Template *corev1.PodTemplateSpec `json:"template,omitempty"`
 }
 
 // CloudflaredStatus defines the observed state of Cloudflared.
 type CloudflaredStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +optional
+	State string `json:"state"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.state",name=State,type=string
 
 // Cloudflared is the Schema for the cloudflareds API.
 type Cloudflared struct {
