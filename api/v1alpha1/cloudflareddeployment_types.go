@@ -47,6 +47,8 @@ type CloudflaredDeploymentStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.replicas",name=Replicas,type=integer
+// +kubebuilder:printcolumn:JSONPath=".status.state",name=State,type=string
 
 // CloudflaredDeployment is the Schema for the cloudflareddeployments API.
 type CloudflaredDeployment struct {
