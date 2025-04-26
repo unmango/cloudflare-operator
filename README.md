@@ -1,18 +1,36 @@
-# cloudflare-operator
-// TODO(user): Add simple overview of use/purpose
+<!-- markdownlint-disable MD033 -->
+
+<h1 align="center">🚧 Warning! 🚧</h1>
+
+Hi, thank you for coming to my repo!
+You probably meant to go to one of these projects instead:
+
+| Project | Description |
+|:--------|:------------|
+|[adyanth/cloudflare-operator](https://github.com/adyanth/cloudflare-operator)|A Kubernetes Operator to create and manage Cloudflare Tunnels and DNS records for (HTTP/TCP/UDP*) Service Resources|
+|[STRRL/cloudflare-tunnel-ingress-controller](https://github.com/STRRL/cloudflare-tunnel-ingress-controller/)|The Kuberntes Ingress Controller based on Cloudflare Tunnel.|
+
+Both projects are much more mature and can probably do what you're looking for!
+
+# Cloudflare Controller
+
+A kubernetes controller for all things Cloudflare!
 
 ## Description
+
 // TODO(user): An in-depth paragraph about your project and overview of use
 
 ## Getting Started
 
 ### Prerequisites
+
 - go version v1.23.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
 
 ### To Deploy on the cluster
+
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
@@ -48,6 +66,7 @@ kubectl apply -k config/samples/
 >**NOTE**: Ensure that the samples has default values to test it out.
 
 ### To Uninstall
+
 **Delete the instances (CRs) from the cluster:**
 
 ```sh
@@ -111,11 +130,19 @@ previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml
 is manually re-applied afterwards.
 
 ## Contributing
+
 // TODO(user): Add detailed information on how you would like others to contribute to this project
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
+## Rationale
+
+There are two great projects bringing cloudflare to kubernetes, what is this project trying to add?
+
+I love what the above projects can do and I wanted to take my favorite parts and put them in one place.
+Ultimately, I'm trying to get more experience writing kubernetes applications and this seemed like a great way to do it.
 
 ## License
 
@@ -132,4 +159,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
