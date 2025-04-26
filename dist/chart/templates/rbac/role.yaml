@@ -1,0 +1,36 @@
+{{- if .Values.rbac.enable }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+  name: cloudflare-operator-manager-role
+rules:
+- apiGroups:
+  - cloudflare.unmango.dev
+  resources:
+  - cloudflareds
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cloudflare.unmango.dev
+  resources:
+  - cloudflareds/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cloudflare.unmango.dev
+  resources:
+  - cloudflareds/status
+  verbs:
+  - get
+  - patch
+  - update
+{{- end -}}

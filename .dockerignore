@@ -1,0 +1,15 @@
+.devcontainer/
+.github/
+.vscode/
+bin/
+config/
+hack/
+test/
+.dockerignore
+.gitignore
+.golangci.yml
+Dockerfile
+LICENSE
+Makefile
+PROJECT
+README.md
