@@ -17,25 +17,32 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// CloudflaredDeploymentKind describes the kind of deployment to create.
+// +kubebuilder:validation:Enum=DaemonSet;Deployment
+type CloudflaredDeploymentKind string
+
+const (
+	DaemonSet  CloudflaredDeploymentKind = "DaemonSet"
+	Deployment CloudflaredDeploymentKind = "Deployment"
+)
 
 // CloudflaredDeploymentSpec defines the desired state of CloudflaredDeployment.
 type CloudflaredDeploymentSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	//+kubebuilder:default:=DaemonSet
+	Kind CloudflaredDeploymentKind `json:"kind,omitempty"`
 
-	// Foo is an example field of CloudflaredDeployment. Edit cloudflareddeployment_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +optional
+	Template *corev1.PodTemplateSpec `json:"template,omitempty"`
 }
 
 // CloudflaredDeploymentStatus defines the observed state of CloudflaredDeployment.
 type CloudflaredDeploymentStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +optional
+	State string `json:"state"`
 }
 
 // +kubebuilder:object:root=true
