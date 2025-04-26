@@ -51,10 +51,10 @@ type CloudflaredDeploymentStatus struct {
 // CloudflaredDeployment is the Schema for the cloudflareddeployments API.
 type CloudflaredDeployment struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	Spec   CloudflaredDeploymentSpec   `json:"spec,omitempty"`
-	Status CloudflaredDeploymentStatus `json:"status,omitempty"`
+	Spec   CloudflaredDeploymentSpec   `json:"spec,omitzero"`
+	Status CloudflaredDeploymentStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -62,7 +62,7 @@ type CloudflaredDeployment struct {
 // CloudflaredDeploymentList contains a list of CloudflaredDeployment.
 type CloudflaredDeploymentList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []CloudflaredDeployment `json:"items"`
 }
 

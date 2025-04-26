@@ -1,5 +1,8 @@
+PROJECT := cloudflare-operator
+REPO    := unmango/${PROJECT}
+
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/unmango/cloudflare-operator:latest
+IMG ?= ghcr.io/${REPO}:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -66,11 +69,8 @@ test: manifests generate fmt vet ## Run tests.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 .PHONY: test-e2e
-test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	@$(KIND) get clusters | grep -q 'kind' || { \
-		echo "No Kind cluster is running. Please start a Kind cluster before running the e2e tests."; \
-		exit 1; \
-	}
+test-e2e: export KIND_CLUSTER := ${PROJECT}
+test-e2e: manifests generate fmt vet kind-cluster ## Run the e2e tests. Expected an isolated environment using Kind.
 	go test ./test/e2e/ -v -ginkgo.v
 
 .PHONY: lint
@@ -84,6 +84,16 @@ lint-fix: ## Run golangci-lint linter and perform fixes
 .PHONY: lint-config
 lint-config: ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
+
+.PHONY: kind-cluster
+kind-cluster: hack/kind-config.yaml ## Create a local kind cluster with the config from hack/kind-config.yaml.
+	@$(KIND) get clusters | grep -q '${PROJECT}' || { \
+		$(KIND) create cluster --config $< --name ${PROJECT}; \
+	}
+
+.PHONY: delete-cluster
+delete-cluster: ## Delete a local kind cluster created from hack/kind-config.yaml
+	$(KIND) delete cluster --name ${PROJECT}
 
 ##@ Build
 
