@@ -32,7 +32,7 @@ const (
 
 // CloudflaredSpec defines the desired state of Cloudflared.
 type CloudflaredSpec struct {
-	//+kubebuilder:default:=DaemonSet
+	// +kubebuilder:default:=DaemonSet
 	Kind CloudflaredKind `json:"kind,omitempty"`
 
 	// +optional
