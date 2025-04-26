@@ -129,6 +129,13 @@ build-installer: manifests generate ## Generate a consolidated YAML with CRDs an
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
+.PHONY: helm
+helm: manifests generate ## Update the helm chart.
+	$(KUBEBUILDER) edit --plugins=helm.kubebuilder.io/v1-alpha
+
+.PHONY: dist
+dist: build-installer helm
+
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -158,6 +165,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 KUBECTL ?= kubectl
 KIND ?= go tool kind
 KUSTOMIZE ?= go tool kustomize
+KUBEBUILDER ?= go tool kubebuilder
 CONTROLLER_GEN ?= go tool controller-gen
 ENVTEST ?= go tool setup-envtest
 GOLANGCI_LINT ?= go tool golangci-lint

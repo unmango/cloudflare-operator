@@ -5,6 +5,8 @@
 domain: my.domain
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v1-alpha: {}
 projectName: cloudflare-operator
 repo: github.com/unmango/cloudflare-operator
 version: "3"
