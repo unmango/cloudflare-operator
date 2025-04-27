@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,6 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/a8m/envsubst"
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
 
@@ -258,14 +260,27 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput := getMetricsOutput()
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("should create a cloudflared daemonset", func() {
+			By("Applying the sample cloudflared resource")
+			sample, err := envsubst.ReadFile("crd/samples/cloudflare_v1alpha1_cloudflared.yaml")
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = bytes.NewReader(sample)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			getDaemonSet := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "daemonset",
+					"--namespace", "default",
+					"-o", "jsonpath={.status.phase}",
+					"cloudflared-sample")
+				phase, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				Expect(phase).To(Equal("Running"))
+			}
+			Eventually(getDaemonSet).Should(Succeed())
+		})
 	})
 })
 
