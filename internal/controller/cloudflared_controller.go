@@ -149,6 +149,21 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 		}
+	case cfv1alpha1.Deployment:
+		app := &appsv1.Deployment{}
+		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get Deployment")
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating Deployment")
+			if err = r.createDeployment(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			} else {
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+		}
 	}
 
 	if err := r.setStatus(ctx, cloudflared, metav1.Condition{
@@ -165,9 +180,77 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
 	log := logf.FromContext(ctx)
+	template := r.podTemplateSpec(cloudflared)
 
+	daemonset := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cloudflared.Name,
+			Namespace: cloudflared.Namespace,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: template.Labels,
+			},
+			Template: template,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, daemonset, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, daemonset); err != nil {
+		log.Error(err, "Failed to create a new DaemonSet",
+			"namespace", daemonset.Namespace,
+			"name", daemonset.Name,
+		)
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+	template := r.podTemplateSpec(cloudflared)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cloudflared.Name,
+			Namespace: cloudflared.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: template.Labels,
+			},
+			Template: template,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, deployment, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, deployment); err != nil {
+		log.Error(err, "Failed to created new Deployment",
+			"namespace", deployment.Namespace,
+			"name", deployment.Name,
+		)
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1.PodTemplateSpec {
 	labels := r.labels(cloudflared)
-	template := cloudflared.Spec.Template.DeepCopy()
+	template := corev1.PodTemplateSpec{}
+
+	if cloudflared.Spec.Template != nil {
+		cloudflared.Spec.Template.DeepCopyInto(&template)
+	}
 
 	template.Labels = labels
 	template.Spec.SecurityContext = &corev1.PodSecurityContext{
@@ -190,33 +273,7 @@ func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared
 		},
 	})
 
-	daemonset := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cloudflared.Name,
-			Namespace: cloudflared.Namespace,
-		},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: *template,
-		},
-	}
-
-	if err := ctrl.SetControllerReference(cloudflared, daemonset, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference")
-		return err
-	}
-
-	if err := r.Create(ctx, daemonset); err != nil {
-		log.Error(err, "Failed to create a new DaemonSet",
-			"namespace", daemonset.Namespace,
-			"name", daemonset.Name,
-		)
-		return err
-	}
-
-	return nil
+	return template
 }
 
 func (r *CloudflaredReconciler) labels(_ *cfv1alpha1.Cloudflared) map[string]string {
@@ -302,5 +359,7 @@ func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.Cloudflared{}).
 		Named("cloudflared").
+		Owns(&appsv1.DaemonSet{}).
+		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
