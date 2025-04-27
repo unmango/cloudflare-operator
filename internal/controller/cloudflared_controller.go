@@ -19,18 +19,22 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -89,7 +93,138 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.addFinalizer(ctx, cloudflared)
 	}
 
+	if cloudflared.GetDeletionTimestamp() != nil {
+		if r.containsFinalizer(cloudflared) {
+			log.Info("Performing finalizer operations before deleting")
+			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+				Type:    typeDegradedCloudflared,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Finalizing",
+				Message: "Performing finalizer operations",
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			if err := r.finalizer(ctx, cloudflared); err != nil {
+				return ctrl.Result{Requeue: true}, err
+			}
+
+			if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
+				log.Error(err, "Failed to re-fetch Cloudflared")
+				return ctrl.Result{}, err
+			}
+
+			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+				Type:    typeDegradedCloudflared,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Finalizing",
+				Message: "Finalizer operations were successfully accomplished",
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Removing finalizer after successfully finalizing")
+			if err := r.removeFinalizer(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	var app client.Object
+	switch cloudflared.Spec.Kind {
+	case cfv1alpha1.DaemonSet:
+		app = &appsv1.DaemonSet{}
+		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get DaemonSet")
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating DaemonSet")
+			if err = r.createDaemonSet(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			} else {
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+		}
+	}
+
+	if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+		Type:    typeAvailableCloudflared,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Reconciling",
+		Message: "DaemonSet created successfully",
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	labels := r.labels(cloudflared)
+	template := cloudflared.Spec.Template.DeepCopy()
+
+	template.Labels = labels
+	template.Spec.SecurityContext = &corev1.PodSecurityContext{
+		RunAsNonRoot: ptr.To(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
+		Name:            "cloudflared",
+		Image:           defaultCloudflaredImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             ptr.To(true),
+			RunAsUser:                ptr.To[int64](1001),
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+	})
+
+	daemonset := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cloudflared.Name,
+			Namespace: cloudflared.Namespace,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: *template,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, daemonset, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, daemonset); err != nil {
+		log.Error(err, "Failed to create a new DaemonSet",
+			"namespace", daemonset.Namespace,
+			"name", daemonset.Name,
+		)
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) labels(_ *cfv1alpha1.Cloudflared) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       "cloudflare-operator",
+		"app.kubernetes.io/version":    "latest",
+		"app.kubernetes.io/managed-by": "CloudflaredController",
+	}
 }
 
 func (r *CloudflaredReconciler) setStatus(
@@ -132,6 +267,32 @@ func (r *CloudflaredReconciler) addFinalizer(ctx context.Context, cloudflared *c
 		log.Error(err, "Failed to update custom resource to add finalizer")
 		return err
 	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) removeFinalizer(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	if ok := controllerutil.RemoveFinalizer(cloudflared, cloudflaredFinalizer); !ok {
+		err := fmt.Errorf("finalizer for cloudflared was not removed")
+		log.Error(err, "Failed to remove finalizer for Cloudflared")
+		return err
+	}
+
+	if err := r.Update(ctx, cloudflared); err != nil {
+		log.Error(err, "Failed to remove finalizer for Cloudflared")
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) finalizer(_ context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	r.Recorder.Event(cloudflared, "Warning", "Deleting",
+		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
+			cloudflared.Name, cloudflared.Namespace),
+	)
 
 	return nil
 }
