@@ -27,6 +27,10 @@ import (
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 )
 
+const (
+	defaultImage string = "docker.io/cloudflare/cloudflared:latest"
+)
+
 // CloudflaredReconciler reconciles a Cloudflared object
 type CloudflaredReconciler struct {
 	client.Client
