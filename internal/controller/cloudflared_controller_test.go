@@ -451,7 +451,7 @@ var _ = Describe("Cloudflared Controller", func() {
 							Spec: v1.PodSpec{
 								Containers: []v1.Container{{
 									Name:  "testing",
-									Image: defaultImage,
+									Image: defaultCloudflaredImage,
 								}},
 							},
 						},
@@ -501,7 +501,7 @@ var _ = Describe("Cloudflared Controller", func() {
 							Spec: v1.PodSpec{
 								Containers: []v1.Container{{
 									Name:  "testing",
-									Image: defaultImage,
+									Image: defaultCloudflaredImage,
 								}},
 							},
 						},
@@ -561,7 +561,7 @@ var _ = Describe("Cloudflared Controller", func() {
 							Spec: v1.PodSpec{
 								Containers: []v1.Container{{
 									Name:  "testing",
-									Image: defaultImage,
+									Image: defaultCloudflaredImage,
 								}},
 							},
 						},
@@ -611,7 +611,7 @@ var _ = Describe("Cloudflared Controller", func() {
 							Spec: v1.PodSpec{
 								Containers: []v1.Container{{
 									Name:  "testing",
-									Image: defaultImage,
+									Image: defaultCloudflaredImage,
 								}},
 							},
 						},
