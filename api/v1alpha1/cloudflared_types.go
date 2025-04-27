@@ -43,6 +43,8 @@ type CloudflaredSpec struct {
 type CloudflaredStatus struct {
 	// +optional
 	State string `json:"state"`
+
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true
