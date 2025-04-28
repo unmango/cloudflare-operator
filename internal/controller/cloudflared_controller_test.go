@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,7 +28,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -54,6 +52,7 @@ var _ = Describe("Cloudflared Controller", func() {
 		}
 
 		BeforeEach(func() {
+			By("Initializing the Cloudfared resource")
 			cloudflared = &cfv1alpha1.Cloudflared{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
@@ -80,11 +79,25 @@ var _ = Describe("Cloudflared Controller", func() {
 		})
 
 		AfterEach(func() {
+			By("Removing the custom resource for the kind Cloudflared")
 			resource := &cfv1alpha1.Cloudflared{}
-			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
-				By("Cleanup the specific resource instance Cloudflared")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+			Eventually(func() error {
+				return k8sClient.Delete(ctx, resource)
+			}).Should(Succeed())
+
+			// TODO: Is there a better way to ensure the resource is deleted?
+			By("Reconciling to remove the finalizer")
+			controllerReconciler := &CloudflaredReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
 
 			daemonSet := &appsv1.DaemonSet{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, daemonSet); err == nil {
@@ -97,11 +110,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				By("Cleaning up the Deployment")
 				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
 			}
-
-			By("Resetting the spec")
-			cloudflared.DeletionTimestamp = nil
-			cloudflared.Finalizers = []string{}
-			cloudflared.Spec = cfv1alpha1.CloudflaredSpec{}
 		})
 
 		It("should default to a DaemonSet", func() {
@@ -156,15 +164,13 @@ var _ = Describe("Cloudflared Controller", func() {
 			)
 
 			BeforeEach(func() {
-				cloudflared.Spec = cfv1alpha1.CloudflaredSpec{
-					Template: &v1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{{
-								Name:  expectedContainer,
-								Image: expectedImage,
-							}},
-						},
+				cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  expectedContainer,
+							Image: expectedImage,
+						}},
 					},
 				}
 			})
@@ -213,9 +219,7 @@ var _ = Describe("Cloudflared Controller", func() {
 		Context("and kind is DaemonSet", func() {
 			BeforeEach(func() {
 				By("Setting the kind to DaemonSet")
-				cloudflared.Spec = cfv1alpha1.CloudflaredSpec{
-					Kind: cfv1alpha1.DaemonSet,
-				}
+				cloudflared.Spec.Kind = cfv1alpha1.DaemonSet
 			})
 
 			It("should create a DaemonSet", func() {
@@ -261,15 +265,13 @@ var _ = Describe("Cloudflared Controller", func() {
 				)
 
 				BeforeEach(func() {
-					cloudflared.Spec = cfv1alpha1.CloudflaredSpec{
-						Template: &v1.PodTemplateSpec{
-							ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
-							Spec: v1.PodSpec{
-								Containers: []v1.Container{{
-									Name:  expectedContainer,
-									Image: expectedImage,
-								}},
-							},
+					cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  expectedContainer,
+								Image: expectedImage,
+							}},
 						},
 					}
 				})
@@ -355,10 +357,10 @@ var _ = Describe("Cloudflared Controller", func() {
 				)
 
 				BeforeEach(func() {
-					cloudflared.Spec.Template = &v1.PodTemplateSpec{
+					cloudflared.Spec.Template = &corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
 								Name:  expectedContainer,
 								Image: expectedImage,
 							}},
@@ -405,22 +407,6 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 				})
-			})
-		})
-
-		Context("and deployment is marked for deletion", func() {
-			var expectedTimestamp metav1.Time
-
-			BeforeEach(func() {
-				expectedTimestamp = metav1.NewTime(time.Now())
-				cloudflared.DeletionTimestamp = &expectedTimestamp
-			})
-
-			It("should remove the finalizer", func() {
-				resource := &cfv1alpha1.Cloudflared{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource.Finalizers).To(BeEmpty())
 			})
 		})
 	})
