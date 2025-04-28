@@ -12,21 +12,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.3
-  name: cloudflareddeployments.cloudflare.unmango.dev
+  name: cloudflareds.cloudflare.unmango.dev
 spec:
   group: cloudflare.unmango.dev
   names:
-    kind: CloudflaredDeployment
-    listKind: CloudflaredDeploymentList
-    plural: cloudflareddeployments
-    singular: cloudflareddeployment
+    kind: Cloudflared
+    listKind: CloudflaredList
+    plural: cloudflareds
+    singular: cloudflared
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.state
+      name: State
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CloudflaredDeployment is the Schema for the cloudflareddeployments
-          API.
+        description: Cloudflared is the Schema for the cloudflareds API.
         properties:
           apiVersion:
             description: |-
@@ -46,7 +49,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: CloudflaredDeploymentSpec defines the desired state of CloudflaredDeployment.
+            description: CloudflaredSpec defines the desired state of Cloudflared.
             properties:
               kind:
                 default: DaemonSet
@@ -8081,8 +8084,7 @@ spec:
                 type: object
             type: object
           status:
-            description: CloudflaredDeploymentStatus defines the observed state of
-              CloudflaredDeployment.
+            description: CloudflaredStatus defines the observed state of Cloudflared.
             properties:
               state:
                 type: string
@@ -8149,18 +8151,18 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: cloudflare-operator
-  name: cloudflare-operator-cloudflareddeployment-admin-role
+  name: cloudflare-operator-cloudflared-admin-role
 rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments
+  - cloudflareds
   verbs:
   - '*'
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/status
+  - cloudflareds/status
   verbs:
   - get
 ---
@@ -8170,12 +8172,12 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: cloudflare-operator
-  name: cloudflare-operator-cloudflareddeployment-editor-role
+  name: cloudflare-operator-cloudflared-editor-role
 rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments
+  - cloudflareds
   verbs:
   - create
   - delete
@@ -8187,7 +8189,7 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/status
+  - cloudflareds/status
   verbs:
   - get
 ---
@@ -8197,12 +8199,12 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: cloudflare-operator
-  name: cloudflare-operator-cloudflareddeployment-viewer-role
+  name: cloudflare-operator-cloudflared-viewer-role
 rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments
+  - cloudflareds
   verbs:
   - get
   - list
@@ -8210,7 +8212,7 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/status
+  - cloudflareds/status
   verbs:
   - get
 ---
@@ -8222,7 +8224,7 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments
+  - cloudflareds
   verbs:
   - create
   - delete
@@ -8234,13 +8236,13 @@ rules:
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/finalizers
+  - cloudflareds/finalizers
   verbs:
   - update
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
-  - cloudflareddeployments/status
+  - cloudflareds/status
   verbs:
   - get
   - patch
@@ -8369,7 +8371,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/unmango/cloudflare-operator:latest
+        image: ghcr.io/unmango/cloudflare-operator:v0.0.1
         livenessProbe:
           httpGet:
             path: /healthz
