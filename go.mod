@@ -17,7 +17,7 @@ tool (
 
 require (
 	github.com/onsi/ginkgo/v2 v2.23.3
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.37.0
 	k8s.io/api v0.32.2
 	k8s.io/apimachinery v0.33.0-beta.0
 	k8s.io/client-go v0.32.2
