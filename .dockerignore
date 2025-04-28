@@ -3,11 +3,13 @@
 .vscode/
 bin/
 config/
+dist/
 hack/
 test/
 .dockerignore
 .gitignore
 .golangci.yml
+cover.out
 Dockerfile
 LICENSE
 Makefile
