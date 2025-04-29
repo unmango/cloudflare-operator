@@ -18,46 +18,348 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	defaultCloudflaredImage = "docker.io/cloudflare/cloudflared:latest"
+	cloudflaredFinalizer    = "cloudflared.unmango.dev/finalizer"
+)
+
+const (
+	typeAvailableCloudflared = "Available"
+	typeDegradedCloudflared  = "Degraded"
 )
 
 // CloudflaredReconciler reconciles a Cloudflared object
 type CloudflaredReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=daemonsets;deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Cloudflared object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/reconcile
 func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	cloudflared := &cfv1alpha1.Cloudflared{}
+	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.V(1).Info("Cloudflared resource not found, ignoring")
+			return ctrl.Result{}, nil
+		} else {
+			log.Error(err, "Failed to get cloudflared")
+			return ctrl.Result{}, err
+		}
+	}
+
+	if len(cloudflared.Status.Conditions) == 0 {
+		if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+			Type:    typeAvailableCloudflared,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation",
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !r.containsFinalizer(cloudflared) {
+		if err := r.addFinalizer(ctx, cloudflared); err != nil {
+			log.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+	}
+
+	if cloudflared.GetDeletionTimestamp() != nil {
+		if r.containsFinalizer(cloudflared) {
+			log.Info("Performing finalizer operations before deleting")
+			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+				Type:    typeDegradedCloudflared,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Finalizing",
+				Message: "Performing finalizer operations",
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			r.finalizer(ctx, cloudflared)
+
+			if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
+				log.Error(err, "Failed to re-fetch Cloudflared")
+				return ctrl.Result{}, err
+			}
+
+			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+				Type:    typeDegradedCloudflared,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Finalizing",
+				Message: "Finalizer operations were successfully accomplished",
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Removing finalizer after successfully finalizing")
+			if err := r.removeFinalizer(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	var app client.Object
+	switch cloudflared.Spec.Kind {
+	case cfv1alpha1.DaemonSet:
+		app = &appsv1.DaemonSet{}
+		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get DaemonSet")
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating DaemonSet")
+			if err = r.createDaemonSet(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			} else {
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+		}
+	case cfv1alpha1.Deployment:
+		app := &appsv1.Deployment{}
+		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get Deployment")
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating Deployment")
+			if err = r.createDeployment(ctx, cloudflared); err != nil {
+				return ctrl.Result{}, err
+			} else {
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+		}
+	}
+
+	if err := r.setStatus(ctx, cloudflared, metav1.Condition{
+		Type:    typeAvailableCloudflared,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Reconciling",
+		Message: "DaemonSet created successfully",
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+	template := r.podTemplateSpec(cloudflared)
+
+	daemonset := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cloudflared.Name,
+			Namespace: cloudflared.Namespace,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: template.Labels,
+			},
+			Template: template,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, daemonset, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, daemonset); err != nil {
+		log.Error(err, "Failed to create a new DaemonSet",
+			"namespace", daemonset.Namespace,
+			"name", daemonset.Name,
+		)
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+	template := r.podTemplateSpec(cloudflared)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cloudflared.Name,
+			Namespace: cloudflared.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: template.Labels,
+			},
+			Template: template,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, deployment, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, deployment); err != nil {
+		log.Error(err, "Failed to created new Deployment",
+			"namespace", deployment.Namespace,
+			"name", deployment.Name,
+		)
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1.PodTemplateSpec {
+	labels := r.labels(cloudflared)
+	template := corev1.PodTemplateSpec{}
+
+	if cloudflared.Spec.Template != nil {
+		cloudflared.Spec.Template.DeepCopyInto(&template)
+	}
+
+	template.Labels = labels
+	template.Spec.SecurityContext = &corev1.PodSecurityContext{
+		RunAsNonRoot: ptr.To(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
+		Name:            "cloudflared",
+		Image:           defaultCloudflaredImage,
+		Command:         []string{"cloudflared", "tunnel", "--no-autoupdate", "--hello-world"},
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             ptr.To(true),
+			RunAsUser:                ptr.To[int64](1001),
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+	})
+
+	return template
+}
+
+func (r *CloudflaredReconciler) labels(_ *cfv1alpha1.Cloudflared) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       "cloudflare-operator",
+		"app.kubernetes.io/version":    "latest",
+		"app.kubernetes.io/managed-by": "CloudflaredController",
+	}
+}
+
+func (r *CloudflaredReconciler) setStatus(
+	ctx context.Context,
+	cloudflared *cfv1alpha1.Cloudflared,
+	condition metav1.Condition,
+) error {
+	log := logf.FromContext(ctx)
+
+	_ = meta.SetStatusCondition(&cloudflared.Status.Conditions, condition)
+	if err := r.Status().Update(ctx, cloudflared); err != nil {
+		log.Error(err, "Failed to update Cloudflared status")
+		return err
+	}
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: cloudflared.Namespace,
+		Name:      cloudflared.Name,
+	}, cloudflared); err != nil {
+		log.Error(err, "Failed to re-fetch Cloudflared")
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) containsFinalizer(cloudflared *cfv1alpha1.Cloudflared) bool {
+	return controllerutil.ContainsFinalizer(cloudflared, cloudflaredFinalizer)
+}
+
+func (r *CloudflaredReconciler) addFinalizer(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	if ok := controllerutil.AddFinalizer(cloudflared, cloudflaredFinalizer); !ok {
+		err := fmt.Errorf("finalizer for cloudflared was not added")
+		log.Error(err, "Failed to add finalizer for Cloudflared")
+		return err
+	}
+
+	if err := r.Update(ctx, cloudflared); err != nil {
+		log.Error(err, "Failed to update custom resource to add finalizer")
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) removeFinalizer(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	if ok := controllerutil.RemoveFinalizer(cloudflared, cloudflaredFinalizer); !ok {
+		err := fmt.Errorf("finalizer for cloudflared was not removed")
+		log.Error(err, "Failed to remove finalizer for Cloudflared")
+		return err
+	}
+
+	if err := r.Update(ctx, cloudflared); err != nil {
+		log.Error(err, "Failed to remove finalizer for Cloudflared")
+		return err
+	}
+
+	return nil
+}
+
+func (r *CloudflaredReconciler) finalizer(_ context.Context, cloudflared *cfv1alpha1.Cloudflared) {
+	r.Recorder.Event(cloudflared, "Warning", "Deleting",
+		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
+			cloudflared.Name, cloudflared.Namespace),
+	)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&cloudflarev1alpha1.Cloudflared{}).
+		For(&cfv1alpha1.Cloudflared{}).
 		Named("cloudflared").
+		Owns(&appsv1.DaemonSet{}).
+		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
