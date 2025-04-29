@@ -108,9 +108,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, err
 			}
 
-			if err := r.finalizer(ctx, cloudflared); err != nil {
-				return ctrl.Result{Requeue: true}, err
-			}
+			r.finalizer(ctx, cloudflared)
 
 			if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
 				log.Error(err, "Failed to re-fetch Cloudflared")
@@ -348,13 +346,11 @@ func (r *CloudflaredReconciler) removeFinalizer(ctx context.Context, cloudflared
 	return nil
 }
 
-func (r *CloudflaredReconciler) finalizer(_ context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+func (r *CloudflaredReconciler) finalizer(_ context.Context, cloudflared *cfv1alpha1.Cloudflared) {
 	r.Recorder.Event(cloudflared, "Warning", "Deleting",
 		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
 			cloudflared.Name, cloudflared.Namespace),
 	)
-
-	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
