@@ -32,24 +32,16 @@ import (
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
 
-// namespace where the project is deployed in
-const namespace = "cloudflare-operator-system"
-
-// serviceAccountName created for the project
-const serviceAccountName = "cloudflare-operator-controller-manager"
-
-// metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "cloudflare-operator-controller-manager-metrics-service"
-
-// metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "cloudflare-operator-metrics-binding"
+const (
+	namespace              = "cloudflare-operator-system"
+	serviceAccountName     = "cloudflare-operator-controller-manager"
+	metricsServiceName     = "cloudflare-operator-controller-manager-metrics-service"
+	metricsRoleBindingName = "cloudflare-operator-metrics-binding"
+)
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
-	// Before running the tests, set up the environment by creating the namespace,
-	// enforce the restricted security policy to the namespace, installing CRDs,
-	// and deploying the controller.
 	BeforeAll(func() {
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
@@ -73,8 +65,6 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
 
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
@@ -93,8 +83,6 @@ var _ = Describe("Manager", Ordered, func() {
 		_, _ = utils.Run(cmd)
 	})
 
-	// After each test, check for failures and collect logs, events,
-	// and pod descriptions for debugging.
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
@@ -143,7 +131,6 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should run successfully", func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
-				// Get the name of the controller-manager pod
 				cmd := exec.Command("kubectl", "get",
 					"pods", "-l", "control-plane=controller-manager",
 					"-o", "go-template={{ range .items }}"+
@@ -160,7 +147,6 @@ var _ = Describe("Manager", Ordered, func() {
 				controllerPodName = podNames[0]
 				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",
 					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
 					"-n", namespace,
@@ -277,7 +263,7 @@ var _ = Describe("Manager", Ordered, func() {
 					"cloudflared-sample")
 				phase, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				Expect(phase).To(Equal("Running"))
+				g.Expect(phase).To(Equal("Running"))
 			}
 			Eventually(getDaemonSet).Should(Succeed())
 		})
@@ -303,7 +289,6 @@ func serviceAccountToken() (string, error) {
 
 	var out string
 	verifyTokenCreation := func(g Gomega) {
-		// Execute kubectl command to create the token
 		cmd := exec.Command("kubectl", "create", "--raw", fmt.Sprintf(
 			"/api/v1/namespaces/%s/serviceaccounts/%s/token",
 			namespace,
@@ -313,7 +298,6 @@ func serviceAccountToken() (string, error) {
 		output, err := cmd.CombinedOutput()
 		g.Expect(err).NotTo(HaveOccurred())
 
-		// Parse the JSON output to extract the token
 		var token tokenRequest
 		err = json.Unmarshal(output, &token)
 		g.Expect(err).NotTo(HaveOccurred())
