@@ -248,7 +248,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should create a cloudflared daemonset", func() {
 			By("Applying the sample cloudflared resource")
-			sample, err := envsubst.ReadFile("crd/samples/cloudflare_v1alpha1_cloudflared.yaml")
+			sample, err := envsubst.ReadFile("config/crd/samples/cloudflare_v1alpha1_cloudflared.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")

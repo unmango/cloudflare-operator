@@ -90,7 +90,10 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !r.containsFinalizer(cloudflared) {
-		r.addFinalizer(ctx, cloudflared)
+		if err := r.addFinalizer(ctx, cloudflared); err != nil {
+			log.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
 	}
 
 	if cloudflared.GetDeletionTimestamp() != nil {
