@@ -263,6 +263,7 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
 		Name:            "cloudflared",
 		Image:           defaultCloudflaredImage,
+		Command:         []string{"cloudflared", "tunnel", "--no-autoupdate", "--hello-world"},
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),

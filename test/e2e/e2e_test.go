@@ -42,6 +42,8 @@ const (
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
+	const testNamespace = "cloudflared-test"
+
 	BeforeAll(func() {
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
@@ -63,11 +65,24 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("creating a namespace for tests")
+		cmd = exec.Command("kubectl", "create", "ns", testNamespace)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
+		By("removing test namespace")
+		cmd := exec.Command("kubectl", "delete", "ns", testNamespace)
+		_, _ = utils.Run(cmd)
+
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd = exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		_, _ = utils.Run(cmd)
+
+		By("removing the ClusterRoleBinding for the service account")
+		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName)
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
@@ -251,19 +266,19 @@ var _ = Describe("Manager", Ordered, func() {
 			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflared.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			getDaemonSet := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", "default",
-					"-o", "jsonpath={.status.phase}",
+					"--namespace", testNamespace,
+					"-o", "jsonpath={.status.numberReady}",
 					"cloudflared-sample")
-				phase, err := utils.Run(cmd)
+				numReady, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(phase).To(Equal("Running"))
+				g.Expect(numReady).To(Equal("1"))
 			}
 			Eventually(getDaemonSet).Should(Succeed())
 		})
