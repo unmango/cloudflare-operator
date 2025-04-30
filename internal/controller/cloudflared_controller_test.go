@@ -315,6 +315,14 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 				})
+
+				It("should configure the RollingUpdate strategy", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					strategy := resource.Spec.UpdateStrategy
+					Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDaemonSetStrategyType))
+				})
 			})
 		})
 
@@ -406,6 +414,14 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Kind).To(Equal("Cloudflared"))
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+				})
+
+				It("should configure the RollingUpdate strategy", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					strategy := resource.Spec.Strategy
+					Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
 				})
 			})
 		})
