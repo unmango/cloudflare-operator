@@ -179,6 +179,8 @@ var _ = Describe("Cloudflared Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 			sec := resource.Spec.Template.Spec.SecurityContext
+			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 			Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
 				Name:  "net.ipv4.ping_group_range",
 				Value: "65532 65532",
@@ -307,6 +309,8 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 				sec := resource.Spec.Template.Spec.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 				Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
 					Name:  "net.ipv4.ping_group_range",
 					Value: "65532 65532",
@@ -434,6 +438,8 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 				sec := resource.Spec.Template.Spec.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 				Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
 					Name:  "net.ipv4.ping_group_range",
 					Value: "65532 65532",

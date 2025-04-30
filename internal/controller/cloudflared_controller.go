@@ -259,6 +259,10 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		SeccompProfile: &corev1.SeccompProfile{
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		},
+		Sysctls: []corev1.Sysctl{{
+			Name:  "net.ipv4.ping_group_range",
+			Value: "65532 65532",
+		}},
 	}
 
 	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil {
