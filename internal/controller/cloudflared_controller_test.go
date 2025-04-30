@@ -121,7 +121,7 @@ var _ = Describe("Cloudflared Controller", func() {
 		})
 
 		It("should create a DaemonSet", func() {
-			By("Fetching the daemon set")
+			By("Fetching the DaemonSet")
 			resource := &appsv1.DaemonSet{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -407,6 +407,98 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 				})
+			})
+		})
+
+		Context("and a ConfigMap reference is configured", func() {
+			BeforeEach(func() {
+				cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+					ValueFrom: &cfv1alpha1.CloudflaredConfigReference{
+						ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "cloudflared-config",
+							},
+							Key: "my-config.yml",
+						},
+					},
+				}
+			})
+
+			It("should mount the config in the cloudflared container", func() {
+				By("Fetching the DaemonSet")
+				resource := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				Expect(resource).NotTo(BeNil())
+				templateSpec := resource.Spec.Template.Spec
+				Expect(templateSpec.Volumes).To(ConsistOf(corev1.Volume{
+					Name: "config",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "cloudflared-config",
+							},
+							Items: []corev1.KeyToPath{{
+								Key:  "my-config.yml",
+								Path: "config.yml",
+							}},
+							DefaultMode: ptr.To[int32](420),
+						},
+					},
+				}))
+				container := &corev1.Container{}
+				Expect(templateSpec.Containers).To(ContainElement(
+					HaveField("Name", "cloudflared"), container,
+				))
+				Expect(container.VolumeMounts).To(ConsistOf(corev1.VolumeMount{
+					Name:      "config",
+					MountPath: "/etc/cloudflared",
+				}))
+			})
+		})
+
+		Context("and a Secret reference is configured", func() {
+			BeforeEach(func() {
+				cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+					ValueFrom: &cfv1alpha1.CloudflaredConfigReference{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "cloudflared-config",
+							},
+							Key: "my-config.yml",
+						},
+					},
+				}
+			})
+
+			It("should mount the secret in the cloudflared container", func() {
+				By("Fetching the DaemonSet")
+				resource := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				Expect(resource).NotTo(BeNil())
+				templateSpec := resource.Spec.Template.Spec
+				Expect(templateSpec.Volumes).To(ConsistOf(corev1.Volume{
+					Name: "config",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "cloudflared-config",
+							Items: []corev1.KeyToPath{{
+								Key:  "my-config.yml",
+								Path: "config.yml",
+							}},
+							DefaultMode: ptr.To[int32](420),
+						},
+					},
+				}))
+				container := &corev1.Container{}
+				Expect(templateSpec.Containers).To(ContainElement(
+					HaveField("Name", "cloudflared"), container,
+				))
+				Expect(container.VolumeMounts).To(ConsistOf(corev1.VolumeMount{
+					Name:      "config",
+					MountPath: "/etc/cloudflared",
+				}))
 			})
 		})
 	})

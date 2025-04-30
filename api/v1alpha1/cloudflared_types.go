@@ -30,8 +30,24 @@ const (
 	Deployment CloudflaredKind = "Deployment"
 )
 
+type CloudflaredConfigReference struct {
+	// +optional
+	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
+
+	// +optional
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
+}
+
+type CloudflaredConfig struct {
+	// +optional
+	ValueFrom *CloudflaredConfigReference `json:"valueFrom,omitempty"`
+}
+
 // CloudflaredSpec defines the desired state of Cloudflared.
 type CloudflaredSpec struct {
+	// +optional
+	Config *CloudflaredConfig `json:"config,omitempty"`
+
 	// +kubebuilder:default:=DaemonSet
 	Kind CloudflaredKind `json:"kind,omitempty"`
 
