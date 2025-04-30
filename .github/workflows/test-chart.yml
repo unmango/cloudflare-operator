@@ -29,11 +29,15 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
+      - name: Build and load Docker image
+        uses: docker/build-push-action@v6
+        with:
+          load: true
+          cache-from: type=gha
+          tags: cloudflare-operator:v0.1.0
+
       - name: Prepare cloudflare-operator
-        run: |
-          go mod tidy
-          make docker-build IMG=cloudflare-operator:v0.1.0
-          kind load docker-image cloudflare-operator:v0.1.0
+        run: kind load docker-image cloudflare-operator:v0.1.0
 
       - name: Install Helm
         run: go install helm.sh/helm/v3/cmd/helm
