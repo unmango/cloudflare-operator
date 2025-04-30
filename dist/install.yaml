@@ -8455,7 +8455,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/unmango/thecluster-operator:v0.0.1
+        image: ghcr.io/unmango/cloudflare-operator:v0.0.1
         livenessProbe:
           httpGet:
             path: /healthz
