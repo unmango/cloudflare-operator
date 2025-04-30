@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -271,6 +272,7 @@ var _ = Describe("Manager", Ordered, func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Checking the DaemonSet is ready")
 			getDaemonSet := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "daemonset",
 					"--namespace", testNamespace,
@@ -279,6 +281,24 @@ var _ = Describe("Manager", Ordered, func() {
 				numReady, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(numReady).To(Equal("1"))
+			}
+			Eventually(getDaemonSet).Should(Succeed())
+
+			By("Deleting the cloudflared resource")
+			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
+			cmd.Stdin = bytes.NewReader(sample)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking the DaemonSet is removed")
+			getDaemonSet = func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "daemonset",
+					"--namespace", testNamespace, "cloudflared-sample")
+				output, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
+					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
+				))
 			}
 			Eventually(getDaemonSet).Should(Succeed())
 		})
