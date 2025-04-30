@@ -140,12 +140,13 @@ var _ = Describe("Cloudflared Controller", func() {
 
 			probe := container.LivenessProbe
 			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-				Path: "/ready",
-				Port: intstr.FromInt(2000),
+				Path:   "/ready",
+				Port:   intstr.FromInt(2000),
+				Scheme: "HTTP",
 			}))
-			Expect(probe.FailureThreshold).To(Equal(1))
-			Expect(probe.InitialDelaySeconds).To(Equal(10))
-			Expect(probe.PeriodSeconds).To(Equal(10))
+			Expect(probe.FailureThreshold).To(Equal(int32(1)))
+			Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+			Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 		})
 
 		It("should create a selector that matches pod labels", func() {
@@ -271,12 +272,13 @@ var _ = Describe("Cloudflared Controller", func() {
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-					Path: "/ready",
-					Port: intstr.FromInt(2000),
+					Path:   "/ready",
+					Port:   intstr.FromInt(2000),
+					Scheme: "HTTP",
 				}))
-				Expect(probe.FailureThreshold).To(Equal(1))
-				Expect(probe.InitialDelaySeconds).To(Equal(10))
-				Expect(probe.PeriodSeconds).To(Equal(10))
+				Expect(probe.FailureThreshold).To(Equal(int32(1)))
+				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 			})
 
 			It("should create a selector that matches pod labels", func() {
@@ -409,12 +411,13 @@ var _ = Describe("Cloudflared Controller", func() {
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-					Path: "/ready",
-					Port: intstr.FromInt(2000),
+					Path:   "/ready",
+					Port:   intstr.FromInt(2000),
+					Scheme: "HTTP",
 				}))
-				Expect(probe.FailureThreshold).To(Equal(1))
-				Expect(probe.InitialDelaySeconds).To(Equal(10))
-				Expect(probe.PeriodSeconds).To(Equal(10))
+				Expect(probe.FailureThreshold).To(Equal(int32(1)))
+				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 			})
 
 			It("should add an owner reference", func() {
