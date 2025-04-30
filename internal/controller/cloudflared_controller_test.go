@@ -136,7 +136,7 @@ var _ = Describe("Cloudflared Controller", func() {
 			))
 
 			// Unless otherwise specified, run a hello world tunnel
-			Expect(container.Args).To(HaveExactElements("--hello-world"))
+			Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
 
 			probe := container.LivenessProbe
 			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
@@ -268,7 +268,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				))
 
 				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world"))
+				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
@@ -407,7 +407,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				))
 
 				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world"))
+				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
