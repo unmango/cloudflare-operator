@@ -260,10 +260,53 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		},
 	}
+
+	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil {
+		if ref := config.ValueFrom.SecretKeyRef; ref != nil {
+			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
+				Name: "config",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: ref.Name,
+						Items: []corev1.KeyToPath{{
+							Key:  ref.Key,
+							Path: "config.yml",
+						}},
+					},
+				},
+			})
+		}
+		if ref := config.ValueFrom.ConfigMapKeyRef; ref != nil {
+			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
+				Name: "config",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: ref.Name,
+						},
+						Items: []corev1.KeyToPath{{
+							Key:  ref.Key,
+							Path: "config.yml",
+						}},
+					},
+				},
+			})
+		}
+	}
+
+	var volumeMounts []corev1.VolumeMount
+	if len(template.Spec.Volumes) > 0 {
+		volumeMounts = []corev1.VolumeMount{{
+			Name:      "config",
+			MountPath: "/etc/cloudflared",
+		}}
+	}
+
 	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
 		Name:            "cloudflared",
 		Image:           defaultCloudflaredImage,
 		Command:         []string{"cloudflared", "tunnel", "--no-autoupdate", "--hello-world"},
+		VolumeMounts:    volumeMounts,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),

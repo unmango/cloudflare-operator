@@ -442,6 +442,7 @@ var _ = Describe("Cloudflared Controller", func() {
 								Key:  "my-config.yml",
 								Path: "config.yml",
 							}},
+							DefaultMode: ptr.To[int32](420),
 						},
 					},
 				}))
@@ -486,6 +487,7 @@ var _ = Describe("Cloudflared Controller", func() {
 								Key:  "my-config.yml",
 								Path: "config.yml",
 							}},
+							DefaultMode: ptr.To[int32](420),
 						},
 					},
 				}))
