@@ -102,8 +102,17 @@ var _ = Describe("Manager", Ordered, func() {
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
+			By("Fetching cloudflared DaemonSet description")
+			cmd := exec.Command("kubectl", "describe", "daemonset", "cloudflared-sample", "-n", testNamespace)
+			podDescription, err := utils.Run(cmd)
+			if err == nil {
+				fmt.Println("DaemonSet description:\n", podDescription)
+			} else {
+				fmt.Println("Failed to describe cloudflared daemonset")
+			}
+
 			By("Fetching cloudflared DaemonSet logs")
-			cmd := exec.Command("kubectl", "logs", "daemonset/cloudflared-sample", "-n", testNamespace, "--all-containers=true")
+			cmd = exec.Command("kubectl", "logs", "daemonset/cloudflared-sample", "-n", testNamespace, "--all-containers=true")
 			dameonSetLogs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "DaemonSet logs:\n %s", dameonSetLogs)
