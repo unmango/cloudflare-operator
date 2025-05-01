@@ -30,27 +30,39 @@ const (
 	Deployment CloudflaredKind = "Deployment"
 )
 
+// CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
+// key containing a config.yml file to mount in the cloudflared container.
 type CloudflaredConfigReference struct {
+	// ConfigMapKeyRef selects a key from an existing ConfigMap containing the cloudflared config.
 	// +optional
 	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
 
+	// SecretKeyRef selects a key from an existing Secret containing the cloudflared config.
 	// +optional
 	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
 }
 
+// CloudflaredConfig defines the configuration for the `cloudflared` instance.
 type CloudflaredConfig struct {
+	// ValueFrom defines an existing source in the cluster to pull the cloudflared config from.
 	// +optional
 	ValueFrom *CloudflaredConfigReference `json:"valueFrom,omitempty"`
 }
 
 // CloudflaredSpec defines the desired state of Cloudflared.
 type CloudflaredSpec struct {
+	// Config describes how to configure the cloudflared instance.
 	// +optional
 	Config *CloudflaredConfig `json:"config,omitempty"`
 
+	// Kind describes the kind of kubernetes resource that will run the cloudflared instance.
+	// Available options are Deployment or Daemonset, default is DaemonSet.
 	// +kubebuilder:default:=DaemonSet
 	Kind CloudflaredKind `json:"kind,omitempty"`
 
+	// Template allows customizing the PodTemplateSpec used by the resource specified in Kind.
+	// To customize the cloudflared container, add a container named `cloudflared` to containers.
+	// Currently, the only supported `cloudflared` customization is `image`.
 	// +optional
 	Template *corev1.PodTemplateSpec `json:"template,omitempty"`
 }
@@ -60,6 +72,11 @@ type CloudflaredStatus struct {
 	// +optional
 	State string `json:"state"`
 
+	// +listType=map
+	// +listMapKey=type
+	// +patchStrategy=merge
+	// +patchMergeKey=type
+	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 

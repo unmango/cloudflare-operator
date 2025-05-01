@@ -50,11 +50,15 @@ spec:
             description: CloudflaredSpec defines the desired state of Cloudflared.
             properties:
               config:
+                description: Config describes how to configure the cloudflared instance.
                 properties:
                   valueFrom:
+                    description: ValueFrom defines an existing source in the cluster
+                      to pull the cloudflared config from.
                     properties:
                       configMapKeyRef:
-                        description: Selects a key from a ConfigMap.
+                        description: ConfigMapKeyRef selects a key from an existing
+                          ConfigMap containing the cloudflared config.
                         properties:
                           key:
                             description: The key to select.
@@ -77,7 +81,8 @@ spec:
                         type: object
                         x-kubernetes-map-type: atomic
                       secretKeyRef:
-                        description: SecretKeySelector selects a key of a Secret.
+                        description: SecretKeyRef selects a key from an existing Secret
+                          containing the cloudflared config.
                         properties:
                           key:
                             description: The key of the secret to select from.  Must
@@ -104,15 +109,18 @@ spec:
                 type: object
               kind:
                 default: DaemonSet
-                description: CloudflaredDeploymentKind describes the kind of deployment
-                  to create.
+                description: |-
+                  Kind describes the kind of kubernetes resource that will run the cloudflared instance.
+                  Available options are Deployment or Daemonset, default is DaemonSet.
                 enum:
                 - DaemonSet
                 - Deployment
                 type: string
               template:
-                description: PodTemplateSpec describes the data a pod should have
-                  when created from a template
+                description: |-
+                  Template allows customizing the PodTemplateSpec used by the resource specified in Kind.
+                  To customize the cloudflared container, add a container named `cloudflared` to containers.
+                  Currently, the only supported `cloudflared` customization is `image`.
                 properties:
                   metadata:
                     description: |-
@@ -8193,6 +8201,9 @@ spec:
                   - type
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               state:
                 type: string
             type: object
