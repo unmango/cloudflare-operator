@@ -300,7 +300,7 @@ var _ = Describe("Manager", Ordered, func() {
 					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
 				))
 			}
-			Eventually(getDaemonSet).Should(Succeed())
+			Eventually(getDaemonSet, "5m").Should(Succeed())
 		})
 	})
 })

@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +41,7 @@ import (
 
 const (
 	defaultCloudflaredImage = "docker.io/cloudflare/cloudflared:latest"
+	defaultMetricsPort      = 2000
 	cloudflaredFinalizer    = "cloudflared.unmango.dev/finalizer"
 )
 
@@ -259,6 +261,10 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		SeccompProfile: &corev1.SeccompProfile{
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		},
+		Sysctls: []corev1.Sysctl{{
+			Name:  "net.ipv4.ping_group_range",
+			Value: "65532 65532",
+		}},
 	}
 
 	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil {
@@ -303,9 +309,25 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 	}
 
 	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
-		Name:            "cloudflared",
-		Image:           defaultCloudflaredImage,
-		Command:         []string{"cloudflared", "tunnel", "--no-autoupdate", "--hello-world"},
+		Name:  "cloudflared",
+		Image: defaultCloudflaredImage,
+		Command: []string{
+			"cloudflared", "tunnel", "--no-autoupdate",
+			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),
+			"run",
+		},
+		Args: []string{"--hello-world", cloudflared.Name},
+		LivenessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt32(defaultMetricsPort),
+					Path: "/ready",
+				},
+			},
+			InitialDelaySeconds: 10,
+			PeriodSeconds:       10,
+			FailureThreshold:    1,
+		},
 		VolumeMounts:    volumeMounts,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{

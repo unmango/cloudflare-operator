@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -130,6 +131,22 @@ var _ = Describe("Cloudflared Controller", func() {
 			container := resource.Spec.Template.Spec.Containers[0]
 			Expect(container.Name).To(Equal("cloudflared"))
 			Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+			Expect(container.Command).To(HaveExactElements(
+				"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+			))
+
+			// Unless otherwise specified, run a hello world tunnel
+			Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+
+			probe := container.LivenessProbe
+			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+				Path:   "/ready",
+				Port:   intstr.FromInt(2000),
+				Scheme: "HTTP",
+			}))
+			Expect(probe.FailureThreshold).To(Equal(int32(1)))
+			Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+			Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 		})
 
 		It("should create a selector that matches pod labels", func() {
@@ -155,6 +172,20 @@ var _ = Describe("Cloudflared Controller", func() {
 			Expect(owner.Kind).To(Equal("Cloudflared"))
 			Expect(owner.Controller).To(Equal(ptr.To(true)))
 			Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+		})
+
+		// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+		It("should configure the pod security context", func() {
+			resource := &appsv1.DaemonSet{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+			sec := resource.Spec.Template.Spec.SecurityContext
+			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+			Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+				Name:  "net.ipv4.ping_group_range",
+				Value: "65532 65532",
+			}))
 		})
 
 		Context("and pod spec template is configured", func() {
@@ -232,6 +263,22 @@ var _ = Describe("Cloudflared Controller", func() {
 					HaveField("Name", "cloudflared"), container,
 				))
 				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+				Expect(container.Command).To(HaveExactElements(
+					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+				))
+
+				// Unless otherwise specified, run a hello world tunnel
+				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+
+				probe := container.LivenessProbe
+				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.FromInt(2000),
+					Scheme: "HTTP",
+				}))
+				Expect(probe.FailureThreshold).To(Equal(int32(1)))
+				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 			})
 
 			It("should create a selector that matches pod labels", func() {
@@ -256,6 +303,20 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(owner.Kind).To(Equal("Cloudflared"))
 				Expect(owner.Controller).To(Equal(ptr.To(true)))
 				Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+			})
+
+			// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+			It("should configure the pod security context", func() {
+				resource := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				sec := resource.Spec.Template.Spec.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+				Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+					Name:  "net.ipv4.ping_group_range",
+					Value: "65532 65532",
+				}))
 			})
 
 			Context("and pod spec template is configured", func() {
@@ -341,6 +402,22 @@ var _ = Describe("Cloudflared Controller", func() {
 					HaveField("Name", "cloudflared"), container,
 				))
 				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+				Expect(container.Command).To(HaveExactElements(
+					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+				))
+
+				// Unless otherwise specified, run a hello world tunnel
+				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+
+				probe := container.LivenessProbe
+				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.FromInt(2000),
+					Scheme: "HTTP",
+				}))
+				Expect(probe.FailureThreshold).To(Equal(int32(1)))
+				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 			})
 
 			It("should add an owner reference", func() {
@@ -356,6 +433,20 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(owner.Kind).To(Equal("Cloudflared"))
 				Expect(owner.Controller).To(Equal(ptr.To(true)))
 				Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+			})
+
+			// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+			It("should configure the pod security context", func() {
+				resource := &appsv1.Deployment{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				sec := resource.Spec.Template.Spec.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+				Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+					Name:  "net.ipv4.ping_group_range",
+					Value: "65532 65532",
+				}))
 			})
 
 			Context("and pod spec template is configured", func() {
