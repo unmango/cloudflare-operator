@@ -102,8 +102,17 @@ var _ = Describe("Manager", Ordered, func() {
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
+			By("Fetching cloudflared DaemonSet logs")
+			cmd := exec.Command("kubectl", "logs", "daemonset/cloudflared-sample", "-n", namespace, "--all-containers=true")
+			dameonSetLogs, err := utils.Run(cmd)
+			if err == nil {
+				_, _ = fmt.Fprintf(GinkgoWriter, "DaemonSet logs:\n %s", dameonSetLogs)
+			} else {
+				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get DaemonSet logs: %s", err)
+			}
+
 			By("Fetching controller manager pod logs")
-			cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+			cmd = exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 			controllerLogs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
@@ -283,7 +292,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 			cmd = exec.Command("kubectl", "rollout", "status",
 				"daemonset/cloudflared-sample", "--namespace", testNamespace,
-				"--timeout", "10m")
+				"--timeout", "5m")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
