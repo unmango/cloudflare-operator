@@ -309,7 +309,8 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		}}
 	}
 
-	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
+	// create the base container
+	container := corev1.Container{
 		Name:  "cloudflared",
 		Image: defaultCloudflaredImage,
 		Command: []string{
@@ -338,9 +339,26 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 				Drop: []corev1.Capability{"ALL"},
 			},
 		},
-	})
+	}
+
+	var containers []corev1.Container
+	for _, ctr := range template.Spec.Containers {
+		if ctr.Name == "cloudflared" {
+			r.applyCustomizations(&container, &ctr)
+		} else {
+			containers = append(containers, ctr)
+		}
+	}
+
+	template.Spec.Containers = append(containers, container)
 
 	return template
+}
+
+func (r *CloudflaredReconciler) applyCustomizations(base, custom *corev1.Container) {
+	if len(custom.Image) > 0 {
+		base.Image = custom.Image
+	}
 }
 
 func (r *CloudflaredReconciler) labels(_ *cfv1alpha1.Cloudflared) map[string]string {
