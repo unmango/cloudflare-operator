@@ -226,6 +226,7 @@ func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflare
 			Namespace: cloudflared.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
+			Replicas: cloudflared.Spec.Replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: template.Labels,
 			},
