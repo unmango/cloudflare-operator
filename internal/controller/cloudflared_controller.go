@@ -315,9 +315,8 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		Command: []string{
 			"cloudflared", "tunnel", "--no-autoupdate",
 			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),
-			"run",
 		},
-		Args: []string{"--hello-world", cloudflared.Name},
+		Args: []string{"--hello-world"},
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{

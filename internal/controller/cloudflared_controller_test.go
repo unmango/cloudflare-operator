@@ -132,11 +132,11 @@ var _ = Describe("Cloudflared Controller", func() {
 			Expect(container.Name).To(Equal("cloudflared"))
 			Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
 			Expect(container.Command).To(HaveExactElements(
-				"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+				"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 			))
 
 			// Unless otherwise specified, run a hello world tunnel
-			Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+			Expect(container.Args).To(HaveExactElements("--hello-world"))
 
 			probe := container.LivenessProbe
 			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
@@ -264,11 +264,11 @@ var _ = Describe("Cloudflared Controller", func() {
 				))
 				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
 				Expect(container.Command).To(HaveExactElements(
-					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 				))
 
 				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+				Expect(container.Args).To(HaveExactElements("--hello-world"))
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
@@ -403,11 +403,11 @@ var _ = Describe("Cloudflared Controller", func() {
 				))
 				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
 				Expect(container.Command).To(HaveExactElements(
-					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run",
+					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 				))
 
 				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world", resourceName))
+				Expect(container.Args).To(HaveExactElements("--hello-world"))
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
