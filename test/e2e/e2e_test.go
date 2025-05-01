@@ -273,11 +273,14 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking the DaemonSet is ready")
-			cmd = exec.Command("kubectl", "rollout", "status",
-				"daemonset/cloudflared-sample", "--namespace", testNamespace,
-				"--timeout", "5m")
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			rolloutStatus := func() error {
+				cmd = exec.Command("kubectl", "rollout", "status",
+					"daemonset/cloudflared-sample", "--namespace", testNamespace,
+					"--timeout", "5m")
+				_, err = utils.Run(cmd)
+				return err
+			}
+			Eventually(rolloutStatus).Should(Succeed())
 
 			By("Deleting the cloudflared resource")
 			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
