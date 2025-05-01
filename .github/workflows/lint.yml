@@ -49,4 +49,4 @@ jobs:
           cache-dependency-path: go.sum
 
       - run: make ${{ matrix.target }}
-      - run: git diff --quiet || (echo 'Worktree is not clean' && exit 1)
+      - run: git diff --exit-code
