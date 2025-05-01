@@ -31,6 +31,8 @@ jobs:
   dist-clean:
     name: Verify Worktree Clean
     runs-on: ubuntu-latest
+    env:
+      IMG: ghcr.io/unmango/cloudflare-operator:v0.0.1
     strategy:
       matrix:
         target:
