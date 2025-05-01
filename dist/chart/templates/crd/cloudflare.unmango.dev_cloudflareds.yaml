@@ -116,6 +116,12 @@ spec:
                 - DaemonSet
                 - Deployment
                 type: string
+              replicas:
+                description: |-
+                  When Kind is "Deployment", specifies the desired number of replicas.
+                  Ignored when Kind is "DaemonSet".
+                format: int32
+                type: integer
               template:
                 description: |-
                   Template allows customizing the PodTemplateSpec used by the resource specified in Kind.

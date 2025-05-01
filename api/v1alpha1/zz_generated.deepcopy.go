@@ -138,6 +138,11 @@ func (in *CloudflaredSpec) DeepCopyInto(out *CloudflaredSpec) {
 		*out = new(CloudflaredConfig)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Replicas != nil {
+		in, out := &in.Replicas, &out.Replicas
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Template != nil {
 		in, out := &in.Template, &out.Template
 		*out = new(v1.PodTemplateSpec)

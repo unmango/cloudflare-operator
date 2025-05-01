@@ -60,6 +60,11 @@ type CloudflaredSpec struct {
 	// +kubebuilder:default:=DaemonSet
 	Kind CloudflaredKind `json:"kind,omitempty"`
 
+	// When Kind is "Deployment", specifies the desired number of replicas.
+	// Ignored when Kind is "DaemonSet".
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+
 	// Template allows customizing the PodTemplateSpec used by the resource specified in Kind.
 	// To customize the cloudflared container, add a container named `cloudflared` to containers.
 	// Currently, the only supported `cloudflared` customization is `image`.
