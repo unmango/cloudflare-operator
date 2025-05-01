@@ -93,6 +93,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if !r.containsFinalizer(cloudflared) {
 		if err := r.addFinalizer(ctx, cloudflared); err != nil {
+			log.Error(err, "Failed to update custom resource to add finalizer")
 			log.Error(err, "Failed to add finalizer")
 			return ctrl.Result{}, err
 		}
@@ -314,9 +315,8 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		Command: []string{
 			"cloudflared", "tunnel", "--no-autoupdate",
 			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),
-			"run",
 		},
-		Args: []string{"--hello-world", cloudflared.Name},
+		Args: []string{"--hello-world"},
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
@@ -379,20 +379,11 @@ func (r *CloudflaredReconciler) containsFinalizer(cloudflared *cfv1alpha1.Cloudf
 }
 
 func (r *CloudflaredReconciler) addFinalizer(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
-	log := logf.FromContext(ctx)
-
 	if ok := controllerutil.AddFinalizer(cloudflared, cloudflaredFinalizer); !ok {
-		err := fmt.Errorf("finalizer for cloudflared was not added")
-		log.Error(err, "Failed to add finalizer for Cloudflared")
-		return err
+		return fmt.Errorf("finalizer for cloudflared was not added")
 	}
 
-	if err := r.Update(ctx, cloudflared); err != nil {
-		log.Error(err, "Failed to update custom resource to add finalizer")
-		return err
-	}
-
-	return nil
+	return r.Update(ctx, cloudflared)
 }
 
 func (r *CloudflaredReconciler) removeFinalizer(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
