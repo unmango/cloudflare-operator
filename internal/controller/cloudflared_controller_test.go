@@ -294,7 +294,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				})
 
 				It("should use the version label from the supplied image", func() {
-					resource := &appsv1.Deployment{}
+					resource := &appsv1.DaemonSet{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 					Expect(resource).NotTo(BeNil())
@@ -492,7 +492,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					})
 
 					It("should use the version label from the supplied image", func() {
-						resource := &appsv1.Deployment{}
+						resource := &appsv1.DaemonSet{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 						Expect(resource).NotTo(BeNil())
