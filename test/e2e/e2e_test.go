@@ -273,16 +273,11 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking the DaemonSet is ready")
-			getDaemonSet := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", testNamespace,
-					"-o", "jsonpath={.status.numberReady}",
-					"cloudflared-sample")
-				numReady, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(numReady).To(Equal("1"))
-			}
-			Eventually(getDaemonSet, "5m").Should(Succeed())
+			cmd = exec.Command("kubectl", "rollout", "status",
+				"daemonset/cloudflared-sample", "--namespace", testNamespace,
+				"--timeout", "5m")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the cloudflared resource")
 			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
@@ -291,7 +286,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking the DaemonSet is removed")
-			getDaemonSet = func(g Gomega) {
+			getDaemonSet := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "daemonset",
 					"--namespace", testNamespace, "cloudflared-sample")
 				output, err := utils.Run(cmd)
