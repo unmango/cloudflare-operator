@@ -584,6 +584,19 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 			})
 
+			Context("and replicas is specified", func() {
+				BeforeEach(func() {
+					cloudflared.Spec.Replicas = ptr.To[int32](3)
+				})
+
+				It("should configure the replicas on the deployment", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource.Spec.Replicas).To(Equal(ptr.To[int32](3)))
+				})
+			})
+
 			Context("and pod spec template is configured", func() {
 				const (
 					expectedImage     = "something/not/cloudflared:v0.0.69"
