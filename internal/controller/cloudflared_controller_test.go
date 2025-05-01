@@ -301,7 +301,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
 						HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
 						HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
-						HaveKeyWithValue("app.kubernetes.io/version", "v0.0.69"),
+						HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
 					))
 				})
 			})
@@ -499,7 +499,7 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
 							HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
 							HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
-							HaveKeyWithValue("app.kubernetes.io/version", "v0.0.69"),
+							HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
 						))
 					})
 				})
@@ -688,7 +688,7 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
 							HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
 							HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
-							HaveKeyWithValue("app.kubernetes.io/version", "v0.0.69"),
+							HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
 						))
 					})
 				})

@@ -364,7 +364,7 @@ func (r *CloudflaredReconciler) applyCustomizations(base, custom *corev1.Contain
 func (r *CloudflaredReconciler) labels(ctr corev1.Container) map[string]string {
 	version := "latest"
 	if s := strings.Split(ctr.Image, ":"); len(s) > 1 {
-		version = s[1]
+		version = strings.TrimPrefix(s[1], "v")
 	}
 
 	return map[string]string{
