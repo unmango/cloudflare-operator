@@ -273,14 +273,19 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking the DaemonSet is ready")
-			rolloutStatus := func() error {
-				cmd = exec.Command("kubectl", "rollout", "status",
-					"daemonset/cloudflared-sample", "--namespace", testNamespace,
-					"--timeout", "5m")
-				_, err = utils.Run(cmd)
+			getDaemonSet := func() error {
+				cmd := exec.Command("kubectl", "get", "daemonset",
+					"--namespace", testNamespace, "cloudflared-sample")
+				_, err := utils.Run(cmd)
 				return err
 			}
-			Eventually(rolloutStatus).Should(Succeed())
+			Eventually(getDaemonSet).Should(Succeed())
+
+			cmd = exec.Command("kubectl", "rollout", "status",
+				"daemonset/cloudflared-sample", "--namespace", testNamespace,
+				"--timeout", "5m")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the cloudflared resource")
 			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
@@ -289,7 +294,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking the DaemonSet is removed")
-			getDaemonSet := func(g Gomega) {
+			daemonSetNotFound := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "daemonset",
 					"--namespace", testNamespace, "cloudflared-sample")
 				output, err := utils.Run(cmd)
@@ -298,7 +303,7 @@ var _ = Describe("Manager", Ordered, func() {
 					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
 				))
 			}
-			Eventually(getDaemonSet).Should(Succeed())
+			Eventually(daemonSetNotFound).Should(Succeed())
 		})
 	})
 })
