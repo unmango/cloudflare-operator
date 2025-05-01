@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    name: Run on Ubuntu
+    name: GolangCI Lint
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -27,3 +27,18 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           install-mode: none
+
+  dist-clean:
+    name: Verify Worktree Clean
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - helm
+          - build-installer
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - run: make ${{ matrix.target }}
+      - run: git diff --quiet || echo 'Worktree is not clean' && exit 1
