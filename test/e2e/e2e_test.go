@@ -104,9 +104,9 @@ var _ = Describe("Manager", Ordered, func() {
 		if specReport.Failed() {
 			By("Fetching cloudflared DaemonSet description")
 			cmd := exec.Command("kubectl", "describe", "daemonset", "cloudflared-sample", "-n", testNamespace)
-			podDescription, err := utils.Run(cmd)
+			daemonsetDescription, err := utils.Run(cmd)
 			if err == nil {
-				fmt.Println("DaemonSet description:\n", podDescription)
+				fmt.Println("DaemonSet description:\n", daemonsetDescription)
 			} else {
 				fmt.Println("Failed to describe cloudflared daemonset")
 			}
