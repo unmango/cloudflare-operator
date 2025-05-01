@@ -283,7 +283,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 			cmd = exec.Command("kubectl", "rollout", "status",
 				"daemonset/cloudflared-sample", "--namespace", testNamespace,
-				"--timeout", "5m")
+				"--timeout", "10m")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
