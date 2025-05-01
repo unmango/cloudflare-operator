@@ -127,8 +127,10 @@ var _ = Describe("Cloudflared Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 			Expect(resource).NotTo(BeNil())
-			Expect(resource.Spec.Template.Spec.Containers).To(HaveLen(1))
-			container := resource.Spec.Template.Spec.Containers[0]
+			container := &corev1.Container{}
+			Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+				HaveField("Name", "cloudflared"), container,
+			))
 			Expect(container.Name).To(Equal("cloudflared"))
 			Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
 			Expect(container.Command).To(HaveExactElements(
@@ -186,6 +188,22 @@ var _ = Describe("Cloudflared Controller", func() {
 				Name:  "net.ipv4.ping_group_range",
 				Value: "65532 65532",
 			}))
+		})
+
+		It("should configure the container security context", func() {
+			resource := &appsv1.DaemonSet{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+			container := &corev1.Container{}
+			Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+				HaveField("Name", "cloudflared"), container,
+			))
+
+			sec := container.SecurityContext
+			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+			Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+			Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 		})
 
 		Context("and pod spec template is configured", func() {
@@ -319,6 +337,22 @@ var _ = Describe("Cloudflared Controller", func() {
 				}))
 			})
 
+			It("should configure the container security context", func() {
+				resource := &appsv1.DaemonSet{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				container := &corev1.Container{}
+				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+					HaveField("Name", "cloudflared"), container,
+				))
+
+				sec := container.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+				Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+			})
+
 			Context("and pod spec template is configured", func() {
 				const (
 					expectedImage     = "something/not/cloudflared"
@@ -447,6 +481,22 @@ var _ = Describe("Cloudflared Controller", func() {
 					Name:  "net.ipv4.ping_group_range",
 					Value: "65532 65532",
 				}))
+			})
+
+			It("should configure the container security context", func() {
+				resource := &appsv1.Deployment{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				container := &corev1.Container{}
+				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+					HaveField("Name", "cloudflared"), container,
+				))
+
+				sec := container.SecurityContext
+				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+				Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+				Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 			})
 
 			Context("and pod spec template is configured", func() {
