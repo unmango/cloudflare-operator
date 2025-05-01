@@ -152,7 +152,6 @@ var _ = Describe("Cloudflared Controller", func() {
 		})
 
 		It("should create a selector that matches pod labels", func() {
-			By("Fetching the DaemonSet")
 			resource := &appsv1.DaemonSet{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -208,7 +207,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 		Context("and pod spec template is configured", func() {
 			const (
-				expectedImage     = "something/not/cloudflared"
+				expectedImage     = "something/not/cloudflared:v0.0.69"
 				expectedContainer = "container-name"
 			)
 
@@ -292,6 +291,18 @@ var _ = Describe("Cloudflared Controller", func() {
 						HaveField("Name", "cloudflared"), container,
 					))
 					Expect(container.Command).NotTo(BeEmpty())
+				})
+
+				It("should use the version label from the supplied image", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource).NotTo(BeNil())
+					Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
+						HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
+						HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
+						HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
+					))
 				})
 			})
 		})
@@ -386,7 +397,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 			Context("and pod spec template is configured", func() {
 				const (
-					expectedImage     = "something/not/cloudflared"
+					expectedImage     = "something/not/cloudflared:v0.0.69"
 					expectedContainer = "container-name"
 				)
 
@@ -479,6 +490,18 @@ var _ = Describe("Cloudflared Controller", func() {
 						))
 						Expect(container.Command).NotTo(BeEmpty())
 					})
+
+					It("should use the version label from the supplied image", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
+							HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
+							HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
+							HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
+						))
+					})
 				})
 			})
 		})
@@ -563,7 +586,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 			Context("and pod spec template is configured", func() {
 				const (
-					expectedImage     = "something/not/cloudflared"
+					expectedImage     = "something/not/cloudflared:v0.0.69"
 					expectedContainer = "container-name"
 				)
 
@@ -655,6 +678,18 @@ var _ = Describe("Cloudflared Controller", func() {
 							HaveField("Name", "cloudflared"), container,
 						))
 						Expect(container.Command).NotTo(BeEmpty())
+					})
+
+					It("should use the version label from the supplied image", func() {
+						resource := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
+							HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
+							HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
+							HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
+						))
 					})
 				})
 			})

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -249,14 +250,12 @@ func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflare
 }
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1.PodTemplateSpec {
-	labels := r.labels(cloudflared)
 	template := corev1.PodTemplateSpec{}
 
 	if cloudflared.Spec.Template != nil {
 		cloudflared.Spec.Template.DeepCopyInto(&template)
 	}
 
-	template.Labels = labels
 	template.Spec.SecurityContext = &corev1.PodSecurityContext{
 		RunAsNonRoot: ptr.To(true),
 		SeccompProfile: &corev1.SeccompProfile{
@@ -351,6 +350,7 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 	}
 
 	template.Spec.Containers = append(containers, container)
+	template.Labels = r.labels(container)
 
 	return template
 }
@@ -361,10 +361,15 @@ func (r *CloudflaredReconciler) applyCustomizations(base, custom *corev1.Contain
 	}
 }
 
-func (r *CloudflaredReconciler) labels(_ *cfv1alpha1.Cloudflared) map[string]string {
+func (r *CloudflaredReconciler) labels(ctr corev1.Container) map[string]string {
+	version := "latest"
+	if s := strings.Split(ctr.Image, ":"); len(s) > 1 {
+		version = strings.TrimPrefix(s[1], "v")
+	}
+
 	return map[string]string{
 		"app.kubernetes.io/name":       "cloudflare-operator",
-		"app.kubernetes.io/version":    "latest",
+		"app.kubernetes.io/version":    version,
 		"app.kubernetes.io/managed-by": "CloudflaredController",
 	}
 }
