@@ -282,7 +282,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(numReady).To(Equal("1"))
 			}
-			Eventually(getDaemonSet).Should(Succeed())
+			Eventually(getDaemonSet, "5m").Should(Succeed())
 
 			By("Deleting the cloudflared resource")
 			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
@@ -300,7 +300,7 @@ var _ = Describe("Manager", Ordered, func() {
 					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
 				))
 			}
-			Eventually(getDaemonSet, "5m").Should(Succeed())
+			Eventually(getDaemonSet).Should(Succeed())
 		})
 	})
 })
