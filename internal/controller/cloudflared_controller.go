@@ -309,7 +309,8 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		}}
 	}
 
-	template.Spec.Containers = append(template.Spec.Containers, corev1.Container{
+	// create the base container
+	container := corev1.Container{
 		Name:  "cloudflared",
 		Image: defaultCloudflaredImage,
 		Command: []string{
@@ -338,7 +339,19 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 				Drop: []corev1.Capability{"ALL"},
 			},
 		},
-	})
+	}
+
+	var containers []corev1.Container
+	for _, ctr := range template.Spec.Containers {
+		// apply custom modifications, if any
+		if ctr.Name == "cloudflared" {
+			ctr.DeepCopyInto(&container)
+		} else {
+			containers = append(containers, ctr)
+		}
+	}
+
+	template.Spec.Containers = append(containers, container)
 
 	return template
 }

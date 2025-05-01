@@ -263,6 +263,37 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(owner.Controller).To(Equal(ptr.To(true)))
 				Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 			})
+
+			Context("with a custom cloudflared container", func() {
+				BeforeEach(func() {
+					cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
+						Name:  "cloudflared",
+						Image: expectedImage,
+					}}
+				})
+
+				It("should use the supplied image", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Image).To(Equal(expectedImage))
+				})
+
+				It("should keep the existing command", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Command).NotTo(BeEmpty())
+				})
+			})
 		})
 
 		Context("and kind is DaemonSet", func() {
