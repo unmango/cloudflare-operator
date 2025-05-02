@@ -84,11 +84,10 @@ type CloudflaredSpec struct {
 	Version string `json:"version,omitempty"`
 }
 
+// +kubebuilder:printcolumn:JSONPath=".status.state",name=State,type=string
+
 // CloudflaredStatus defines the observed state of Cloudflared.
 type CloudflaredStatus struct {
-	// +optional
-	State string `json:"state"`
-
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge
@@ -99,7 +98,6 @@ type CloudflaredStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.state",name=State,type=string
 
 // Cloudflared is the Schema for the cloudflareds API.
 type Cloudflared struct {
