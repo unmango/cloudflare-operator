@@ -828,6 +828,33 @@ var _ = Describe("Cloudflared Controller", func() {
 						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
 					)
 				})
+
+				Context("and the cloudflared container image is customized", func() {
+					const expectedImage = "blah-blah-blah:latest"
+
+					BeforeEach(func() {
+						cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{{
+									Name:  "cloudflared",
+									Image: expectedImage,
+								}},
+							},
+						}
+					})
+
+					It("should give precedence to the customized image", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						container := &corev1.Container{}
+						Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "cloudflared"), container,
+						))
+						Expect(container.Image).To(Equal(expectedImage))
+					})
+				})
 			},
 			Entry(nil, "2025.4.2"),
 			Entry(nil, "v2025.4.2"),
