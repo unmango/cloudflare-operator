@@ -17,29 +17,126 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// CloudflareTunnelConfigSource describes whether the tunnel is locally or remotely managed.
+//
+// +kubebuilder:validation:Enum=local;cloudflare
+type CloudflareTunnelConfigSource string
+
+const (
+	Local      CloudflareTunnelConfigSource = "local"
+	Cloudflare CloudflareTunnelConfigSource = "cloudflare"
+)
+
+// CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
+// key containing the tunnel secret to use.
+type CloudflareTunnelSecretReference struct {
+	// ConfigMapKeyRef selects a key from an existing ConfigMap containing the tunnel secret.
+	//
+	// +optional
+	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
+
+	// SecretKeyRef selects a key from an existing Secret containing the tunnel secret.
+	//
+	// +optional
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
+}
+
+// CloudflareTunnelSecret defines the tunnel secret used to run a locally-managed tunnel.
+//
+// +kubebuilder:validation:MaxProperties:=1
+// +kubebuilder:validation:MinProperties:=1
+type CloudflareTunnelSecret struct {
+	// An inline secret value. Consider storing the secret in a Kubernetes Secret and
+	// using valueFrom.secretKeyRef instead.
+	//
+	// +optional
+	Value *string `json:"value,omitempty"`
+
+	// ValueFrom defines an existing source in the cluster to pull the tunnel secret from.
+	//
+	// +optional
+	ValueFrom *CloudflareTunnelSecretReference `json:"valueFrom,omitempty"`
+}
 
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
+// https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
 type CloudflareTunnelSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Cloudflare account ID.
+	//
+	// +kubebuilder:validation:MaxLength:=32
+	// +required
+	AccountId string `json:"accountId"`
 
-	// Foo is an example field of CloudflareTunnel. Edit cloudflaretunnel_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
+	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the
+	// tunnel on the Zero Trust dashboard.
+	//
+	// +kubebuilder:default:=local
+	ConfigSource CloudflareTunnelConfigSource `json:"configSource"`
+
+	// A user-friendly name for a tunnel.
+	//
+	// +required
+	Name string `json:"name"`
+
+	// Sets the password required to run a locally-managed tunnel. Must be at least 32 bytes and
+	// encoded as a bas64 string.
+	//
+	// +optional
+	TunnelSecret *CloudflareTunnelSecret `json:"tunnelSecret,omitempty"`
 }
 
 // CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
 type CloudflareTunnelStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// UUID of the tunnel.
+	//
+	// +optional
+	Id string `json:"id,omitempty" format:"uuid"`
+
+	// Timestamp of when the resource was created.
+	//
+	// +optional
+	CreatedAt string `json:"createdAt,omitempty" format:"date-time"`
+
+	// Cloudflare account ID
+	//
+	// +optional
+	AccountTag string `json:"accountTag,omitempty"`
+
+	// If `true`, the tunnel can be configured remotely from the Zero Trust dashboard.
+	// If `false`, the tunnel must be configured locally on the origin machine.
+	//
+	// +optional
+	RemoteConfig bool `json:"remoteConfig,omitempty"`
+
+	// The status of the tunnel. Valid values are `inactive` (tunnel has never been
+	// run), `degraded` (tunnel is active and able to serve traffic but in an unhealthy
+	// state), `healthy` (tunnel is active and able to serve traffic), or `down`
+	// (tunnel can not serve traffic as it has no connections to the Cloudflare Edge).
+	//
+	// +optional
+	Status zero_trust.TunnelCloudflaredNewResponseStatus `json:"status,omitempty"`
+
+	// +listType=map
+	// +listMapKey=type
+	// +patchStrategy=merge
+	// +patchMergeKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=".status.id"
+// +kubebuilder:printcolumn:name="Account Tag",type=string,JSONPath=".status.accountTag"
+// +kubebuilder:printcolumn:name="Name",type=string,JSONPath=".status.name"
+// +kubebuilder:printcolumn:name="Remote Config",type=boolean,JSONPath=".status.remoteConfig"
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=".status.status"
 
 // CloudflareTunnel is the Schema for the cloudflaretunnels API.
 type CloudflareTunnel struct {
