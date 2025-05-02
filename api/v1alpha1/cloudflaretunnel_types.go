@@ -72,6 +72,13 @@ type CloudflareTunnelSpec struct {
 	// +required
 	AccountId string `json:"accountId"`
 
+	// The preferred authorization scheme for interacting with the Cloudflare API. [Create a token].
+	//
+	// [Create a token]: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+	//
+	// +required
+	ApiToken CloudflareApiToken `json:"apiToken"`
+
 	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
 	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the
 	// tunnel on the Zero Trust dashboard.

@@ -61,6 +61,74 @@ spec:
                 description: Cloudflare account ID.
                 maxLength: 32
                 type: string
+              apiToken:
+                description: |-
+                  The preferred authorization scheme for interacting with the Cloudflare API. [Create a token].
+
+                  [Create a token]: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+                maxProperties: 1
+                minProperties: 1
+                properties:
+                  value:
+                    description: |-
+                      An inline API token value. Consider storing the secret in a Kubernetes Secret and
+                      using valueFrom.secretKeyRef instead.
+                    type: string
+                  valueFrom:
+                    description: ValueFrom defines an existing source in the cluster
+                      to pull the API token from.
+                    properties:
+                      configMapKeyRef:
+                        description: ConfigMapKeyRef selects a key from an existing
+                          ConfigMap containing the API token.
+                        properties:
+                          key:
+                            description: The key to select.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the ConfigMap or its key
+                              must be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      secretKeyRef:
+                        description: SecretKeyRef selects a key from an existing Secret
+                          containing the API token.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    type: object
+                type: object
               configSource:
                 default: local
                 description: |-
@@ -143,6 +211,7 @@ spec:
                 type: object
             required:
             - accountId
+            - apiToken
             - configSource
             - name
             type: object
