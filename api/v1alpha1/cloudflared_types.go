@@ -75,7 +75,6 @@ type CloudflaredSpec struct {
 	// Version defines the version of cloudflared to deploy. Available versions can be found at
 	// https://github.com/cloudflare/cloudflared/releases.
 	//
-	// +kubebuilder:validation:Pattern:=v?\d{4}\.\d{1,2}\.\d{1,2}
 	// +kubebuilder:default:=latest
 	Version string `json:"version,omitempty"`
 }
