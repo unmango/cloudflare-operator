@@ -42,16 +42,16 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // CreateTunnel mocks base method.
-func (m *MockClient) CreateTunnel(arg0 context.Context, arg1 zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
+func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTunnel", arg0, arg1)
+	ret := m.ctrl.Call(m, "CreateTunnel", ctx, params)
 	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredNewResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTunnel indicates an expected call of CreateTunnel.
-func (mr *MockClientMockRecorder) CreateTunnel(arg0, arg1 any) *gomock.Call {
+func (mr *MockClientMockRecorder) CreateTunnel(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTunnel", reflect.TypeOf((*MockClient)(nil).CreateTunnel), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTunnel", reflect.TypeOf((*MockClient)(nil).CreateTunnel), ctx, params)
 }
