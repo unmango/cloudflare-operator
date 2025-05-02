@@ -22,11 +22,7 @@ spec:
     singular: cloudflared
   scope: Namespaced
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .status.state
-      name: State
-      type: string
-    name: v1alpha1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Cloudflared is the Schema for the cloudflareds API.
@@ -8218,8 +8214,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              state:
-                type: string
             type: object
         type: object
     served: true
