@@ -7,6 +7,7 @@ godebug default=go1.24
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/unmango/devctl
+	go.uber.org/mock/mockgen
 	helm.sh/helm/v3/cmd/helm
 	sigs.k8s.io/controller-runtime/tools/setup-envtest
 	sigs.k8s.io/controller-tools/cmd/controller-gen
@@ -20,6 +21,7 @@ require (
 	github.com/cloudflare/cloudflare-go/v4 v4.2.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
+	go.uber.org/mock v0.5.2
 	k8s.io/api v0.32.2
 	k8s.io/apimachinery v0.33.0-beta.0
 	k8s.io/client-go v0.32.2
