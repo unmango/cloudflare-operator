@@ -309,10 +309,12 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		}}
 	}
 
+	version := strings.TrimPrefix(cloudflared.Spec.Version, "v")
+
 	// create the base container
 	container := corev1.Container{
 		Name:  "cloudflared",
-		Image: defaultCloudflaredImage,
+		Image: "docker.io/cloudflare/cloudflared:" + version,
 		Command: []string{
 			"cloudflared", "tunnel", "--no-autoupdate",
 			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),

@@ -34,10 +34,12 @@ const (
 // key containing a config.yml file to mount in the cloudflared container.
 type CloudflaredConfigReference struct {
 	// ConfigMapKeyRef selects a key from an existing ConfigMap containing the cloudflared config.
+	//
 	// +optional
 	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
 
 	// SecretKeyRef selects a key from an existing Secret containing the cloudflared config.
+	//
 	// +optional
 	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
 }
@@ -45,6 +47,7 @@ type CloudflaredConfigReference struct {
 // CloudflaredConfig defines the configuration for the `cloudflared` instance.
 type CloudflaredConfig struct {
 	// ValueFrom defines an existing source in the cluster to pull the cloudflared config from.
+	//
 	// +optional
 	ValueFrom *CloudflaredConfigReference `json:"valueFrom,omitempty"`
 }
@@ -52,11 +55,13 @@ type CloudflaredConfig struct {
 // CloudflaredSpec defines the desired state of Cloudflared.
 type CloudflaredSpec struct {
 	// Config describes how to configure the cloudflared instance.
+	//
 	// +optional
 	Config *CloudflaredConfig `json:"config,omitempty"`
 
 	// Kind describes the kind of kubernetes resource that will run the cloudflared instance.
 	// Available options are Deployment or Daemonset, default is DaemonSet.
+	//
 	// +kubebuilder:default:=DaemonSet
 	Kind CloudflaredKind `json:"kind,omitempty"`
 
@@ -68,8 +73,15 @@ type CloudflaredSpec struct {
 	// Template allows customizing the PodTemplateSpec used by the resource specified in Kind.
 	// To customize the cloudflared container, add a container named `cloudflared` to containers.
 	// Currently, the only supported `cloudflared` customization is `image`.
+	//
 	// +optional
 	Template *corev1.PodTemplateSpec `json:"template,omitempty"`
+
+	// Version defines the version of cloudflared to deploy. Available versions can be found at
+	// https://github.com/cloudflare/cloudflared/releases.
+	//
+	// +kubebuilder:default:=latest
+	Version string `json:"version,omitempty"`
 }
 
 // CloudflaredStatus defines the observed state of Cloudflared.

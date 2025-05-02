@@ -799,5 +799,38 @@ var _ = Describe("Cloudflared Controller", func() {
 				}))
 			})
 		})
+
+		DescribeTableSubtree("and version is specified",
+			func(version string) {
+				BeforeEach(func() {
+					cloudflared.Spec.Version = version
+				})
+
+				It("should configure the version tag", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:2025.4.2"))
+				})
+
+				It("should configure the version label", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource.Spec.Selector.MatchLabels).To(
+						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+					)
+					Expect(resource.Spec.Template.Labels).To(
+						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+					)
+				})
+			},
+			Entry(nil, "2025.4.2"),
+			Entry(nil, "v2025.4.2"),
+		)
 	})
 })
