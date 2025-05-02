@@ -18,16 +18,15 @@ package controller
 
 import (
 	"context"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 )
 
 var _ = Describe("CloudflareTunnel Controller", func() {
@@ -38,35 +37,32 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
-		cloudflaretunnel := &cloudflarev1alpha1.CloudflareTunnel{}
+		cloudflaretunnel := &cfv1alpha1.CloudflareTunnel{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind CloudflareTunnel")
-			err := k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &cloudflarev1alpha1.CloudflareTunnel{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			By("Setting the API token environment variable")
+			Expect(os.Setenv("CLOUDFLARE_API_TOKEN", "test-token")).To(Succeed())
+
+			By("Configuring the base tunnel spec")
+			cloudflaretunnel = &cfv1alpha1.CloudflareTunnel{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: cfv1alpha1.CloudflareTunnelSpec{
+					Name:         resourceName,
+					AccountId:    "test-account-id",
+					ConfigSource: cfv1alpha1.CloudflareCloudflareTunnelConfigSource,
+				},
 			}
 		})
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &cloudflarev1alpha1.CloudflareTunnel{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+		JustBeforeEach(func() {
+			By("creating the custom resource for the Kind CloudflareTunnel")
+			Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
 
-			By("Cleanup the specific resource instance CloudflareTunnel")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &CloudflareTunnelReconciler{
 				Client: k8sClient,
@@ -77,8 +73,29 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+
+		AfterEach(func() {
+			resource := &cfv1alpha1.CloudflareTunnel{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Cleanup the specific resource instance CloudflareTunnel")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should successfully reconcile the resource", func() {
+			// TODO: Assert on the status I guess
+		})
+
+		Context("and the CLOUDFLARE_API_TOKEN env var is not defined", func() {
+			BeforeEach(func() {
+				Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
+			})
+
+			It("should error", func() {
+				// TODO: How do we know that it errored?
+			})
 		})
 	})
 })

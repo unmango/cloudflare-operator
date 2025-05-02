@@ -28,8 +28,8 @@ import (
 type CloudflareTunnelConfigSource string
 
 const (
-	Local      CloudflareTunnelConfigSource = "local"
-	Cloudflare CloudflareTunnelConfigSource = "cloudflare"
+	LocalCloudflareTunnelConfigSource      CloudflareTunnelConfigSource = "local"
+	CloudflareCloudflareTunnelConfigSource CloudflareTunnelConfigSource = "cloudflare"
 )
 
 // CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
