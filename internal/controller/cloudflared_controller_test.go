@@ -803,6 +803,18 @@ var _ = Describe("Cloudflared Controller", func() {
 					))
 					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:2025.4.2"))
 				})
+
+				It("should configure the version label", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource.Spec.Selector.MatchLabels).To(
+						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+					)
+					Expect(resource.Spec.Template.Labels).To(
+						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+					)
+				})
 			},
 			Entry(nil, "2025.4.2"),
 			Entry(nil, "v2025.4.2"),
