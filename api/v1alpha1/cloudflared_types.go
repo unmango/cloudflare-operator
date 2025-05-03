@@ -26,8 +26,8 @@ import (
 type CloudflaredKind string
 
 const (
-	DaemonSet  CloudflaredKind = "DaemonSet"
-	Deployment CloudflaredKind = "Deployment"
+	DaemonSetCloudflaredKind  CloudflaredKind = "DaemonSet"
+	DeploymentCloudflaredKind CloudflaredKind = "Deployment"
 )
 
 // CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
