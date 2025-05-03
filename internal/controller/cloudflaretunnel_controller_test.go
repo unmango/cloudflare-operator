@@ -174,7 +174,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(resource.Status.AccountTag).To(Equal(result.AccountTag))
 					Expect(resource.Status.Id).To(Equal(result.ID))
 					Expect(resource.Status.RemoteConfig).To(Equal(result.RemoteConfig))
-					Expect(resource.Status.Status).To(Equal(result.Status))
+					Expect(resource.Status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
 					Expect(resource.Status.CreatedAt).To(Equal(result.CreatedAt.String()))
 				})
 
@@ -333,7 +333,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(resource.Status.CreatedAt).To(Equal(result.CreatedAt.String()))
 					Expect(resource.Status.Id).To(Equal(result.ID))
 					Expect(resource.Status.RemoteConfig).To(Equal(result.RemoteConfig))
-					Expect(resource.Status.Status).To(Equal(result.Status))
+					Expect(resource.Status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
 				})
 
 				It("should add a finalizer to the CloudflareTunnel", func() {

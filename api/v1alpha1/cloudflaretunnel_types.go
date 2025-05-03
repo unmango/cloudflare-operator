@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -30,6 +29,28 @@ type CloudflareTunnelConfigSource string
 const (
 	LocalCloudflareTunnelConfigSource      CloudflareTunnelConfigSource = "local"
 	CloudflareCloudflareTunnelConfigSource CloudflareTunnelConfigSource = "cloudflare"
+)
+
+// The status of the tunnel. Valid values are `inactive` (tunnel has never been run),
+// `degraded` (tunnel is active and able to serve traffic but in an unhealthy state),
+// `healthy` (tunnel is active and able to serve traffic), or
+// `down` (tunnel can not serve traffic as it has no connections to the Cloudflare Edge).
+//
+// +kubebuilder:validation:Enum=healthy;degraded;inactive;down
+type CloudflareTunnelHealth string
+
+const (
+	// Tunnel is active and able to serve traffic.
+	HealthyCloudflareTunnelHealth CloudflareTunnelHealth = "healthy"
+
+	// Tunnel is active and able to serve trafic but in an unhealthy state.
+	DegradedCloudflareTunnelHealth CloudflareTunnelHealth = "degraded"
+
+	// Tunnel has never been run.
+	InactiveCloudflareTunnelHealth CloudflareTunnelHealth = "inactive"
+
+	// Tunnel can not serve traffic as it has no connections to the Cloudflare Edge.
+	DownCloudflareTunnelHealth CloudflareTunnelHealth = "down"
 )
 
 // CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
@@ -127,7 +148,7 @@ type CloudflareTunnelStatus struct {
 	// (tunnel can not serve traffic as it has no connections to the Cloudflare Edge).
 	//
 	// +optional
-	Status zero_trust.TunnelCloudflaredNewResponseStatus `json:"status,omitempty"`
+	Status CloudflareTunnelHealth `json:"status,omitempty"`
 
 	// +listType=map
 	// +listMapKey=type

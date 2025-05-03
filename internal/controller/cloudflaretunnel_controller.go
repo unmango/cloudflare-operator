@@ -158,7 +158,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.Id = res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
-		obj.Status.Status = res.Status
+		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.CreatedAt = res.CreatedAt.String()
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status")
@@ -201,7 +201,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.CreatedAt = res.CreatedAt.String()
 		obj.Status.Id = res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
-		obj.Status.Status = zero_trust.TunnelCloudflaredNewResponseStatus(res.Status)
+		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status", "id", id)
 		return err
