@@ -97,10 +97,27 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	log.Info("Creating cloudflare tunnel", "name", req.Name)
-	if err := r.createTunnel(ctx, tunnel); err != nil {
-		log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
-		return ctrl.Result{}, err
+	if id := tunnel.Status.Id; id != "" {
+		log.Info("Fetching existing cloudflare tunne", "id", id)
+		if err := r.updateTunnel(ctx, id, tunnel); err != nil {
+			log.Error(err, "Failed to update existing cloudflare tunnel", "id", id)
+			return ctrl.Result{}, err
+		}
+	} else {
+		log.Info("Creating cloudflare tunnel", "name", req.Name)
+		if err := r.createTunnel(ctx, tunnel); err != nil {
+			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
+		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
+		}); err != nil {
+			log.Error(err, "Failed to add finalizer to CloudflareTunnel")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -109,7 +126,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
 	log := logf.FromContext(ctx)
 
-	createResponse, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
+	res, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
 		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
 		Name:         cloudflare.F(tunnel.Spec.Name),
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
@@ -131,15 +148,6 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		return err
 	}
 
-	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
-		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
-		}); err != nil {
-			log.Error(err, "Failed to add finalizer to CloudflareTunnel")
-			return err
-		}
-	}
-
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableCloudflareTunnel,
@@ -147,17 +155,59 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 			Reason:  "Reconciling",
 			Message: "Successfully created cloudflare tunnel",
 		})
-		obj.Status.AccountTag = createResponse.AccountTag
-		obj.Status.Id = createResponse.ID
-		obj.Status.RemoteConfig = createResponse.RemoteConfig
-		obj.Status.Status = createResponse.Status
-		obj.Status.CreatedAt = createResponse.CreatedAt.String()
+		obj.Status.AccountTag = res.AccountTag
+		obj.Status.Id = res.ID
+		obj.Status.RemoteConfig = res.RemoteConfig
+		obj.Status.Status = res.Status
+		obj.Status.CreatedAt = res.CreatedAt.String()
 	}); err != nil {
-		log.Error(err, "Failed to update cloudflare tunnel status conditions")
+		log.Error(err, "Failed to update cloudflare tunnel status")
 		return err
 	}
 
 	return nil
+}
+
+func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	log := logf.FromContext(ctx)
+
+	res, err := r.Cloudflare.GetTunnel(ctx, id, zero_trust.TunnelCloudflaredGetParams{
+		AccountID: cloudflare.F(tunnel.Spec.AccountId),
+	})
+	if err != nil {
+		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeErrorCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "Get tunnel request to Cloudflare failed",
+			})
+		}); err != nil {
+			log.Error(err, "Failed to update cloudflare tunnel status conditions")
+			return err // TODO: Include inner error somehow
+		}
+
+		return err
+	}
+
+	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableCloudflareTunnel,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reconciling",
+			Message: "Found existing tunnel matching tunnel id",
+		})
+		obj.Status.AccountTag = res.AccountTag
+		obj.Status.CreatedAt = res.CreatedAt.String()
+		obj.Status.Id = res.ID
+		obj.Status.RemoteConfig = res.RemoteConfig
+		obj.Status.Status = zero_trust.TunnelCloudflaredNewResponseStatus(res.Status)
+	}); err != nil {
+		log.Error(err, "Failed to update cloudflare tunnel status", "id", id)
+		return err
+	} else {
+		return nil
+	}
 }
 
 func (r *CloudflareTunnelReconciler) mapConfigSrc(src cfv1alpha1.CloudflareTunnelConfigSource) zero_trust.TunnelCloudflaredNewParamsConfigSrc {
