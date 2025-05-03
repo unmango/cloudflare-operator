@@ -93,7 +93,20 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	log.Info("Creating cloudflare tunnel", "name", req.Name)
-	if _, err := r.Cloudflare.CreateTunnel(ctx, r.createParams(tunnel)); err != nil {
+	createResponse, err := r.Cloudflare.CreateTunnel(ctx, r.createParams(tunnel))
+	if err != nil {
+		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeErrorCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "New tunnel request to Cloudflare failed",
+			})
+		}); err != nil {
+			log.Error(err, "Failed to update cloudflare tunnel status conditions")
+			return ctrl.Result{}, err
+		}
+
 		log.Error(err, "Failed to create new cloudflare tunnel", "name", req.Name)
 		return ctrl.Result{}, err
 	}
@@ -104,6 +117,11 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Reason:  "Reconciling",
 			Message: "Successfully created cloudflare tunnel",
 		})
+		obj.Status.AccountTag = createResponse.AccountTag
+		obj.Status.Id = createResponse.ID
+		obj.Status.RemoteConfig = createResponse.RemoteConfig
+		obj.Status.Status = createResponse.Status
+		obj.Status.CreatedAt = createResponse.CreatedAt.String()
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status conditions")
 		return ctrl.Result{}, err

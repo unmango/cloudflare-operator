@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
@@ -87,39 +89,116 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
-		It("should successfully reconcile the resource", func() {
-			cfmock.EXPECT().
-				CreateTunnel(gomock.Eq(ctx), gomock.Eq(zero_trust.TunnelCloudflaredNewParams{
-					AccountID:    cloudflare.F(cloudflaretunnel.Spec.AccountId),
-					Name:         cloudflare.F(cloudflaretunnel.Name),
-					ConfigSrc:    cloudflare.F(zero_trust.TunnelCloudflaredNewParamsConfigSrcCloudflare),
-					TunnelSecret: cloudflare.Null[string](),
-				})).
-				Return(nil, nil)
+		Context("and the cloudflare new tunnel call succeeds", func() {
+			var result *zero_trust.TunnelCloudflaredNewResponse
 
-			By("Reconciling the created resource")
-			controllerReconciler := &CloudflareTunnelReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
-				Cloudflare: cfmock,
-			}
+			BeforeEach(func() {
+				result = &zero_trust.TunnelCloudflaredNewResponse{
+					ID:           "test-id",
+					AccountTag:   "test-account-id",
+					CreatedAt:    time.Now(),
+					Name:         cloudflaretunnel.Name,
+					RemoteConfig: true,
+					Status:       zero_trust.TunnelCloudflaredNewResponseStatusHealthy,
+					TunType:      zero_trust.TunnelCloudflaredNewResponseTunTypeCfdTunnel,
+				}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+				cfmock.EXPECT().
+					CreateTunnel(gomock.Eq(ctx), gomock.Eq(zero_trust.TunnelCloudflaredNewParams{
+						AccountID:    cloudflare.F(cloudflaretunnel.Spec.AccountId),
+						Name:         cloudflare.F(cloudflaretunnel.Name),
+						ConfigSrc:    cloudflare.F(zero_trust.TunnelCloudflaredNewParamsConfigSrcCloudflare),
+						TunnelSecret: cloudflare.Null[string](),
+					})).
+					Return(result, nil)
 			})
-			Expect(err).NotTo(HaveOccurred())
 
-			resource := &cfv1alpha1.CloudflareTunnel{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+			It("should successfully reconcile the resource", func() {
+				By("Reconciling the created resource")
+				controllerReconciler := &CloudflareTunnelReconciler{
+					Client:     k8sClient,
+					Scheme:     k8sClient.Scheme(),
+					Cloudflare: cfmock,
+				}
 
-			ctrl.Finish()
+				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
 
-			condition := meta.FindStatusCondition(
-				resource.Status.Conditions,
-				typeAvailableCloudflareTunnel,
-			)
-			Expect(condition).NotTo(BeNil(), "Condition not set")
-			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+				resource := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				ctrl.Finish()
+
+				condition := meta.FindStatusCondition(
+					resource.Status.Conditions,
+					typeAvailableCloudflareTunnel,
+				)
+				Expect(condition).NotTo(BeNil(), "Condition not set")
+				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+			})
+
+			It("should update the tunnel status with the result of the request", func() {
+				By("Reconciling the created resource")
+				controllerReconciler := &CloudflareTunnelReconciler{
+					Client:     k8sClient,
+					Scheme:     k8sClient.Scheme(),
+					Cloudflare: cfmock,
+				}
+
+				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				resource := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				ctrl.Finish()
+
+				Expect(resource.Status.AccountTag).To(Equal(result.AccountTag))
+				Expect(resource.Status.Id).To(Equal(result.ID))
+				Expect(resource.Status.RemoteConfig).To(Equal(result.RemoteConfig))
+				Expect(resource.Status.Status).To(Equal(result.Status))
+				Expect(resource.Status.CreatedAt).To(Equal(result.CreatedAt.String()))
+			})
+		})
+
+		Context("and the cloudflare new tunnel call fails", func() {
+			cferr := fmt.Errorf("new tunnel failed")
+
+			BeforeEach(func() {
+				cfmock.EXPECT().
+					CreateTunnel(gomock.Eq(ctx), gomock.Any()).
+					Return(nil, cferr)
+			})
+
+			It("should set the error status", func() {
+				By("Reconciling the created resource")
+				controllerReconciler := &CloudflareTunnelReconciler{
+					Client:     k8sClient,
+					Scheme:     k8sClient.Scheme(),
+					Cloudflare: cfmock,
+				}
+
+				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).To(MatchError(cferr))
+
+				resource := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				condition := meta.FindStatusCondition(
+					resource.Status.Conditions,
+					typeErrorCloudflareTunnel,
+				)
+				Expect(condition).NotTo(BeNil(), "Condition not set")
+				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+
+				ctrl.Finish()
+			})
 		})
 
 		Context("and the CLOUDFLARE_API_TOKEN env var is not defined", func() {
