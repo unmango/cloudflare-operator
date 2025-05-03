@@ -97,6 +97,17 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.Error(err, "Failed to create new cloudflare tunnel", "name", req.Name)
 		return ctrl.Result{}, err
 	}
+	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableCloudflareTunnel,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reconciling",
+			Message: "Successfully created cloudflare tunnel",
+		})
+	}); err != nil {
+		log.Error(err, "Failed to update cloudflare tunnel status conditions")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
