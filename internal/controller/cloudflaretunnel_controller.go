@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/cloudflare/cloudflare-go/v4"
@@ -128,6 +129,15 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		}
 
 		return err
+	}
+
+	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
+		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
+		}); err != nil {
+			log.Error(err, "Failed to add finalizer to CloudflareTunnel")
+			return err
+		}
 	}
 
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {

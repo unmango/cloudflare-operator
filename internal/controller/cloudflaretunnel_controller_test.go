@@ -30,6 +30,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -84,6 +85,11 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			resource := &cfv1alpha1.CloudflareTunnel{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
+
+			if controllerutil.RemoveFinalizer(resource, cloudflareTunnelFinalizer) {
+				By("Removing the resource finalizer")
+				Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+			}
 
 			By("Cleanup the specific resource instance CloudflareTunnel")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
