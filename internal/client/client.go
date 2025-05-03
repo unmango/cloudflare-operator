@@ -7,6 +7,8 @@ import (
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 )
 
+//go:generate go tool mockgen -destination ../testing/client.go -package testing . Client
+
 type Client interface {
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
 }
