@@ -93,7 +93,23 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	log.Info("Creating cloudflare tunnel", "name", req.Name)
-	createResponse, err := r.Cloudflare.CreateTunnel(ctx, r.createParams(tunnel))
+	if err := r.createTunnel(ctx, tunnel); err != nil {
+		log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	log := logf.FromContext(ctx)
+
+	createResponse, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
+		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
+		Name:         cloudflare.F(tunnel.Spec.Name),
+		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
+		TunnelSecret: cloudflare.Null[string](),
+	})
 	if err != nil {
 		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
@@ -104,12 +120,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			})
 		}); err != nil {
 			log.Error(err, "Failed to update cloudflare tunnel status conditions")
-			return ctrl.Result{}, err
+			return err // TODO: Include inner error somehow
 		}
 
-		log.Error(err, "Failed to create new cloudflare tunnel", "name", req.Name)
-		return ctrl.Result{}, err
+		return err
 	}
+
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableCloudflareTunnel,
@@ -124,19 +140,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		obj.Status.CreatedAt = createResponse.CreatedAt.String()
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status conditions")
-		return ctrl.Result{}, err
+		return err
 	}
 
-	return ctrl.Result{}, nil
-}
-
-func (r *CloudflareTunnelReconciler) createParams(tunnel *cfv1alpha1.CloudflareTunnel) zero_trust.TunnelCloudflaredNewParams {
-	return zero_trust.TunnelCloudflaredNewParams{
-		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
-		Name:         cloudflare.F(tunnel.Spec.Name),
-		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
-		TunnelSecret: cloudflare.Null[string](),
-	}
+	return nil
 }
 
 func (r *CloudflareTunnelReconciler) mapConfigSrc(src cfv1alpha1.CloudflareTunnelConfigSource) zero_trust.TunnelCloudflaredNewParamsConfigSrc {
