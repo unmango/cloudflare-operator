@@ -96,13 +96,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		})
 
 		Context("and a matching tunnel does not exist", func() {
-			BeforeEach(func() {
-				cfmock.EXPECT().
-					ListTunnels(gomock.Eq(ctx), gomock.Any()).
-					Return([]zero_trust.TunnelCloudflaredListResponse{}, nil).
-					AnyTimes()
-			})
-
 			Context("and the cloudflare new tunnel call succeeds", func() {
 				var result *zero_trust.TunnelCloudflaredNewResponse
 
