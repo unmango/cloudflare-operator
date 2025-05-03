@@ -34,6 +34,10 @@ import (
 )
 
 const (
+	cloudflareTunnelFinalizer = "cloudflaretunnel.unmango.dev/finalizer"
+)
+
+const (
 	typeAvailableCloudflareTunnel = "Available"
 	typeErrorCloudflareTunnel     = "Error"
 )
