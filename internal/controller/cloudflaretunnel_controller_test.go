@@ -20,8 +20,13 @@ import (
 	"context"
 	"os"
 
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/unmango/cloudflare-operator/internal/testing"
+	"go.uber.org/mock/gomock"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -41,9 +46,18 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		}
 		cloudflaretunnel := &cfv1alpha1.CloudflareTunnel{}
 
+		var (
+			ctrl   *gomock.Controller
+			cfmock *testing.MockClient
+		)
+
 		BeforeEach(func() {
 			By("Setting the API token environment variable")
 			Expect(os.Setenv("CLOUDFLARE_API_TOKEN", "test-token")).To(Succeed())
+
+			By("Initializing the cloudflare mock")
+			ctrl = gomock.NewController(GinkgoT())
+			cfmock = testing.NewMockClient(ctrl)
 
 			By("Configuring the base tunnel spec")
 			cloudflaretunnel = &cfv1alpha1.CloudflareTunnel{
@@ -65,8 +79,9 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 			By("Reconciling the created resource")
 			controllerReconciler := &CloudflareTunnelReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Cloudflare: cfmock,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -85,7 +100,25 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		})
 
 		It("should successfully reconcile the resource", func() {
-			// TODO: Assert on the status I guess
+			resource := &cfv1alpha1.CloudflareTunnel{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+			cfmock.EXPECT().
+				CreateTunnel(gomock.Eq(ctx), gomock.Eq(zero_trust.TunnelCloudflaredNewParams{
+					AccountID:    cloudflare.F(cloudflaretunnel.Spec.AccountId),
+					Name:         cloudflare.F(cloudflaretunnel.Name),
+					ConfigSrc:    cloudflare.F(zero_trust.TunnelCloudflaredNewParamsConfigSrcCloudflare),
+					TunnelSecret: cloudflare.Null[string](),
+				})).
+				Return(nil, nil)
+			ctrl.Finish()
+
+			condition := meta.FindStatusCondition(
+				resource.Status.Conditions,
+				typeAvailableCloudflareTunnel,
+			)
+			Expect(condition).NotTo(BeNil(), "Condition not set")
+			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
 		})
 
 		Context("and the CLOUDFLARE_API_TOKEN env var is not defined", func() {
@@ -93,8 +126,21 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
 			})
 
-			It("should error", func() {
-				// TODO: How do we know that it errored?
+			It("should set the error status", func() {
+				resource := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				condition := meta.FindStatusCondition(
+					resource.Status.Conditions,
+					typeErrorCloudflareTunnel,
+				)
+				Expect(condition).NotTo(BeNil(), "Condition not set")
+				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+
+				cfmock.EXPECT().
+					CreateTunnel(gomock.Any(), gomock.Any()).
+					Times(0)
+				ctrl.Finish()
 			})
 		})
 	})
