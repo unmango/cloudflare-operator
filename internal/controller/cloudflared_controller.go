@@ -138,7 +138,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var app client.Object
 	switch cloudflared.Spec.Kind {
-	case cfv1alpha1.DaemonSet:
+	case cfv1alpha1.DaemonSetCloudflaredKind:
 		app = &appsv1.DaemonSet{}
 		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -153,7 +153,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 		}
-	case cfv1alpha1.Deployment:
+	case cfv1alpha1.DeploymentCloudflaredKind:
 		app := &appsv1.Deployment{}
 		if err := r.Get(ctx, req.NamespacedName, app); err != nil {
 			if !apierrors.IsNotFound(err) {

@@ -118,7 +118,7 @@ var _ = Describe("Cloudflared Controller", func() {
 			resource := &cfv1alpha1.Cloudflared{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-			Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSet))
+			Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 		})
 
 		It("should create a DaemonSet", func() {
@@ -310,7 +310,7 @@ var _ = Describe("Cloudflared Controller", func() {
 		Context("and kind is DaemonSet", func() {
 			BeforeEach(func() {
 				By("Setting the kind to DaemonSet")
-				cloudflared.Spec.Kind = cfv1alpha1.DaemonSet
+				cloudflared.Spec.Kind = cfv1alpha1.DaemonSetCloudflaredKind
 			})
 
 			It("should create a DaemonSet", func() {
@@ -508,7 +508,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 		Context("and kind is Deployment", func() {
 			BeforeEach(func() {
-				cloudflared.Spec.Kind = cfv1alpha1.Deployment
+				cloudflared.Spec.Kind = cfv1alpha1.DeploymentCloudflaredKind
 			})
 
 			It("should create a Deployment", func() {
