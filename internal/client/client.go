@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/packages/pagination"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 )
 
@@ -12,6 +13,7 @@ import (
 type Client interface {
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
 	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error)
+	ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]zero_trust.TunnelCloudflaredListResponse, error)
 }
 
 type client struct {
@@ -30,4 +32,20 @@ func (c *client) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloud
 // GetTunnel implements Client.
 func (c *client) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.Get(ctx, tunnelId, params)
+}
+
+// ListTunnels implements Client.
+func (c *client) ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]zero_trust.TunnelCloudflaredListResponse, error) {
+	return collect(c.ZeroTrust.Tunnels.Cloudflared.ListAutoPaging(ctx, params))
+}
+
+func collect[T any](pager *pagination.V4PagePaginationArrayAutoPager[T]) (arr []T, err error) {
+	for pager.Next() {
+		arr = append(arr, pager.Current())
+	}
+	if pager.Err() != nil {
+		return nil, err
+	}
+
+	return
 }
