@@ -94,8 +94,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if !r.containsFinalizer(cloudflared) {
 		if err := r.addFinalizer(ctx, cloudflared); err != nil {
-			log.Error(err, "Failed to update custom resource to add finalizer")
-			log.Error(err, "Failed to add finalizer")
+			log.Error(err, "Failed to add finalizer to Cloudflared")
 			return ctrl.Result{}, err
 		}
 	}
