@@ -386,6 +386,106 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					ctrl.Finish()
 				})
 			})
+
+			Context("and the CloudflareTunnel is marked for deletion", func() {
+				BeforeEach(func() {
+					cloudflaretunnel.SetDeletionTimestamp(&metav1.Time{})
+				})
+
+				Context("and the cloudflare delete tunnel call succeeds", func() {
+					BeforeEach(func() {
+						result := &zero_trust.TunnelCloudflaredDeleteResponse{}
+
+						cfmock.EXPECT().
+							DeleteTunnel(gomock.Eq(ctx), tunnelId, zero_trust.TunnelCloudflaredDeleteParams{
+								AccountID: cloudflare.F(cloudflaretunnel.Spec.AccountId),
+							}).
+							Return(result, nil)
+					})
+
+					It("should remove the finalizer", func() {
+						By("Reconciling the created resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource.Finalizers).To(BeEmpty())
+					})
+				})
+
+				Context("and the cloudflare delete tunnel call fails", func() {
+					cferr := fmt.Errorf("delete tunnel failed")
+
+					BeforeEach(func() {
+						cfmock.EXPECT().
+							DeleteTunnel(gomock.Eq(ctx), tunnelId, zero_trust.TunnelCloudflaredDeleteParams{
+								AccountID: cloudflare.F(cloudflaretunnel.Spec.AccountId),
+							}).
+							Return(nil, cferr)
+					})
+
+					It("should set the error status", func() {
+						By("Reconciling the created resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						condition := meta.FindStatusCondition(
+							resource.Status.Conditions,
+							typeErrorCloudflareTunnel,
+						)
+						Expect(condition).NotTo(BeNil(), "Condition not set")
+						Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+
+						ctrl.Finish()
+					})
+				})
+			})
+		})
+
+		Context("and the CloudflareTunnel is marked for deletion", func() {
+			BeforeEach(func() {
+				cloudflaretunnel.SetDeletionTimestamp(&metav1.Time{})
+			})
+
+			It("should remove the finalizer", func() {
+				By("Reconciling the created resource")
+				controllerReconciler := &CloudflareTunnelReconciler{
+					Client:     k8sClient,
+					Scheme:     k8sClient.Scheme(),
+					Cloudflare: cfmock,
+				}
+
+				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				resource := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				Expect(resource.Finalizers).To(BeEmpty())
+			})
 		})
 
 		Context("and the CLOUDFLARE_API_TOKEN env var is not defined", func() {
