@@ -29,7 +29,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
-	cfclient "github.com/unmango/cloudflare-operator/pkg/client"
+	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

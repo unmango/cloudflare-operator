@@ -11,6 +11,7 @@ import (
 
 type Client interface {
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
+	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error)
 }
 
 type client struct {
@@ -24,4 +25,9 @@ func New() Client {
 // CreateTunnel implements Client.
 func (c *client) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.New(ctx, params)
+}
+
+// GetTunnel implements Client.
+func (c *client) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error) {
+	return c.ZeroTrust.Tunnels.Cloudflared.Get(ctx, tunnelId, params)
 }

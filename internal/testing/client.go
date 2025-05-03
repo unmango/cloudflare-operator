@@ -55,3 +55,18 @@ func (mr *MockClientMockRecorder) CreateTunnel(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTunnel", reflect.TypeOf((*MockClient)(nil).CreateTunnel), ctx, params)
 }
+
+// GetTunnel mocks base method.
+func (m *MockClient) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTunnel", ctx, tunnelId, params)
+	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredGetResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTunnel indicates an expected call of GetTunnel.
+func (mr *MockClientMockRecorder) GetTunnel(ctx, tunnelId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTunnel", reflect.TypeOf((*MockClient)(nil).GetTunnel), ctx, tunnelId, params)
+}
