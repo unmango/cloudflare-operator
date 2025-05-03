@@ -126,6 +126,8 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	Id string `json:"id,omitempty" format:"uuid"`
 
+	// TODO: Switch to metav1.Time
+
 	// Timestamp of when the resource was created.
 	//
 	// +optional
