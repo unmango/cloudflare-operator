@@ -14,6 +14,11 @@ namePrefix: cloudflare-operator-
 #  pairs:
 #    someName: someValue
 
+secretGenerator:
+  - name: cloudflare-credentials
+    literals:
+      - CLOUDFLARE_API_TOKEN=<token here>
+
 resources:
 - ../crd
 - ../rbac

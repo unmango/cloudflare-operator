@@ -8793,6 +8793,15 @@ subjects:
   namespace: cloudflare-operator-system
 ---
 apiVersion: v1
+data:
+  CLOUDFLARE_API_TOKEN: PHRva2VuIGhlcmU+
+kind: Secret
+metadata:
+  name: cloudflare-operator-cloudflare-credentials-287k5mcmth
+  namespace: cloudflare-operator-system
+type: Opaque
+---
+apiVersion: v1
 kind: Service
 metadata:
   labels:
@@ -8834,6 +8843,20 @@ spec:
         app.kubernetes.io/name: cloudflare-operator
         control-plane: controller-manager
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - arm64
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
       containers:
       - args:
         - --metrics-bind-address=:8443
@@ -8841,7 +8864,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/unmango/cloudflare-operator:v0.0.1
+        image: ghcr.io/unmango/cloudflare-operator:latest
         livenessProbe:
           httpGet:
             path: /healthz
