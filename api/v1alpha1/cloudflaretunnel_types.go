@@ -182,6 +182,11 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	Status CloudflareTunnelHealth `json:"status,omitempty"`
 
+	// The type of tunnel.
+	//
+	// +optional
+	Type CloudflareTunnelType `json:"type,omitempty"`
+
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge

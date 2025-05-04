@@ -105,13 +105,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				BeforeEach(func() {
 					result = &zero_trust.TunnelCloudflaredNewResponse{
-						ID:           "test-id",
-						AccountTag:   "test-account-id",
-						CreatedAt:    time.Now(),
-						Name:         cloudflaretunnel.Name,
-						RemoteConfig: true,
-						Status:       zero_trust.TunnelCloudflaredNewResponseStatusHealthy,
-						TunType:      zero_trust.TunnelCloudflaredNewResponseTunTypeCfdTunnel,
+						ID:              "test-id",
+						AccountTag:      "test-account-id",
+						CreatedAt:       time.Now(),
+						ConnsActiveAt:   time.Now(),
+						ConnsInactiveAt: time.Now(),
+						Name:            cloudflaretunnel.Name,
+						RemoteConfig:    true,
+						Status:          zero_trust.TunnelCloudflaredNewResponseStatusHealthy,
+						TunType:         zero_trust.TunnelCloudflaredNewResponseTunTypeCfdTunnel,
 					}
 
 					cfmock.EXPECT().
@@ -168,11 +170,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					ctrl.Finish()
 
-					Expect(resource.Status.AccountTag).To(Equal(result.AccountTag))
-					Expect(resource.Status.Id).To(Equal(result.ID))
-					Expect(resource.Status.RemoteConfig).To(Equal(result.RemoteConfig))
-					Expect(resource.Status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
-					Expect(resource.Status.CreatedAt).To(Equal(result.CreatedAt.String()))
+					status := resource.Status
+					Expect(status.AccountTag).To(Equal(result.AccountTag))
+					Expect(status.Id).To(Equal(result.ID))
+					Expect(status.RemoteConfig).To(Equal(result.RemoteConfig))
+					Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+					Expect(status.CreatedAt.Time).To(BeTemporally("~", result.CreatedAt, time.Second))
+					Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", result.ConnsActiveAt, time.Second))
+					Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", result.ConnsInactiveAt, time.Second))
+					Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
 				})
 
 				It("should add a finalizer to the CloudflareTunnel", func() {
@@ -248,13 +254,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				BeforeEach(func() {
 					result = &zero_trust.TunnelCloudflaredGetResponse{
-						ID:           tunnelId,
-						AccountTag:   "test-account-tag",
-						CreatedAt:    time.Now(),
-						Name:         cloudflaretunnel.Spec.Name,
-						RemoteConfig: true,
-						Status:       zero_trust.TunnelCloudflaredGetResponseStatusHealthy,
-						TunType:      zero_trust.TunnelCloudflaredGetResponseTunTypeCfdTunnel,
+						ID:              tunnelId,
+						AccountTag:      "test-account-tag",
+						CreatedAt:       time.Now(),
+						ConnsActiveAt:   time.Now(),
+						ConnsInactiveAt: time.Now(),
+						Name:            cloudflaretunnel.Spec.Name,
+						RemoteConfig:    true,
+						Status:          zero_trust.TunnelCloudflaredGetResponseStatusHealthy,
+						TunType:         zero_trust.TunnelCloudflaredGetResponseTunTypeCfdTunnel,
 					}
 
 					cfmock.EXPECT().
@@ -326,11 +334,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					Expect(resource.Status.AccountTag).To(Equal(result.AccountTag))
-					Expect(resource.Status.CreatedAt).To(Equal(result.CreatedAt.String()))
-					Expect(resource.Status.Id).To(Equal(result.ID))
-					Expect(resource.Status.RemoteConfig).To(Equal(result.RemoteConfig))
-					Expect(resource.Status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+					status := resource.Status
+					Expect(status.AccountTag).To(Equal(result.AccountTag))
+					Expect(status.CreatedAt.Time).To(BeTemporally("~", result.CreatedAt, time.Second))
+					Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", result.ConnsActiveAt, time.Second))
+					Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", result.ConnsInactiveAt, time.Second))
+					Expect(status.Id).To(Equal(result.ID))
+					Expect(status.RemoteConfig).To(Equal(result.RemoteConfig))
+					Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+					Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
 				})
 
 				It("should add a finalizer to the CloudflareTunnel", func() {
