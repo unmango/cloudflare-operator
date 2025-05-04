@@ -2,7 +2,7 @@ PROJECT := cloudflare-operator
 REPO    := unmango/${PROJECT}
 
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/${REPO}:latest
+IMG ?= ghcr.io/${REPO}:v0.0.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
