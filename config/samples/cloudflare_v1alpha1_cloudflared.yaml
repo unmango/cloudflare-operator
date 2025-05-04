@@ -5,5 +5,4 @@ metadata:
     app.kubernetes.io/name: cloudflare-operator
     app.kubernetes.io/managed-by: kustomize
   name: cloudflared-sample
-spec:
-  # TODO(user): Add fields here
+spec: {}

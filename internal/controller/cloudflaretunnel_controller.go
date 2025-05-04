@@ -96,7 +96,6 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	log.Info("Deletion timestamp", "ts", tunnel.DeletionTimestamp)
 	if !tunnel.DeletionTimestamp.IsZero() {
 		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
