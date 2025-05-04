@@ -21,9 +21,6 @@ spec:
     - jsonPath: .status.accountTag
       name: Account Tag
       type: string
-    - jsonPath: .status.name
-      name: Name
-      type: string
     - jsonPath: .status.remoteConfig
       name: Remote Config
       type: boolean
