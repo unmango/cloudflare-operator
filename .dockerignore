@@ -7,6 +7,8 @@ dist/
 hack/
 test/
 .dockerignore
+.editorconfig
+.envrc
 .gitignore
 .golangci.yml
 cover.out
@@ -15,3 +17,5 @@ LICENSE
 Makefile
 PROJECT
 README.md
+
+*_test.go
