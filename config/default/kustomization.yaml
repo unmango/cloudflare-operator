@@ -14,6 +14,9 @@ namePrefix: cloudflare-operator-
 #  pairs:
 #    someName: someValue
 
+secretGenerator:
+- name: cloudflare-credentials
+
 resources:
 - ../crd
 - ../rbac
@@ -33,7 +36,6 @@ resources:
 # be able to communicate with the Webhook Server.
 #- ../network-policy
 
-# Uncomment the patches line if you enable Metrics
 patches:
 # [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
 # More info: https://book.kubebuilder.io/reference/metrics
