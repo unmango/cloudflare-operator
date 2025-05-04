@@ -63,6 +63,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	tunnel := &cfv1alpha1.CloudflareTunnel{}
 	if err := r.Get(ctx, req.NamespacedName, tunnel); err != nil {
+		log.V(1).Info("Not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -97,8 +98,19 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
+	log.Info("Deletion timestamp", "ts", tunnel.DeletionTimestamp)
+	if !tunnel.DeletionTimestamp.IsZero() {
+		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
+			log.Error(err, "Failed to delete cloudflare tunnel")
+			return ctrl.Result{}, err
+		} else {
+			log.Info("Successfully deleted cloudflare tunnel")
+			return ctrl.Result{}, nil
+		}
+	}
+
 	if id := tunnel.Status.Id; id != "" {
-		log.Info("Fetching existing cloudflare tunne", "id", id)
+		log.Info("Fetching existing cloudflare tunnel", "id", id)
 		if err := r.updateTunnel(ctx, id, tunnel); err != nil {
 			log.Error(err, "Failed to update existing cloudflare tunnel", "id", id)
 			return ctrl.Result{}, err
@@ -204,6 +216,47 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status", "id", id)
+		return err
+	} else {
+		return nil
+	}
+}
+
+func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id string, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	log := logf.FromContext(ctx)
+
+	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
+		log.Info("No finalizer, nothing to do")
+		return nil
+	}
+
+	if id != "" {
+		log.Info("Deleting cloudflare tunnel", "id", id)
+		_, err := r.Cloudflare.DeleteTunnel(ctx, id, zero_trust.TunnelCloudflaredDeleteParams{
+			AccountID: cloudflare.F(tunnel.Spec.AccountId),
+		})
+		if err != nil {
+			if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+					Type:    typeErrorCloudflareTunnel,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: "Get tunnel request to Cloudflare failed",
+				})
+			}); err != nil {
+				log.Error(err, "Failed to update cloudflare tunnel status conditions")
+				return err // TODO: Include inner error somehow
+			}
+
+			return err
+		}
+	}
+
+	log.Info("Removing finalizer", "id", id)
+	if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = controllerutil.RemoveFinalizer(tunnel, cloudflareTunnelFinalizer)
+	}); err != nil {
+		log.Error(err, "Failed to remove finanlizer")
 		return err
 	} else {
 		return nil
