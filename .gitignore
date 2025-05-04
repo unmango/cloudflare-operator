@@ -8,6 +8,9 @@ Dockerfile.cross
 
 *.test
 *.out
+out.*
+*.env
+.envrc
 
 go.work
 !vendor/**/zz_generated.*

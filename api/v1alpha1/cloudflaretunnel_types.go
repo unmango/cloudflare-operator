@@ -164,7 +164,6 @@ type CloudflareTunnelStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=".status.id"
 // +kubebuilder:printcolumn:name="Account Tag",type=string,JSONPath=".status.accountTag"
-// +kubebuilder:printcolumn:name="Name",type=string,JSONPath=".status.name"
 // +kubebuilder:printcolumn:name="Remote Config",type=boolean,JSONPath=".status.remoteConfig"
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=".status.status"
 
