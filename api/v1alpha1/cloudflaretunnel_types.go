@@ -53,6 +53,21 @@ const (
 	DownCloudflareTunnelHealth CloudflareTunnelHealth = "down"
 )
 
+// The type of tunnel.
+//
+// +kubebuilder:validation:Enum=cfd_tunnel;warp_connector;warp;magic;ip_sec;gre;cni
+type CloudflareTunnelType string
+
+const (
+	CfdTunnelCloudflareTunnelType     CloudflareTunnelType = "cfd_tunnel"
+	WarpConnectorCloudflareTunnelType CloudflareTunnelType = "warp_connector"
+	WarpCloudflareTunnelType          CloudflareTunnelType = "warp"
+	MagicCloudflareTunnelType         CloudflareTunnelType = "magic"
+	IpSecCloudflareTunnelType         CloudflareTunnelType = "ip_sec"
+	GreCloudflareTunnelType           CloudflareTunnelType = "gre"
+	CniCloudflareTunnelType           CloudflareTunnelType = "cni"
+)
+
 // CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
 // key containing the tunnel secret to use.
 type CloudflareTunnelSecretReference struct {
@@ -117,6 +132,11 @@ type CloudflareTunnelSpec struct {
 	//
 	// +optional
 	TunnelSecret *CloudflareTunnelSecret `json:"tunnelSecret,omitempty"`
+
+	// The type of tunnel.
+	//
+	// +optional
+	Type CloudflareTunnelType `json:"type,omitempty"`
 }
 
 // CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
@@ -126,12 +146,22 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	Id string `json:"id,omitempty" format:"uuid"`
 
-	// TODO: Switch to metav1.Time
+	// Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
+	// If null, the tunnel is inactive.
+	//
+	// +optional
+	ConnectionsActiveAt metav1.Time `json:"connsActiveAt,omitempty"`
+
+	// Timestamp of when the tunnel became inactive (no connections to Cloudflare's edge).
+	// If null, the tunnel is active.
+	//
+	// +optional
+	ConnectionsInactiveAt metav1.Time `json:"connsInactiveAt,omitempty"`
 
 	// Timestamp of when the resource was created.
 	//
 	// +optional
-	CreatedAt string `json:"createdAt,omitempty" format:"date-time"`
+	CreatedAt metav1.Time `json:"createdAt,omitempty"`
 
 	// Cloudflare account ID
 	//
@@ -163,9 +193,12 @@ type CloudflareTunnelStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=".status.id"
-// +kubebuilder:printcolumn:name="Account Tag",type=string,JSONPath=".status.accountTag"
-// +kubebuilder:printcolumn:name="Remote Config",type=boolean,JSONPath=".status.remoteConfig"
+// +kubebuilder:printcolumn:name="Account",type=string,JSONPath=".status.accountTag"
+// +kubebuilder:printcolumn:name="Remote",type=boolean,JSONPath=".status.remoteConfig"
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=".status.status"
+// +kubebuilder:printcolumn:name="Created",type=string,JSONPath=".status.createdAt"
+// +kubebuilder:printcolumn:name="Active At",type=string,JSONPath=".status.connsActiveAt"
+// +kubebuilder:printcolumn:name="Inactive At",type=string,JSONPath=".status.connsInactiveAt"
 
 // CloudflareTunnel is the Schema for the cloudflaretunnels API.
 type CloudflareTunnel struct {

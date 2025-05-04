@@ -168,7 +168,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		obj.Status.Id = res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
-		obj.Status.CreatedAt = res.CreatedAt.String()
+		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflare tunnel status")
 		return err
@@ -207,7 +207,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 			Message: "Found existing tunnel matching tunnel id",
 		})
 		obj.Status.AccountTag = res.AccountTag
-		obj.Status.CreatedAt = res.CreatedAt.String()
+		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.Id = res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
