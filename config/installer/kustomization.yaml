@@ -1,0 +1,6 @@
+resources:
+- ../default
+
+secretGenerator:
+  - name: cloudflare-credentials
+    behavior: replace

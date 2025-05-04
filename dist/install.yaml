@@ -8793,11 +8793,10 @@ subjects:
   namespace: cloudflare-operator-system
 ---
 apiVersion: v1
-data:
-  CLOUDFLARE_API_TOKEN: PHRva2VuIGhlcmU+
+data: {}
 kind: Secret
 metadata:
-  name: cloudflare-operator-cloudflare-credentials-287k5mcmth
+  name: cloudflare-operator-cloudflare-credentials-46f8b28mk5
   namespace: cloudflare-operator-system
 type: Opaque
 ---
@@ -8864,7 +8863,10 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/unmango/cloudflare-operator:latest
+        envFrom:
+        - secretRef:
+            name: cloudflare-operator-cloudflare-credentials-46f8b28mk5
+        image: ghcr.io/unmango/cloudflare-operator:v0.0.1
         livenessProbe:
           httpGet:
             path: /healthz

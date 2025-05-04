@@ -58,6 +58,9 @@ spec:
           - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
+        envFrom:
+          - secretRef:
+              name: cloudflare-credentials
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
