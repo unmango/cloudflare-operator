@@ -43,8 +43,6 @@ const (
 	typeErrorCloudflareTunnel     = "Error"
 )
 
-var apiTokenSet = os.Getenv("CLOUDFLARE_API_TOKEN") != ""
-
 // CloudflareTunnelReconciler reconciles a CloudflareTunnel object
 type CloudflareTunnelReconciler struct {
 	client.Client

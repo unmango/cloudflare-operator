@@ -43,7 +43,7 @@ const (
 	// Tunnel is active and able to serve traffic.
 	HealthyCloudflareTunnelHealth CloudflareTunnelHealth = "healthy"
 
-	// Tunnel is active and able to serve trafic but in an unhealthy state.
+	// Tunnel is active and able to serve traffic but in an unhealthy state.
 	DegradedCloudflareTunnelHealth CloudflareTunnelHealth = "degraded"
 
 	// Tunnel has never been run.
@@ -98,7 +98,7 @@ type CloudflareTunnelSpec struct {
 	// [Create a token]: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
 	//
 	// +required
-	//ApiToken CloudflareApiToken `json:"apiToken"`
+	// ApiToken CloudflareApiToken `json:"apiToken"`
 
 	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
 	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the
