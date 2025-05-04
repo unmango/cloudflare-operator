@@ -39,6 +39,7 @@ rules:
   - cloudflare.unmango.dev
   resources:
   - cloudflareds
+  - cloudflaretunnels
   verbs:
   - create
   - delete
@@ -51,12 +52,14 @@ rules:
   - cloudflare.unmango.dev
   resources:
   - cloudflareds/finalizers
+  - cloudflaretunnels/finalizers
   verbs:
   - update
 - apiGroups:
   - cloudflare.unmango.dev
   resources:
   - cloudflareds/status
+  - cloudflaretunnels/status
   verbs:
   - get
   - patch
