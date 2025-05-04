@@ -1,3 +1,15 @@
+# [CLOUDFLARE]: Cloudflare Configurations
+cloudflare:
+  auth:
+    # Set to true to configure Cloudflare authentication.
+    enabled: false
+    ## Uncomment to set the API Token to use for requests to Cloudflare.
+    #apiToken: <your token here>
+    ## Uncomment to reference an existing secret containing the Cloudflare API Token.
+    #apiTokenRef:
+    #  name: cloudflare-credentials
+    #  key: CLOUDFLARE_API_TOKEN
+
 # [MANAGER]: Manager Deployment Configurations
 controllerManager:
   replicas: 1
