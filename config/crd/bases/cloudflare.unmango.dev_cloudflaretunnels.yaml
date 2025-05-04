@@ -264,6 +264,17 @@ spec:
                 - inactive
                 - down
                 type: string
+              type:
+                description: The type of tunnel.
+                enum:
+                - cfd_tunnel
+                - warp_connector
+                - warp
+                - magic
+                - ip_sec
+                - gre
+                - cni
+                type: string
             type: object
         type: object
     served: true
