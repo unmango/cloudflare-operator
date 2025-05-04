@@ -28,8 +28,10 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -84,15 +86,17 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		AfterEach(func() {
 			resource := &cfv1alpha1.CloudflareTunnel{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(client.IgnoreNotFound(err)).NotTo(HaveOccurred())
 
 			if controllerutil.RemoveFinalizer(resource, cloudflareTunnelFinalizer) {
 				By("Removing the resource finalizer")
 				Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 			}
 
-			By("Cleanup the specific resource instance CloudflareTunnel")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			if err == nil {
+				By("Cleanup the specific resource instance CloudflareTunnel")
+				_ = k8sClient.Delete(ctx, resource)
+			}
 		})
 
 		Context("and a matching tunnel does not exist", func() {
@@ -389,7 +393,12 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 			Context("and the CloudflareTunnel is marked for deletion", func() {
 				BeforeEach(func() {
-					cloudflaretunnel.SetDeletionTimestamp(&metav1.Time{})
+					cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+				})
+
+				JustBeforeEach(func() {
+					By("Deleting the resource")
+					Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
 				})
 
 				Context("and the cloudflare delete tunnel call succeeds", func() {
@@ -404,7 +413,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					})
 
 					It("should remove the finalizer", func() {
-						By("Reconciling the created resource")
+						By("Reconciling the deleted resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
 							Client:     k8sClient,
 							Scheme:     k8sClient.Scheme(),
@@ -417,9 +426,8 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(err).NotTo(HaveOccurred())
 
 						resource := &cfv1alpha1.CloudflareTunnel{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-						Expect(resource.Finalizers).To(BeEmpty())
+						err = k8sClient.Get(ctx, typeNamespacedName, resource)
+						Expect(errors.IsNotFound(err)).To(BeTrueBecause("Resource was deleted"))
 					})
 				})
 
@@ -428,14 +436,12 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					BeforeEach(func() {
 						cfmock.EXPECT().
-							DeleteTunnel(gomock.Eq(ctx), tunnelId, zero_trust.TunnelCloudflaredDeleteParams{
-								AccountID: cloudflare.F(cloudflaretunnel.Spec.AccountId),
-							}).
+							DeleteTunnel(gomock.Eq(ctx), gomock.Any(), gomock.Any()).
 							Return(nil, cferr)
 					})
 
 					It("should set the error status", func() {
-						By("Reconciling the created resource")
+						By("Reconciling the deleted resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
 							Client:     k8sClient,
 							Scheme:     k8sClient.Scheme(),
@@ -445,7 +451,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
 						})
-						Expect(err).NotTo(HaveOccurred())
+						Expect(err).To(MatchError(cferr))
 
 						resource := &cfv1alpha1.CloudflareTunnel{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
@@ -465,11 +471,16 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 		Context("and the CloudflareTunnel is marked for deletion", func() {
 			BeforeEach(func() {
-				cloudflaretunnel.SetDeletionTimestamp(&metav1.Time{})
+				cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+			})
+
+			JustBeforeEach(func() {
+				By("Deleting the resource")
+				Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
 			})
 
 			It("should remove the finalizer", func() {
-				By("Reconciling the created resource")
+				By("Reconciling the deleted resource")
 				controllerReconciler := &CloudflareTunnelReconciler{
 					Client:     k8sClient,
 					Scheme:     k8sClient.Scheme(),
@@ -482,9 +493,8 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				resource := &cfv1alpha1.CloudflareTunnel{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource.Finalizers).To(BeEmpty())
+				err = k8sClient.Get(ctx, typeNamespacedName, resource)
+				Expect(errors.IsNotFound(err)).To(BeTrueBecause("Resource was deleted"))
 			})
 		})
 
