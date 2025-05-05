@@ -171,6 +171,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					ctrl.Finish()
 
 					status := resource.Status
+					Expect(status.Name).To(Equal(result.Name))
 					Expect(status.AccountTag).To(Equal(result.AccountTag))
 					Expect(status.Id).To(Equal(result.ID))
 					Expect(status.RemoteConfig).To(Equal(result.RemoteConfig))
@@ -200,6 +201,29 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					ctrl.Finish()
 
 					Expect(resource.Finalizers).To(ConsistOf(cloudflareTunnelFinalizer))
+				})
+
+				Context("and Name is not provided", func() {
+					BeforeEach(func() {
+						cloudflaretunnel.Spec.Name = ""
+					})
+
+					It("should use the resource name as the tunnel name", func() {
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource.Status.Name).To(Equal(cloudflaretunnel.Name))
+					})
 				})
 			})
 
@@ -335,6 +359,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 					status := resource.Status
+					Expect(status.Name).To(Equal(result.Name))
 					Expect(status.AccountTag).To(Equal(result.AccountTag))
 					Expect(status.CreatedAt.Time).To(BeTemporally("~", result.CreatedAt, time.Second))
 					Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", result.ConnsActiveAt, time.Second))

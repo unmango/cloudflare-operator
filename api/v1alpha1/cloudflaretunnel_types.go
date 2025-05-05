@@ -124,8 +124,8 @@ type CloudflareTunnelSpec struct {
 
 	// A user-friendly name for a tunnel.
 	//
-	// +required
-	Name string `json:"name"`
+	// +optional
+	Name string `json:"name,omitempty"`
 
 	// Sets the password required to run a locally-managed tunnel. Must be at least 32 bytes and
 	// encoded as a bas64 string.
@@ -141,6 +141,11 @@ type CloudflareTunnelSpec struct {
 
 // CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
 type CloudflareTunnelStatus struct {
+	// Cloudflare account ID
+	//
+	// +optional
+	AccountTag string `json:"accountTag,omitempty"`
+
 	// UUID of the tunnel.
 	//
 	// +optional
@@ -163,10 +168,10 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	CreatedAt metav1.Time `json:"createdAt,omitempty"`
 
-	// Cloudflare account ID
+	// A user-friendly name for a tunnel.
 	//
 	// +optional
-	AccountTag string `json:"accountTag,omitempty"`
+	Name string `json:"name,omitempty"`
 
 	// If `true`, the tunnel can be configured remotely from the Zero Trust dashboard.
 	// If `false`, the tunnel must be configured locally on the origin machine.

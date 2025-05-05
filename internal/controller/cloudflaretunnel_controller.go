@@ -135,9 +135,14 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
 	log := logf.FromContext(ctx)
 
+	name := tunnel.Spec.Name
+	if name == "" {
+		name = tunnel.Name
+	}
+
 	res, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
 		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
-		Name:         cloudflare.F(tunnel.Spec.Name),
+		Name:         cloudflare.F(name),
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
 		TunnelSecret: cloudflare.Null[string](),
 	})
@@ -164,6 +169,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 			Reason:  "Reconciling",
 			Message: "Successfully created cloudflare tunnel",
 		})
+		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.Id = res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
@@ -209,6 +215,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 			Reason:  "Reconciling",
 			Message: "Found existing tunnel matching tunnel id",
 		})
+		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
