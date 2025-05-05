@@ -208,6 +208,14 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 			})
 
+			It("should update the Cloudflared status", func() {
+				By("Fetching the resource")
+				resource := &cfv1alpha1.Cloudflared{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
+			})
+
 			Context("and a matching DaemonSet exists", func() {
 				daemonSet := &appsv1.DaemonSet{}
 
@@ -477,6 +485,14 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
 					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
 					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+				})
+
+				It("should update the Cloudflared status", func() {
+					By("Fetching the resource")
+					resource := &cfv1alpha1.Cloudflared{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 				})
 
 				Context("and a matching DaemonSet exists", func() {
@@ -749,11 +765,19 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 				})
 
+				It("should update the Cloudflared status", func() {
+					By("Fetching the resource")
+					resource := &cfv1alpha1.Cloudflared{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DeploymentCloudflaredKind))
+				})
+
 				Context("and a matching Deployment exists", func() {
 					deployment := &appsv1.Deployment{}
 
 					BeforeEach(func() {
-						By("Reconciling to create the DaemonSet")
+						By("Reconciling to create the Deployment")
 						controllerReconciler := &CloudflaredReconciler{
 							Client:   k8sClient,
 							Scheme:   k8sClient.Scheme(),
@@ -794,6 +818,27 @@ var _ = Describe("Cloudflared Controller", func() {
 							deployment := &appsv1.Deployment{}
 							Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
 							Expect(deployment.Spec.Replicas).To(Equal(ptr.To[int32](3)))
+						})
+					})
+
+					Context("and the Kind is changed to DaemonSet", func() {
+						BeforeEach(func() {
+							By("Re-fetching the resource")
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+							cloudflared.Spec.Kind = cfv1alpha1.DaemonSetCloudflaredKind
+
+							By("Updating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should delete the Deployment", func() {
+							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})
+							Expect(err).To(MatchError("blah"))
+						})
+
+						It("should create a DaemonSet", func() {
+							Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})).To(Succeed())
 						})
 					})
 
