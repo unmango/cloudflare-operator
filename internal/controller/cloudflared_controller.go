@@ -277,6 +277,9 @@ func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
 		// Blindly apply the spec and let the Deployment controller reconcile differences
 		obj.Spec.Template = r.podTemplateSpec(cloudflared)
+		if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
+			obj.Spec.Replicas = replicas
+		}
 	}); err != nil {
 		log.Error(err, "Failed to patch Cloudflared Deployment")
 		return err

@@ -793,7 +793,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 							deployment := &appsv1.Deployment{}
 							Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
-							Expect(deployment.Spec.Replicas).To(Equal(3))
+							Expect(deployment.Spec.Replicas).To(Equal(ptr.To[int32](3)))
 						})
 					})
 
