@@ -103,12 +103,13 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error(err, "Failed to create app for Cloudflared")
 			return ctrl.Result{}, err
 		} else {
-			log.Info("Successfully created app for Cloudflared, requeing to update its status")
+			log.Info("Successfully created app for Cloudflared, requeuing to check its status")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 	}
 
-	if app, err := r.getApp(ctx, cloudflared); err != nil {
+	app, err := r.getApp(ctx, cloudflared)
+	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
 			return ctrl.Result{}, err
@@ -118,17 +119,28 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error(err, "Failed to create app for Cloudflared")
 			return ctrl.Result{}, err
 		} else {
-			log.Info("Successfully created app for Cloudflared, requeing to update its status")
+			log.Info("Successfully created app for Cloudflared, requeuing to check its status")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
-	} else {
-		if err = r.update(ctx, app, cloudflared); err != nil {
-			log.Error(err, "Failed to update app for Cloudflared")
+	}
+
+	if cloudflared.Status.Kind != cloudflared.Spec.Kind {
+		log.Info("Spec app Kind does not match observed app Kind, deleting app")
+		if err := r.deleteApp(ctx, app); err != nil {
+			log.Error(err, "Failed to delete app for Cloudflared")
 			return ctrl.Result{}, err
 		} else {
-			log.Info("Successfully updated app for Cloudflared")
-			return ctrl.Result{}, nil
+			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
+	}
+
+	if err = r.update(ctx, app, cloudflared); err != nil {
+		log.Error(err, "Failed to update app for Cloudflared")
+		return ctrl.Result{}, err
+	} else {
+		log.Info("Successfully updated app for Cloudflared")
+		return ctrl.Result{}, nil
 	}
 }
 
@@ -267,8 +279,6 @@ func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, c
 func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) error {
 	log := logf.FromContext(ctx)
 
-	// TODO: Check if the kind changed
-
 	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
 		// Blindly apply the spec and let the DaemonSet controller reconcile differences
 		obj.Spec.Template = r.podTemplateSpec(cloudflared)
@@ -283,8 +293,6 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) error {
 	log := logf.FromContext(ctx)
 
-	// TODO: Check if the kind changed
-
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
 		// Blindly apply the spec and let the Deployment controller reconcile differences
 		obj.Spec.Template = r.podTemplateSpec(cloudflared)
@@ -294,6 +302,14 @@ func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv
 	}); err != nil {
 		log.Error(err, "Failed to patch Cloudflared Deployment")
 		return err
+	} else {
+		return nil
+	}
+}
+
+func (r *CloudflaredReconciler) deleteApp(ctx context.Context, app client.Object) error {
+	if err := r.Delete(ctx, app); err != nil {
+		return client.IgnoreNotFound(err)
 	} else {
 		return nil
 	}
