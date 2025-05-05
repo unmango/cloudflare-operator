@@ -274,6 +274,27 @@ var _ = Describe("Cloudflared Controller", func() {
 						))
 					})
 				})
+
+				Context("and the Kind is changed to Deployment", func() {
+					BeforeEach(func() {
+						By("Re-fetching the resource")
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+						cloudflared.Spec.Kind = cfv1alpha1.DeploymentCloudflaredKind
+
+						By("Updating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+					})
+
+					It("should delete the DaemonSet", func() {
+						err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
+						Expect(err).To(MatchError("blah"))
+					})
+
+					It("should create a Deployment", func() {
+						Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})).To(Succeed())
+					})
+				})
 			})
 		})
 
@@ -551,6 +572,27 @@ var _ = Describe("Cloudflared Controller", func() {
 							Expect(daemonSet.Spec.Template.Spec.Containers).To(ContainElement(
 								HaveField("Name", "some-new-container"), container,
 							))
+						})
+					})
+
+					Context("and the Kind is changed to Deployment", func() {
+						BeforeEach(func() {
+							By("Re-fetching the resource")
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+							cloudflared.Spec.Kind = cfv1alpha1.DeploymentCloudflaredKind
+
+							By("Updating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should delete the DaemonSet", func() {
+							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
+							Expect(err).To(MatchError("blah"))
+						})
+
+						It("should create a Deployment", func() {
+							Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})).To(Succeed())
 						})
 					})
 				})
