@@ -72,68 +72,32 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudflared := &cfv1alpha1.Cloudflared{}
 	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.V(1).Info("Cloudflared resource not found, ignoring")
-			return ctrl.Result{}, nil
-		} else {
-			log.Error(err, "Failed to get cloudflared")
-			return ctrl.Result{}, err
-		}
+		log.V(1).Info("Cloudflared resource not found, ignoring")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if len(cloudflared.Status.Conditions) == 0 {
-		if err := r.setStatus(ctx, cloudflared, metav1.Condition{
-			Type:    typeAvailableCloudflared,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Starting reconciliation",
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	if !r.containsFinalizer(cloudflared) {
-		if err := r.addFinalizer(ctx, cloudflared); err != nil {
-			log.Error(err, "Failed to add finalizer to Cloudflared")
-			return ctrl.Result{}, err
-		}
-	}
-
-	if cloudflared.GetDeletionTimestamp() != nil {
-		if r.containsFinalizer(cloudflared) {
-			log.Info("Performing finalizer operations before deleting")
-			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
-				Type:    typeDegradedCloudflared,
+		if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeAvailableCloudflared,
 				Status:  metav1.ConditionUnknown,
-				Reason:  "Finalizing",
-				Message: "Performing finalizer operations",
-			}); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			r.finalizer(ctx, cloudflared)
-
-			if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-				log.Error(err, "Failed to re-fetch Cloudflared")
-				return ctrl.Result{}, err
-			}
-
-			if err := r.setStatus(ctx, cloudflared, metav1.Condition{
-				Type:    typeDegradedCloudflared,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Finalizing",
-				Message: "Finalizer operations were successfully accomplished",
-			}); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			log.Info("Removing finalizer after successfully finalizing")
-			if err := r.removeFinalizer(ctx, cloudflared); err != nil {
-				return ctrl.Result{}, err
-			}
+				Reason:  "Reconciling",
+				Message: "Starting reconciliation",
+			})
+		}); err != nil {
+			log.Error(err, "Failed to update cloudflared status conditions")
+			return ctrl.Result{}, err
 		}
+	}
 
-		return ctrl.Result{}, nil
+	if !cloudflared.DeletionTimestamp.IsZero() {
+		if err := r.delete(ctx, cloudflared); err != nil {
+			log.Error(err, "Failed to delete cloudflared")
+			return ctrl.Result{}, err
+		} else {
+			log.Info("Successfully deleted cloudflared")
+			return ctrl.Result{}, nil
+		}
 	}
 
 	var app client.Object
@@ -180,6 +144,53 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	if !controllerutil.ContainsFinalizer(cloudflared, cloudflaredFinalizer) {
+		log.V(1).Info("No finalizer on Cloudflared, nothing to do")
+		return nil
+	}
+
+	log.Info("Performing finalizer operations before deleting Cloudflared")
+	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflared,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Finalizing",
+			Message: "Performing finalizer operations",
+		})
+	}); err != nil {
+		return err
+	}
+
+	r.Recorder.Event(cloudflared, "Warning", "Deleting",
+		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
+			cloudflared.Name, cloudflared.Namespace),
+	)
+
+	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflared,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Finalizing",
+			Message: "Finalizer operations were successfully accomplished",
+		})
+	}); err != nil {
+		return err
+	}
+
+	log.Info("Removing Cloudflared finalizer after successfully finalizing")
+	if err := patch(ctx, r, cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+		_ = controllerutil.RemoveFinalizer(cloudflared, cloudflaredFinalizer)
+	}); err != nil {
+		log.Error(err, "Failed to remove finalizer from Cloudflared")
+		return err
+	} else {
+		return nil
+	}
 }
 
 func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
@@ -426,13 +437,6 @@ func (r *CloudflaredReconciler) removeFinalizer(ctx context.Context, cloudflared
 	}
 
 	return nil
-}
-
-func (r *CloudflaredReconciler) finalizer(_ context.Context, cloudflared *cfv1alpha1.Cloudflared) {
-	r.Recorder.Event(cloudflared, "Warning", "Deleting",
-		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
-			cloudflared.Name, cloudflared.Namespace),
-	)
 }
 
 // SetupWithManager sets up the controller with the Manager.
