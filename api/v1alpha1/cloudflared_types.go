@@ -84,16 +84,21 @@ type CloudflaredSpec struct {
 	Version string `json:"version,omitempty"`
 }
 
-// +kubebuilder:printcolumn:JSONPath=".status.state",name=State,type=string
+// +kubebuilder:printcolumn:JSONPath=".status.kind",name=Kind,type=string
 
 // CloudflaredStatus defines the observed state of Cloudflared.
 type CloudflaredStatus struct {
+	// The Kind of the app managing the cloudflared instance.
+	//
+	// +optional
+	Kind CloudflaredKind `json:"kind,omitempty"`
+
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge
 	// +patchMergeKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true
