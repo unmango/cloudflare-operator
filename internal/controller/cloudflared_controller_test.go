@@ -63,10 +63,7 @@ var _ = Describe("Cloudflared Controller", func() {
 		})
 
 		JustBeforeEach(func() {
-			By("creating the custom resource for the Kind Cloudflared")
-			Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
-
-			By("Reconciling the created resource")
+			By("Reconciling the resource")
 			controllerReconciler := &CloudflaredReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
@@ -113,207 +110,22 @@ var _ = Describe("Cloudflared Controller", func() {
 			}
 		})
 
-		It("should default to a DaemonSet", func() {
-			By("Fetching the resource")
-			resource := &cfv1alpha1.Cloudflared{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
-		})
-
-		It("should create a DaemonSet", func() {
-			By("Fetching the DaemonSet")
-			resource := &appsv1.DaemonSet{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			Expect(resource).NotTo(BeNil())
-			container := &corev1.Container{}
-			Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-				HaveField("Name", "cloudflared"), container,
-			))
-			Expect(container.Name).To(Equal("cloudflared"))
-			Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
-			Expect(container.Command).To(HaveExactElements(
-				"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
-			))
-
-			// Unless otherwise specified, run a hello world tunnel
-			Expect(container.Args).To(HaveExactElements("--hello-world"))
-
-			probe := container.LivenessProbe
-			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-				Path:   "/ready",
-				Port:   intstr.FromInt(2000),
-				Scheme: "HTTP",
-			}))
-			Expect(probe.FailureThreshold).To(Equal(int32(1)))
-			Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
-			Expect(probe.PeriodSeconds).To(Equal(int32(10)))
-		})
-
-		It("should create a selector that matches pod labels", func() {
-			resource := &appsv1.DaemonSet{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			Expect(resource).NotTo(BeNil())
-			Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
-		})
-
-		It("should add an owner reference", func() {
-			By("Fetching the DaemonSet")
-			resource := &appsv1.DaemonSet{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			Expect(resource).NotTo(BeNil())
-			owner := &metav1.OwnerReference{}
-			Expect(resource.OwnerReferences).To(ContainElement(
-				HaveField("Name", typeNamespacedName.Name), owner,
-			))
-			Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
-			Expect(owner.Kind).To(Equal("Cloudflared"))
-			Expect(owner.Controller).To(Equal(ptr.To(true)))
-			Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-		})
-
-		// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
-		It("should configure the pod security context", func() {
-			resource := &appsv1.DaemonSet{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			sec := resource.Spec.Template.Spec.SecurityContext
-			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-			Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
-			Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
-				Name:  "net.ipv4.ping_group_range",
-				Value: "65532 65532",
-			}))
-		})
-
-		It("should configure the container security context", func() {
-			resource := &appsv1.DaemonSet{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-			container := &corev1.Container{}
-			Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-				HaveField("Name", "cloudflared"), container,
-			))
-
-			sec := container.SecurityContext
-			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-			Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
-			Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
-			Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
-		})
-
-		Context("and pod spec template is configured", func() {
-			const (
-				expectedImage     = "something/not/cloudflared:v0.0.69"
-				expectedContainer = "container-name"
-			)
-
+		Context("and the resource is created", func() {
 			BeforeEach(func() {
-				cloudflared.Spec.Template = &corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{{
-							Name:  expectedContainer,
-							Image: expectedImage,
-						}},
-					},
-				}
+				By("creating the custom resource for the Kind Cloudflared")
+				Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+			})
+
+			It("should default to a DaemonSet", func() {
+				By("Fetching the resource")
+				resource := &cfv1alpha1.Cloudflared{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+				Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 			})
 
 			It("should create a DaemonSet", func() {
-				resource := &appsv1.DaemonSet{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource).NotTo(BeNil())
-				template := resource.Spec.Template
-				Expect(template.Labels).To(Equal(expectedLabels))
-				container := &corev1.Container{}
-				Expect(template.Spec.Containers).To(ContainElement(
-					HaveField("Name", "cloudflared"), container,
-				))
-				Expect(template.Spec.Containers).To(ContainElement(
-					HaveField("Name", expectedContainer), container,
-				))
-				Expect(container.Image).To(Equal(expectedImage))
-			})
-
-			It("should create a selector that matches pod labels", func() {
-				resource := &appsv1.DaemonSet{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource).NotTo(BeNil())
-				Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
-			})
-
-			It("should add an owner reference", func() {
-				resource := &appsv1.DaemonSet{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource).NotTo(BeNil())
-				owner := &metav1.OwnerReference{}
-				Expect(resource.OwnerReferences).To(ContainElement(
-					HaveField("Name", typeNamespacedName.Name), owner,
-				))
-				Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
-				Expect(owner.Kind).To(Equal("Cloudflared"))
-				Expect(owner.Controller).To(Equal(ptr.To(true)))
-				Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-			})
-
-			Context("with a custom cloudflared container image", func() {
-				BeforeEach(func() {
-					cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
-						Name:  "cloudflared",
-						Image: expectedImage,
-					}}
-				})
-
-				It("should use the supplied image", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					container := &corev1.Container{}
-					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-					Expect(container.Image).To(Equal(expectedImage))
-				})
-
-				It("should keep the existing command", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					container := &corev1.Container{}
-					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-					Expect(container.Command).NotTo(BeEmpty())
-				})
-
-				It("should use the version label from the supplied image", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					Expect(resource).NotTo(BeNil())
-					Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
-						HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
-						HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
-						HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
-					))
-				})
-			})
-		})
-
-		Context("and kind is DaemonSet", func() {
-			BeforeEach(func() {
-				By("Setting the kind to DaemonSet")
-				cloudflared.Spec.Kind = cfv1alpha1.DaemonSetCloudflaredKind
-			})
-
-			It("should create a DaemonSet", func() {
+				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -322,6 +134,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
 					HaveField("Name", "cloudflared"), container,
 				))
+				Expect(container.Name).To(Equal("cloudflared"))
 				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
 				Expect(container.Command).To(HaveExactElements(
 					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
@@ -342,7 +155,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should create a selector that matches pod labels", func() {
-				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -351,6 +163,7 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should add an owner reference", func() {
+				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -394,23 +207,30 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
 				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 			})
+		})
 
-			Context("and pod spec template is configured", func() {
-				const (
-					expectedImage     = "something/not/cloudflared:v0.0.69"
-					expectedContainer = "container-name"
-				)
+		Context("and pod spec template is configured", func() {
+			const (
+				expectedImage     = "something/not/cloudflared:v0.0.69"
+				expectedContainer = "container-name"
+			)
 
+			BeforeEach(func() {
+				cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name:  expectedContainer,
+							Image: expectedImage,
+						}},
+					},
+				}
+			})
+
+			Context("and the resource is created", func() {
 				BeforeEach(func() {
-					cloudflared.Spec.Template = &corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{{
-								Name:  expectedContainer,
-								Image: expectedImage,
-							}},
-						},
-					}
+					By("creating the custom resource for the Kind Cloudflared")
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 				})
 
 				It("should create a DaemonSet", func() {
@@ -452,21 +272,20 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 				})
+			})
 
-				It("should configure the RollingUpdate strategy", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					strategy := resource.Spec.UpdateStrategy
-					Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDaemonSetStrategyType))
+			Context("with a custom cloudflared container image", func() {
+				BeforeEach(func() {
+					cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
+						Name:  "cloudflared",
+						Image: expectedImage,
+					}}
 				})
 
-				Context("with a custom cloudflared container image", func() {
+				Context("and the resource is created", func() {
 					BeforeEach(func() {
-						cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
-							Name:  "cloudflared",
-							Image: expectedImage,
-						}}
+						By("creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 					})
 
 					It("should use the supplied image", func() {
@@ -506,87 +325,317 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 		})
 
+		Context("and kind is DaemonSet", func() {
+			BeforeEach(func() {
+				By("Setting the kind to DaemonSet")
+				cloudflared.Spec.Kind = cfv1alpha1.DaemonSetCloudflaredKind
+			})
+
+			Context("and the resource is created", func() {
+				BeforeEach(func() {
+					By("creating the custom resource for the Kind Cloudflared")
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+				})
+
+				It("should create a DaemonSet", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource).NotTo(BeNil())
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+					Expect(container.Command).To(HaveExactElements(
+						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
+					))
+
+					// Unless otherwise specified, run a hello world tunnel
+					Expect(container.Args).To(HaveExactElements("--hello-world"))
+
+					probe := container.LivenessProbe
+					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+						Path:   "/ready",
+						Port:   intstr.FromInt(2000),
+						Scheme: "HTTP",
+					}))
+					Expect(probe.FailureThreshold).To(Equal(int32(1)))
+					Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+					Expect(probe.PeriodSeconds).To(Equal(int32(10)))
+				})
+
+				It("should create a selector that matches pod labels", func() {
+					By("Fetching the DaemonSet")
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource).NotTo(BeNil())
+					Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
+				})
+
+				It("should add an owner reference", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource).NotTo(BeNil())
+					owner := &metav1.OwnerReference{}
+					Expect(resource.OwnerReferences).To(ContainElement(
+						HaveField("Name", typeNamespacedName.Name), owner,
+					))
+					Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+					Expect(owner.Kind).To(Equal("Cloudflared"))
+					Expect(owner.Controller).To(Equal(ptr.To(true)))
+					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+				})
+
+				// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+				It("should configure the pod security context", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					sec := resource.Spec.Template.Spec.SecurityContext
+					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+					Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+					Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+						Name:  "net.ipv4.ping_group_range",
+						Value: "65532 65532",
+					}))
+				})
+
+				It("should configure the container security context", func() {
+					resource := &appsv1.DaemonSet{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+
+					sec := container.SecurityContext
+					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+					Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+				})
+			})
+
+			Context("and pod spec template is configured", func() {
+				const (
+					expectedImage     = "something/not/cloudflared:v0.0.69"
+					expectedContainer = "container-name"
+				)
+
+				BeforeEach(func() {
+					cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: expectedLabels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  expectedContainer,
+								Image: expectedImage,
+							}},
+						},
+					}
+				})
+
+				Context("and the resource is created", func() {
+					BeforeEach(func() {
+						By("creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					})
+
+					It("should create a DaemonSet", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						template := resource.Spec.Template
+						Expect(template.Labels).To(Equal(expectedLabels))
+						container := &corev1.Container{}
+						Expect(template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "cloudflared"), container,
+						))
+						Expect(template.Spec.Containers).To(ContainElement(
+							HaveField("Name", expectedContainer), container,
+						))
+						Expect(container.Image).To(Equal(expectedImage))
+					})
+
+					It("should create a selector that matches pod labels", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
+					})
+
+					It("should add an owner reference", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						owner := &metav1.OwnerReference{}
+						Expect(resource.OwnerReferences).To(ContainElement(
+							HaveField("Name", typeNamespacedName.Name), owner,
+						))
+						Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+						Expect(owner.Kind).To(Equal("Cloudflared"))
+						Expect(owner.Controller).To(Equal(ptr.To(true)))
+						Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+					})
+
+					It("should configure the RollingUpdate strategy", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						strategy := resource.Spec.UpdateStrategy
+						Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDaemonSetStrategyType))
+					})
+				})
+
+				Context("with a custom cloudflared container image", func() {
+					BeforeEach(func() {
+						cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
+							Name:  "cloudflared",
+							Image: expectedImage,
+						}}
+					})
+
+					Context("and the resource is created", func() {
+						BeforeEach(func() {
+							By("creating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should use the supplied image", func() {
+							resource := &appsv1.DaemonSet{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							container := &corev1.Container{}
+							Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "cloudflared"), container,
+							))
+							Expect(container.Image).To(Equal(expectedImage))
+						})
+
+						It("should keep the existing command", func() {
+							resource := &appsv1.DaemonSet{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							container := &corev1.Container{}
+							Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "cloudflared"), container,
+							))
+							Expect(container.Command).NotTo(BeEmpty())
+						})
+
+						It("should use the version label from the supplied image", func() {
+							resource := &appsv1.DaemonSet{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							Expect(resource).NotTo(BeNil())
+							Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
+								HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
+								HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
+								HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
+							))
+						})
+					})
+				})
+			})
+		})
+
 		Context("and kind is Deployment", func() {
 			BeforeEach(func() {
 				cloudflared.Spec.Kind = cfv1alpha1.DeploymentCloudflaredKind
 			})
 
-			It("should create a Deployment", func() {
-				resource := &appsv1.Deployment{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+			Context("and the resource is created", func() {
+				BeforeEach(func() {
+					By("creating the custom resource for the Kind Cloudflared")
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+				})
 
-				Expect(resource).NotTo(BeNil())
-				container := &corev1.Container{}
-				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-					HaveField("Name", "cloudflared"), container,
-				))
-				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
-				Expect(container.Command).To(HaveExactElements(
-					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
-				))
+				It("should create a Deployment", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world"))
+					Expect(resource).NotTo(BeNil())
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+					Expect(container.Command).To(HaveExactElements(
+						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
+					))
 
-				probe := container.LivenessProbe
-				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-					Path:   "/ready",
-					Port:   intstr.FromInt(2000),
-					Scheme: "HTTP",
-				}))
-				Expect(probe.FailureThreshold).To(Equal(int32(1)))
-				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
-				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
-			})
+					// Unless otherwise specified, run a hello world tunnel
+					Expect(container.Args).To(HaveExactElements("--hello-world"))
 
-			It("should add an owner reference", func() {
-				resource := &appsv1.Deployment{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+					probe := container.LivenessProbe
+					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+						Path:   "/ready",
+						Port:   intstr.FromInt(2000),
+						Scheme: "HTTP",
+					}))
+					Expect(probe.FailureThreshold).To(Equal(int32(1)))
+					Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+					Expect(probe.PeriodSeconds).To(Equal(int32(10)))
+				})
 
-				Expect(resource).NotTo(BeNil())
-				owner := &metav1.OwnerReference{}
-				Expect(resource.OwnerReferences).To(ContainElement(
-					HaveField("Name", typeNamespacedName.Name), owner,
-				))
-				Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
-				Expect(owner.Kind).To(Equal("Cloudflared"))
-				Expect(owner.Controller).To(Equal(ptr.To(true)))
-				Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-			})
+				It("should add an owner reference", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-			// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
-			It("should configure the pod security context", func() {
-				resource := &appsv1.Deployment{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+					Expect(resource).NotTo(BeNil())
+					owner := &metav1.OwnerReference{}
+					Expect(resource.OwnerReferences).To(ContainElement(
+						HaveField("Name", typeNamespacedName.Name), owner,
+					))
+					Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+					Expect(owner.Kind).To(Equal("Cloudflared"))
+					Expect(owner.Controller).To(Equal(ptr.To(true)))
+					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+				})
 
-				sec := resource.Spec.Template.Spec.SecurityContext
-				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-				Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
-				Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
-					Name:  "net.ipv4.ping_group_range",
-					Value: "65532 65532",
-				}))
-			})
+				// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+				It("should configure the pod security context", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-			It("should configure the container security context", func() {
-				resource := &appsv1.Deployment{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+					sec := resource.Spec.Template.Spec.SecurityContext
+					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+					Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+					Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+						Name:  "net.ipv4.ping_group_range",
+						Value: "65532 65532",
+					}))
+				})
 
-				container := &corev1.Container{}
-				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-					HaveField("Name", "cloudflared"), container,
-				))
+				It("should configure the container security context", func() {
+					resource := &appsv1.Deployment{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				sec := container.SecurityContext
-				Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-				Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
-				Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
-				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+
+					sec := container.SecurityContext
+					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+					Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+				})
 			})
 
 			Context("and replicas is specified", func() {
 				BeforeEach(func() {
 					cloudflared.Spec.Replicas = ptr.To[int32](3)
+
+					By("creating the custom resource for the Kind Cloudflared")
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 				})
 
 				It("should configure the replicas on the deployment", func() {
@@ -615,52 +664,59 @@ var _ = Describe("Cloudflared Controller", func() {
 					}
 				})
 
-				It("should create a Deployment", func() {
-					resource := &appsv1.Deployment{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+				Context("and the resource is created", func() {
+					BeforeEach(func() {
+						By("creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					})
 
-					Expect(resource).NotTo(BeNil())
-					template := resource.Spec.Template
-					Expect(template.Labels).To(Equal(expectedLabels))
-					container := &corev1.Container{}
-					Expect(template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-					Expect(template.Spec.Containers).To(ContainElement(
-						HaveField("Name", expectedContainer), container,
-					))
-					Expect(container.Image).To(Equal(expectedImage))
-				})
+					It("should create a Deployment", func() {
+						resource := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				It("should create a selector that matches pod labels", func() {
-					resource := &appsv1.Deployment{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource).NotTo(BeNil())
+						template := resource.Spec.Template
+						Expect(template.Labels).To(Equal(expectedLabels))
+						container := &corev1.Container{}
+						Expect(template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "cloudflared"), container,
+						))
+						Expect(template.Spec.Containers).To(ContainElement(
+							HaveField("Name", expectedContainer), container,
+						))
+						Expect(container.Image).To(Equal(expectedImage))
+					})
 
-					Expect(resource).NotTo(BeNil())
-					Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
-				})
+					It("should create a selector that matches pod labels", func() {
+						resource := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				It("should add an owner reference", func() {
-					resource := &appsv1.Deployment{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource).NotTo(BeNil())
+						Expect(resource.Spec.Selector.MatchLabels).To(Equal(expectedLabels))
+					})
 
-					Expect(resource).NotTo(BeNil())
-					owner := &metav1.OwnerReference{}
-					Expect(resource.OwnerReferences).To(ContainElement(
-						HaveField("Name", typeNamespacedName.Name), owner,
-					))
-					Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
-					Expect(owner.Kind).To(Equal("Cloudflared"))
-					Expect(owner.Controller).To(Equal(ptr.To(true)))
-					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-				})
+					It("should add an owner reference", func() {
+						resource := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				It("should configure the RollingUpdate strategy", func() {
-					resource := &appsv1.Deployment{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource).NotTo(BeNil())
+						owner := &metav1.OwnerReference{}
+						Expect(resource.OwnerReferences).To(ContainElement(
+							HaveField("Name", typeNamespacedName.Name), owner,
+						))
+						Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+						Expect(owner.Kind).To(Equal("Cloudflared"))
+						Expect(owner.Controller).To(Equal(ptr.To(true)))
+						Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
+					})
 
-					strategy := resource.Spec.Strategy
-					Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
+					It("should configure the RollingUpdate strategy", func() {
+						resource := &appsv1.Deployment{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						strategy := resource.Spec.Strategy
+						Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
+					})
 				})
 
 				Context("with a custom cloudflared container image", func() {
@@ -671,38 +727,45 @@ var _ = Describe("Cloudflared Controller", func() {
 						}}
 					})
 
-					It("should use the supplied image", func() {
-						resource := &appsv1.Deployment{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+					Context("and the resource is created", func() {
+						BeforeEach(func() {
+							By("creating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+						})
 
-						container := &corev1.Container{}
-						Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-							HaveField("Name", "cloudflared"), container,
-						))
-						Expect(container.Image).To(Equal(expectedImage))
-					})
+						It("should use the supplied image", func() {
+							resource := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					It("should keep the existing command", func() {
-						resource := &appsv1.Deployment{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+							container := &corev1.Container{}
+							Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "cloudflared"), container,
+							))
+							Expect(container.Image).To(Equal(expectedImage))
+						})
 
-						container := &corev1.Container{}
-						Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-							HaveField("Name", "cloudflared"), container,
-						))
-						Expect(container.Command).NotTo(BeEmpty())
-					})
+						It("should keep the existing command", func() {
+							resource := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					It("should use the version label from the supplied image", func() {
-						resource := &appsv1.Deployment{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+							container := &corev1.Container{}
+							Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "cloudflared"), container,
+							))
+							Expect(container.Command).NotTo(BeEmpty())
+						})
 
-						Expect(resource).NotTo(BeNil())
-						Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
-							HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
-							HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
-							HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
-						))
+						It("should use the version label from the supplied image", func() {
+							resource := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							Expect(resource).NotTo(BeNil())
+							Expect(resource.Spec.Selector.MatchLabels).To(SatisfyAll(
+								HaveKeyWithValue("app.kubernetes.io/name", "cloudflare-operator"),
+								HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
+								HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
+							))
+						})
 					})
 				})
 			})
@@ -720,6 +783,9 @@ var _ = Describe("Cloudflared Controller", func() {
 						},
 					},
 				}
+
+				By("creating the custom resource for the Kind Cloudflared")
+				Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 			})
 
 			It("should mount the config in the cloudflared container", func() {
@@ -767,6 +833,9 @@ var _ = Describe("Cloudflared Controller", func() {
 						},
 					},
 				}
+
+				By("creating the custom resource for the Kind Cloudflared")
+				Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 			})
 
 			It("should mount the secret in the cloudflared container", func() {
@@ -806,27 +875,34 @@ var _ = Describe("Cloudflared Controller", func() {
 					cloudflared.Spec.Version = version
 				})
 
-				It("should configure the version tag", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+				Context("and the resource is created", func() {
+					BeforeEach(func() {
+						By("creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					})
 
-					container := &corev1.Container{}
-					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:2025.4.2"))
-				})
+					It("should configure the version tag", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-				It("should configure the version label", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						container := &corev1.Container{}
+						Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "cloudflared"), container,
+						))
+						Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:2025.4.2"))
+					})
 
-					Expect(resource.Spec.Selector.MatchLabels).To(
-						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
-					)
-					Expect(resource.Spec.Template.Labels).To(
-						HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
-					)
+					It("should configure the version label", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource.Spec.Selector.MatchLabels).To(
+							HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+						)
+						Expect(resource.Spec.Template.Labels).To(
+							HaveKeyWithValue("app.kubernetes.io/version", "2025.4.2"),
+						)
+					})
 				})
 
 				Context("and the cloudflared container image is customized", func() {
@@ -842,6 +918,9 @@ var _ = Describe("Cloudflared Controller", func() {
 								}},
 							},
 						}
+
+						By("creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 					})
 
 					It("should give precedence to the customized image", func() {
