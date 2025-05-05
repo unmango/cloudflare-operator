@@ -208,14 +208,36 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		return err
 	}
 
+	if tunnel.Spec.Name != res.Name {
+		_, err := r.Cloudflare.EditTunnel(ctx, id, zero_trust.TunnelCloudflaredEditParams{
+			AccountID: cloudflare.F(tunnel.Spec.AccountId),
+			Name:      cloudflare.F(tunnel.Spec.Name),
+		})
+		if err != nil {
+			if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+					Type:    typeErrorCloudflareTunnel,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: "Edit tunnel request to Cloudflare failed",
+				})
+			}); err != nil {
+				log.Error(err, "Failed to update cloudflare tunnel status conditions")
+				return err // TODO: Include inner error somehow
+			}
+
+			return err
+		}
+	}
+
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Reconciling",
-			Message: "Found existing tunnel matching tunnel id",
+			Message: "Tunnel status updated",
 		})
-		obj.Status.Name = res.Name
+		obj.Status.Name = tunnel.Spec.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)

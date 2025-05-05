@@ -12,6 +12,7 @@ import (
 type Client interface {
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
 	DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error)
+	EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error)
 	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error)
 }
 
@@ -31,6 +32,11 @@ func (c *client) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloud
 // DeleteTunnel implements Client.
 func (c *client) DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.Delete(ctx, tunnelId, params)
+}
+
+// EditTunnel implements Client.
+func (c *client) EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error) {
+	return c.ZeroTrust.Tunnels.Cloudflared.Edit(ctx, tunnelId, params)
 }
 
 // GetTunnel implements Client.
