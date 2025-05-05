@@ -98,6 +98,16 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	if cloudflared.Status.Kind == "" {
+		if err := r.create(ctx, cloudflared); err != nil {
+			log.Error(err, "Failed to create app for Cloudflared")
+			return ctrl.Result{}, err
+		} else {
+			log.Info("Successfully created app for Cloudflared, requeing to update its status")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+	}
+
 	if app, err := r.getApp(ctx, cloudflared); err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
@@ -128,7 +138,7 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alp
 		Name:      cloudflared.Name,
 	}
 
-	switch cloudflared.Spec.Kind {
+	switch cloudflared.Status.Kind {
 	case cfv1alpha1.DaemonSetCloudflaredKind:
 		app = &appsv1.DaemonSet{}
 		err = r.Get(ctx, key, app)
@@ -136,7 +146,7 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alp
 		app = &appsv1.Deployment{}
 		err = r.Get(ctx, key, app)
 	default:
-		err = fmt.Errorf("unsupported kind: %s", cloudflared.Spec.Kind)
+		err = fmt.Errorf("unsupported kind: %s", cloudflared.Status.Kind)
 	}
 
 	return
@@ -167,6 +177,7 @@ func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alp
 			Reason:  "Reconciling",
 			Message: fmt.Sprintf("%s created successfully", cloudflared.Spec.Kind),
 		})
+		obj.Status.Kind = cloudflared.Spec.Kind
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflared status conditions")
 		return err
