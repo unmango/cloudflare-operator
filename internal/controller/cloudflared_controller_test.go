@@ -768,6 +768,35 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).Should(Succeed())
 					})
 
+					Context("and the replicas field has been modified", func() {
+						BeforeEach(func() {
+							By("Re-fetching the resource")
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+							By("Configuring a new container")
+							cloudflared.Spec.Replicas = ptr.To[int32](3)
+
+							By("Updating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should update the Deployment", func() {
+							controllerReconciler := &CloudflaredReconciler{
+								Client:   k8sClient,
+								Scheme:   k8sClient.Scheme(),
+								Recorder: &record.FakeRecorder{},
+							}
+							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+								NamespacedName: typeNamespacedName,
+							})
+							Expect(err).NotTo(HaveOccurred())
+
+							deployment := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
+							Expect(deployment.Spec.Replicas).To(Equal(3))
+						})
+					})
+
 					Context("and the pod template spec is modified", func() {
 						BeforeEach(func() {
 							By("Re-fetching the resource")
