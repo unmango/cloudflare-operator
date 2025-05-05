@@ -98,8 +98,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	var app client.Object
-	if err := r.getApp(ctx, cloudflared, app); err != nil {
+	if _, err := r.getApp(ctx, cloudflared); err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
 			return ctrl.Result{}, err
@@ -117,7 +116,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared, app client.Object) error {
+func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (app client.Object, err error) {
 	key := client.ObjectKey{
 		Namespace: cloudflared.Namespace,
 		Name:      cloudflared.Name,
@@ -126,13 +125,15 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alp
 	switch cloudflared.Spec.Kind {
 	case cfv1alpha1.DaemonSetCloudflaredKind:
 		app = &appsv1.DaemonSet{}
-		return r.Get(ctx, key, app)
+		err = r.Get(ctx, key, app)
 	case cfv1alpha1.DeploymentCloudflaredKind:
 		app := &appsv1.Deployment{}
-		return r.Get(ctx, key, app)
+		err = r.Get(ctx, key, app)
 	default:
-		return nil
+		err = fmt.Errorf("unsupported kind: %s", cloudflared.Spec.Kind)
 	}
+
+	return
 }
 
 func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {

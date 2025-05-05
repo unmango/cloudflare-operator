@@ -15,14 +15,6 @@ rules:
   - create
   - patch
 - apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
   - apps
   resources:
   - daemonsets
