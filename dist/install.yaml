@@ -8214,6 +8214,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              kind:
+                description: The Kind of the app managing the cloudflared instance.
+                enum:
+                - DaemonSet
+                - Deployment
+                type: string
             type: object
         type: object
     served: true
