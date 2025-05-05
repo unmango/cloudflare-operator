@@ -8241,13 +8241,22 @@ spec:
       name: ID
       type: string
     - jsonPath: .status.accountTag
-      name: Account Tag
+      name: Account
       type: string
     - jsonPath: .status.remoteConfig
-      name: Remote Config
+      name: Remote
       type: boolean
     - jsonPath: .status.status
       name: Status
+      type: string
+    - jsonPath: .status.createdAt
+      name: Created
+      type: string
+    - jsonPath: .status.connsActiveAt
+      name: Active At
+      type: string
+    - jsonPath: .status.connsInactiveAt
+      name: Inactive At
       type: string
     name: v1alpha1
     schema:
@@ -8360,6 +8369,17 @@ spec:
                         x-kubernetes-map-type: atomic
                     type: object
                 type: object
+              type:
+                description: The type of tunnel.
+                enum:
+                - cfd_tunnel
+                - warp_connector
+                - warp
+                - magic
+                - ip_sec
+                - gre
+                - cni
+                type: string
             required:
             - accountId
             - configSource
@@ -8430,8 +8450,21 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              connsActiveAt:
+                description: |-
+                  Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
+                  If null, the tunnel is inactive.
+                format: date-time
+                type: string
+              connsInactiveAt:
+                description: |-
+                  Timestamp of when the tunnel became inactive (no connections to Cloudflare's edge).
+                  If null, the tunnel is active.
+                format: date-time
+                type: string
               createdAt:
                 description: Timestamp of when the resource was created.
+                format: date-time
                 type: string
               id:
                 description: UUID of the tunnel.
@@ -8452,6 +8485,17 @@ spec:
                 - degraded
                 - inactive
                 - down
+                type: string
+              type:
+                description: The type of tunnel.
+                enum:
+                - cfd_tunnel
+                - warp_connector
+                - warp
+                - magic
+                - ip_sec
+                - gre
+                - cni
                 type: string
             type: object
         type: object
