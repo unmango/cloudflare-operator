@@ -61,7 +61,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	tunnel := &cfv1alpha1.CloudflareTunnel{}
 	if err := r.Get(ctx, req.NamespacedName, tunnel); err != nil {
-		log.V(1).Info("Not found, ignoring")
+		log.V(1).Info("CloudflareTunnel resource not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -258,7 +258,7 @@ func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id string
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
-		log.Info("No finalizer, nothing to do")
+		log.Info("No finalizer on CloudflareTunnel, nothing to do")
 		return nil
 	}
 
