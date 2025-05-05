@@ -142,8 +142,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					ctrl.Finish()
-
 					condition := meta.FindStatusCondition(
 						resource.Status.Conditions,
 						typeAvailableCloudflareTunnel,
@@ -167,8 +165,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					ctrl.Finish()
 
 					status := resource.Status
 					Expect(status.Name).To(Equal(result.Name))
@@ -197,8 +193,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					ctrl.Finish()
 
 					Expect(resource.Finalizers).To(ConsistOf(cloudflareTunnelFinalizer))
 				})
@@ -258,8 +252,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					)
 					Expect(condition).NotTo(BeNil(), "Condition not set")
 					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-
-					ctrl.Finish()
 				})
 			})
 		})
@@ -308,10 +300,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						NamespacedName: typeNamespacedName,
 					})
 					Expect(err).NotTo(HaveOccurred())
-
-					// Since no setups for CreateTunnel were configured,
-					// this will error if CreateTunnel was called
-					ctrl.Finish()
 				})
 
 				It("should mark the CloudflareTunnel resource as available", func() {
@@ -327,8 +315,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					})
 					Expect(err).NotTo(HaveOccurred())
 
-					ctrl.Finish()
-
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -341,7 +327,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 
 				It("should update the status from the observed tunnel", func() {
-					By("Reconciling the created resource")
 					controllerReconciler := &CloudflareTunnelReconciler{
 						Client:     k8sClient,
 						Scheme:     k8sClient.Scheme(),
@@ -352,8 +337,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						NamespacedName: typeNamespacedName,
 					})
 					Expect(err).NotTo(HaveOccurred())
-
-					ctrl.Finish()
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
@@ -371,7 +354,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 
 				It("should add a finalizer to the CloudflareTunnel", func() {
-					By("Reconciling the created resource")
 					controllerReconciler := &CloudflareTunnelReconciler{
 						Client:     k8sClient,
 						Scheme:     k8sClient.Scheme(),
@@ -385,10 +367,41 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					ctrl.Finish()
-
 					Expect(resource.Finalizers).To(ConsistOf(cloudflareTunnelFinalizer))
+				})
+
+				Context("and the spec name does not match the tunnel", func() {
+					BeforeEach(func() {
+						cloudflaretunnel.Spec.Name = "a-new-name"
+					})
+
+					It("should update the tunnel name", func() {
+						result := &zero_trust.TunnelCloudflaredEditResponse{
+							Name: cloudflaretunnel.Spec.Name,
+						}
+
+						cfmock.EXPECT().
+							EditTunnel(gomock.Eq(ctx), tunnelId, zero_trust.TunnelCloudflaredEditParams{
+								AccountID: cloudflare.F(cloudflaretunnel.Spec.AccountId),
+								Name:      cloudflare.F(cloudflaretunnel.Spec.Name),
+							}).
+							Return(result, nil)
+
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource.Status.Name).To(Equal(cloudflaretunnel.Spec.Name))
+					})
 				})
 			})
 
@@ -423,8 +436,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					)
 					Expect(condition).NotTo(BeNil(), "Condition not set")
 					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-
-					ctrl.Finish()
 				})
 			})
 
@@ -499,8 +510,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						)
 						Expect(condition).NotTo(BeNil(), "Condition not set")
 						Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-
-						ctrl.Finish()
 					})
 				})
 			})
@@ -566,8 +575,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				)
 				Expect(condition).NotTo(BeNil(), "Condition not set")
 				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-
-				ctrl.Finish()
 			})
 		})
 	})
