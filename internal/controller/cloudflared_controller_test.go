@@ -112,7 +112,7 @@ var _ = Describe("Cloudflared Controller", func() {
 
 		Context("and the resource is created", func() {
 			BeforeEach(func() {
-				By("creating the custom resource for the Kind Cloudflared")
+				By("Creating the custom resource for the Kind Cloudflared")
 				Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 			})
 
@@ -206,6 +206,66 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
 				Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
 				Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+			})
+
+			Context("and a matching DaemonSet exists", func() {
+				daemonSet := &appsv1.DaemonSet{}
+
+				BeforeEach(func() {
+					By("Reconciling to create the DaemonSet")
+					controllerReconciler := &CloudflaredReconciler{
+						Client:   k8sClient,
+						Scheme:   k8sClient.Scheme(),
+						Recorder: &record.FakeRecorder{},
+					}
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Ensuring the DaemonSet exists")
+					Expect(k8sClient.Get(ctx, typeNamespacedName, daemonSet)).Should(Succeed())
+				})
+
+				Context("and the pod template spec is modified", func() {
+					BeforeEach(func() {
+						By("Re-fetching the resource")
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+						By("Configuring a new container")
+						cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{{
+									Name:  "some-new-container",
+									Image: "busybox",
+								}},
+							},
+						}
+
+						By("Updating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+					})
+
+					It("should update the DaemonSet", func() {
+						controllerReconciler := &CloudflaredReconciler{
+							Client:   k8sClient,
+							Scheme:   k8sClient.Scheme(),
+							Recorder: &record.FakeRecorder{},
+						}
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						daemonSet := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, daemonSet)).To(Succeed())
+
+						container := &corev1.Container{}
+						Expect(daemonSet.Spec.Template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "some-new-container"), container,
+						))
+					})
+				})
 			})
 		})
 
@@ -418,6 +478,66 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
 					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 				})
+
+				Context("and a matching DaemonSet exists", func() {
+					daemonSet := &appsv1.DaemonSet{}
+
+					BeforeEach(func() {
+						By("Reconciling to create the DaemonSet")
+						controllerReconciler := &CloudflaredReconciler{
+							Client:   k8sClient,
+							Scheme:   k8sClient.Scheme(),
+							Recorder: &record.FakeRecorder{},
+						}
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						By("Ensuring the DaemonSet exists")
+						Expect(k8sClient.Get(ctx, typeNamespacedName, daemonSet)).Should(Succeed())
+					})
+
+					Context("and the pod template spec is modified", func() {
+						BeforeEach(func() {
+							By("Re-fetching the resource")
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+							By("Configuring a new container")
+							cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+								Spec: corev1.PodSpec{
+									Containers: []corev1.Container{{
+										Name:  "some-new-container",
+										Image: "busybox",
+									}},
+								},
+							}
+
+							By("Updating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should update the DaemonSet", func() {
+							controllerReconciler := &CloudflaredReconciler{
+								Client:   k8sClient,
+								Scheme:   k8sClient.Scheme(),
+								Recorder: &record.FakeRecorder{},
+							}
+							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+								NamespacedName: typeNamespacedName,
+							})
+							Expect(err).NotTo(HaveOccurred())
+
+							daemonSet := &appsv1.DaemonSet{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, daemonSet)).To(Succeed())
+
+							container := &corev1.Container{}
+							Expect(daemonSet.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "some-new-container"), container,
+							))
+						})
+					})
+				})
 			})
 
 			Context("and pod spec template is configured", func() {
@@ -627,6 +747,66 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
 					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
 					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+				})
+
+				Context("and a matching Deployment exists", func() {
+					deployment := &appsv1.Deployment{}
+
+					BeforeEach(func() {
+						By("Reconciling to create the DaemonSet")
+						controllerReconciler := &CloudflaredReconciler{
+							Client:   k8sClient,
+							Scheme:   k8sClient.Scheme(),
+							Recorder: &record.FakeRecorder{},
+						}
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						By("Ensuring the Deployment exists")
+						Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).Should(Succeed())
+					})
+
+					Context("and the pod template spec is modified", func() {
+						BeforeEach(func() {
+							By("Re-fetching the resource")
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+
+							By("Configuring a new container")
+							cloudflared.Spec.Template = &corev1.PodTemplateSpec{
+								Spec: corev1.PodSpec{
+									Containers: []corev1.Container{{
+										Name:  "some-new-container",
+										Image: "busybox",
+									}},
+								},
+							}
+
+							By("Updating the custom resource for the Kind Cloudflared")
+							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
+						})
+
+						It("should update the Deployment", func() {
+							controllerReconciler := &CloudflaredReconciler{
+								Client:   k8sClient,
+								Scheme:   k8sClient.Scheme(),
+								Recorder: &record.FakeRecorder{},
+							}
+							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+								NamespacedName: typeNamespacedName,
+							})
+							Expect(err).NotTo(HaveOccurred())
+
+							deployment := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
+
+							container := &corev1.Container{}
+							Expect(deployment.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "some-new-container"), container,
+							))
+						})
+					})
 				})
 			})
 

@@ -98,7 +98,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	if _, err := r.getApp(ctx, cloudflared); err != nil {
+	if app, err := r.getApp(ctx, cloudflared); err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
 			return ctrl.Result{}, err
@@ -111,9 +111,15 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Info("Successfully created app for Cloudflared, requeing to update its status")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
+	} else {
+		if err = r.update(ctx, app, cloudflared); err != nil {
+			log.Error(err, "Failed to update app for Cloudflared")
+			return ctrl.Result{}, err
+		} else {
+			log.Info("Successfully updated app for Cloudflared")
+			return ctrl.Result{}, nil
+		}
 	}
-
-	return ctrl.Result{}, nil
 }
 
 func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (app client.Object, err error) {
@@ -127,7 +133,7 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alp
 		app = &appsv1.DaemonSet{}
 		err = r.Get(ctx, key, app)
 	case cfv1alpha1.DeploymentCloudflaredKind:
-		app := &appsv1.Deployment{}
+		app = &appsv1.Deployment{}
 		err = r.Get(ctx, key, app)
 	default:
 		err = fmt.Errorf("unsupported kind: %s", cloudflared.Spec.Kind)
@@ -234,6 +240,49 @@ func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflare
 	}
 
 	return nil
+}
+
+func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, cloudflared *cfv1alpha1.Cloudflared) error {
+	switch app := app.(type) {
+	case *appsv1.DaemonSet:
+		return r.updateDaemonSet(ctx, app, cloudflared)
+	case *appsv1.Deployment:
+		return r.updateDeployment(ctx, app, cloudflared)
+	default:
+		return fmt.Errorf("unsupported app type: %T", app)
+	}
+}
+
+func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	// TODO: Check if the kind changed
+
+	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
+		// Blindly apply the spec and let the DaemonSet controller reconcile differences
+		obj.Spec.Template = r.podTemplateSpec(cloudflared)
+	}); err != nil {
+		log.Error(err, "Failed to patch Cloudflared DaemonSet")
+		return err
+	} else {
+		return nil
+	}
+}
+
+func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) error {
+	log := logf.FromContext(ctx)
+
+	// TODO: Check if the kind changed
+
+	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
+		// Blindly apply the spec and let the Deployment controller reconcile differences
+		obj.Spec.Template = r.podTemplateSpec(cloudflared)
+	}); err != nil {
+		log.Error(err, "Failed to patch Cloudflared Deployment")
+		return err
+	} else {
+		return nil
+	}
 }
 
 func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
