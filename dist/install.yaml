@@ -8383,7 +8383,6 @@ spec:
             required:
             - accountId
             - configSource
-            - name
             type: object
           status:
             description: CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
@@ -8468,6 +8467,9 @@ spec:
                 type: string
               id:
                 description: UUID of the tunnel.
+                type: string
+              name:
+                description: A user-friendly name for a tunnel.
                 type: string
               remoteConfig:
                 description: |-
