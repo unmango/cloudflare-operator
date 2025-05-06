@@ -14,7 +14,14 @@ spec:
     singular: cloudflared
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.kind
+      name: Kind
+      type: string
+    - jsonPath: .status.tunnelId
+      name: Tunnel ID
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Cloudflared is the Schema for the cloudflareds API.
@@ -41,7 +48,23 @@ spec:
             properties:
               config:
                 description: Config describes how to configure the cloudflared instance.
+                maxProperties: 1
+                minProperties: 1
                 properties:
+                  tunnelId:
+                    description: The id of an existing Cloudflare tunnel to run.
+                    type: string
+                  tunnelRef:
+                    description: A reference to an existing object containing the
+                      id of the Cloudflare tunnel to run.
+                    properties:
+                      name:
+                        description: The name of a CloudflareTunnel resource in the
+                          same namespace.
+                        type: string
+                    required:
+                    - name
+                    type: object
                   valueFrom:
                     description: ValueFrom defines an existing source in the cluster
                       to pull the cloudflared config from.
@@ -8211,6 +8234,10 @@ spec:
                 enum:
                 - DaemonSet
                 - Deployment
+                type: string
+              tunnelId:
+                description: The id of the tunnel currently being run by this cloudflared
+                  instance.
                 type: string
             type: object
         type: object
