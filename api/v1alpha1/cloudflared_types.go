@@ -53,16 +53,20 @@ type CloudflaredTunnelReference struct {
 	Name string `json:"name"`
 }
 
-// CloudflaredConfig defines the configuration for the `cloudflared` instance.
-// Only one of tunnelId, tunnelRef, or valueFrom may be defined.
-//
-// +kubebuilder:validation:MaxProperties:=1
-// +kubebuilder:validation:MinProperties:=1
-type CloudflaredConfig struct {
+// CloudflaredConfigInline defines cloudflared configuration provided directly in the CRD.
+type CloudflaredConfigInline struct {
 	// The id of an existing Cloudflare tunnel to run.
 	//
 	// +optional
 	TunnelId *string `json:"tunnelId,omitempty"`
+
+	AccountId *string `json:"accountId,omitempty"`
+}
+
+// CloudflaredConfig defines the configuration for the `cloudflared` instance.
+// Only one of tunnelId, tunnelRef, or valueFrom may be defined.
+type CloudflaredConfig struct {
+	CloudflaredConfigInline `json:",inline"`
 
 	// A reference to an existing object containing the id of the Cloudflare tunnel to run.
 	//

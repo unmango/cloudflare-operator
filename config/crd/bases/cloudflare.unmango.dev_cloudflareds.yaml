@@ -48,9 +48,9 @@ spec:
             properties:
               config:
                 description: Config describes how to configure the cloudflared instance.
-                maxProperties: 1
-                minProperties: 1
                 properties:
+                  accountId:
+                    type: string
                   tunnelId:
                     description: The id of an existing Cloudflare tunnel to run.
                     type: string
