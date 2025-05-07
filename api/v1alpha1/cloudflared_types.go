@@ -124,7 +124,7 @@ type CloudflaredStatus struct {
 	// The id of the tunnel currently being run by this cloudflared instance.
 	//
 	// +optional
-	TunnelId *string `json:"tunnelId,omitEmpty"`
+	TunnelId *string `json:"tunnelId,omitempty"`
 
 	// +listType=map
 	// +listMapKey=type
