@@ -358,26 +358,52 @@ func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alp
 }
 
 func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (id, token *string, err error) {
+	log := logf.FromContext(ctx)
 	config := cloudflared.Spec.Config
-	if config == nil || config.TunnelId == nil {
+	if config == nil {
 		return nil, nil, nil
 	}
+
 	if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
 		logf.FromContext(ctx).V(1).Info("No Cloudflare API token set, not looking up tunnel")
 		return nil, nil, nil
 	}
-	if config.AccountId == nil {
-		return nil, nil, fmt.Errorf("accountId is required when tunnelId != nil")
+
+	var accountId *string
+	if id = config.TunnelId; id != nil {
+		log.Info("Using inline config for Cloudflare tunnel lookup")
+		if accountId = config.AccountId; accountId == nil {
+			return nil, nil, fmt.Errorf("accountId is required when tunnelId != nil")
+		}
 	}
 
-	token, err = r.Cloudflare.GetTunnelToken(ctx, *config.TunnelId, zero_trust.TunnelCloudflaredTokenGetParams{
-		AccountID: cloudflare.F(*config.AccountId),
-	})
-	if err != nil {
-		return nil, nil, err
+	if ref := config.TunnelRef; ref != nil {
+		tunnel := &cfv1alpha1.CloudflareTunnel{}
+		key := client.ObjectKey{
+			Namespace: cloudflared.Namespace,
+			Name:      ref.Name,
+		}
+
+		log.Info("Using tunnel ref for Cloudflare tunnel lookup")
+		if err := r.Get(ctx, key, tunnel); err != nil {
+			return nil, nil, err
+		}
+
+		accountId = &tunnel.Status.AccountTag
+		id = &tunnel.Status.Id
+		log.Info("Found tunnel credentials", "tunnelId", id, "accountId", accountId)
 	}
 
-	return config.TunnelId, token, nil
+	if id != nil && accountId != nil {
+		token, err = r.Cloudflare.GetTunnelToken(ctx, *id, zero_trust.TunnelCloudflaredTokenGetParams{
+			AccountID: cloudflare.F(*accountId),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return
 }
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnelId, tunnelToken *string) corev1.PodTemplateSpec {

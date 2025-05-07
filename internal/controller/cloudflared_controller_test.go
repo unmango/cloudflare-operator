@@ -535,12 +535,15 @@ var _ = Describe("Cloudflared Controller", func() {
 					Spec: cfv1alpha1.CloudflareTunnelSpec{
 						ConfigSource: cfv1alpha1.CloudflareCloudflareTunnelConfigSource,
 					},
-					Status: cfv1alpha1.CloudflareTunnelStatus{
-						AccountTag: accountId,
-						Id:         tunnelId,
-					},
 				}
 				Expect(k8sClient.Create(ctx, tunnel)).To(Succeed())
+
+				By("Updating the CloudflareTunnel status")
+				tunnel.Status = cfv1alpha1.CloudflareTunnelStatus{
+					AccountTag: accountId,
+					Id:         tunnelId,
+				}
+				Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
 
 				cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 					TunnelRef: &cfv1alpha1.CloudflaredTunnelReference{
@@ -1364,12 +1367,15 @@ var _ = Describe("Cloudflared Controller", func() {
 						Spec: cfv1alpha1.CloudflareTunnelSpec{
 							ConfigSource: cfv1alpha1.CloudflareCloudflareTunnelConfigSource,
 						},
-						Status: cfv1alpha1.CloudflareTunnelStatus{
-							AccountTag: accountId,
-							Id:         tunnelId,
-						},
 					}
 					Expect(k8sClient.Create(ctx, tunnel)).To(Succeed())
+
+					By("Updating the CloudflareTunnel status")
+					tunnel.Status = cfv1alpha1.CloudflareTunnelStatus{
+						AccountTag: accountId,
+						Id:         tunnelId,
+					}
+					Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
 
 					cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 						TunnelRef: &cfv1alpha1.CloudflaredTunnelReference{
@@ -1394,7 +1400,7 @@ var _ = Describe("Cloudflared Controller", func() {
 						})
 
 						It("should run the given tunnel", func() {
-							resource := &appsv1.DaemonSet{}
+							resource := &appsv1.Deployment{}
 							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
 							container := &corev1.Container{}
