@@ -206,11 +206,9 @@ func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alp
 func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	var tunnelId, tunnelToken *string
-	if config := cloudflared.Spec.Config; r.canLookup(config) {
-		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
-			return err
-		}
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	if err != nil {
+		return err
 	}
 
 	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
@@ -247,11 +245,9 @@ func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared
 func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	var tunnelId, tunnelToken *string
-	if config := cloudflared.Spec.Config; r.canLookup(config) {
-		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
-			return err
-		}
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	if err != nil {
+		return err
 	}
 
 	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
@@ -300,11 +296,9 @@ func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, c
 func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	var tunnelId, tunnelToken *string
-	if config := cloudflared.Spec.Config; r.canLookup(config) {
-		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
-			return err
-		}
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	if err != nil {
+		return err
 	}
 
 	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
@@ -321,11 +315,9 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	var tunnelId, tunnelToken *string
-	if config := cloudflared.Spec.Config; r.canLookup(config) {
-		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
-			return err
-		}
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	if err != nil {
+		return err
 	}
 
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
@@ -395,10 +387,6 @@ func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alp
 	} else {
 		return nil
 	}
-}
-
-func (r CloudflaredReconciler) canLookup(config *cfv1alpha1.CloudflaredConfig) bool {
-	return config != nil && config.TunnelId != nil // TODO: Tunnel ref
 }
 
 func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, config *cfv1alpha1.CloudflaredConfig) (id, token *string, err error) {
