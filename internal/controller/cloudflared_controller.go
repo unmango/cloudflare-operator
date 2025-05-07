@@ -65,6 +65,7 @@ type CloudflaredReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/status,verbs=get
 // +kubebuilder:rbac:groups=apps,resources=daemonsets;deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
@@ -172,19 +173,33 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, cloudflared *cfv1alp
 func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
 	log := logf.FromContext(ctx)
 
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared)
+	if err != nil {
+		return err
+	}
+
+	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
+
+	var app client.Object
 	switch cloudflared.Spec.Kind {
 	case cfv1alpha1.DaemonSetCloudflaredKind:
 		log.Info("Creating DaemonSet for Cloudflared")
-		if err := r.createDaemonSet(ctx, cloudflared); err != nil {
-			return err
-		}
+		app = r.createDaemonSet(cloudflared, template)
 	case cfv1alpha1.DeploymentCloudflaredKind:
 		log.Info("Creating Deployment for Cloudflared")
-		if err := r.createDeployment(ctx, cloudflared); err != nil {
-			return err
-		}
+		app = r.createDeployment(cloudflared, template)
 	default:
 		return fmt.Errorf("unsupported kind: %s", cloudflared.Spec.Kind)
+	}
+
+	if err := ctrl.SetControllerReference(cloudflared, app, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, app); err != nil {
+		log.Error(err, "Failed to create a new app for Cloudflared")
+		return err
 	}
 
 	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
@@ -195,6 +210,7 @@ func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alp
 			Message: fmt.Sprintf("%s created successfully", cloudflared.Spec.Kind),
 		})
 		obj.Status.Kind = cloudflared.Spec.Kind
+		obj.Status.TunnelId = tunnelId
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflared status conditions")
 		return err
@@ -203,56 +219,23 @@ func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alp
 	}
 }
 
-func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
-	log := logf.FromContext(ctx)
-
-	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
-	if err != nil {
-		return err
-	}
-
-	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
-
-	daemonset := &appsv1.DaemonSet{
+func (r *CloudflaredReconciler) createDaemonSet(cloudflared *cfv1alpha1.Cloudflared, podTemplate corev1.PodTemplateSpec) *appsv1.DaemonSet {
+	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cloudflared.Name,
 			Namespace: cloudflared.Namespace,
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: template.Labels,
+				MatchLabels: podTemplate.Labels,
 			},
-			Template: template,
+			Template: podTemplate,
 		},
 	}
-
-	if err := ctrl.SetControllerReference(cloudflared, daemonset, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference")
-		return err
-	}
-
-	if err := r.Create(ctx, daemonset); err != nil {
-		log.Error(err, "Failed to create a new DaemonSet",
-			"namespace", daemonset.Namespace,
-			"name", daemonset.Name,
-		)
-		return err
-	}
-
-	return nil
 }
 
-func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
-	log := logf.FromContext(ctx)
-
-	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
-	if err != nil {
-		return err
-	}
-
-	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
-
-	deployment := &appsv1.Deployment{
+func (r *CloudflaredReconciler) createDeployment(cloudflared *cfv1alpha1.Cloudflared, podTemplate corev1.PodTemplateSpec) *appsv1.Deployment {
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cloudflared.Name,
 			Namespace: cloudflared.Namespace,
@@ -260,26 +243,11 @@ func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflare
 		Spec: appsv1.DeploymentSpec{
 			Replicas: cloudflared.Spec.Replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: template.Labels,
+				MatchLabels: podTemplate.Labels,
 			},
-			Template: template,
+			Template: podTemplate,
 		},
 	}
-
-	if err := ctrl.SetControllerReference(cloudflared, deployment, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference")
-		return err
-	}
-
-	if err := r.Create(ctx, deployment); err != nil {
-		log.Error(err, "Failed to created new Deployment",
-			"namespace", deployment.Namespace,
-			"name", deployment.Name,
-		)
-		return err
-	}
-
-	return nil
 }
 
 func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, cloudflared *cfv1alpha1.Cloudflared) error {
@@ -296,7 +264,7 @@ func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, c
 func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared)
 	if err != nil {
 		return err
 	}
@@ -315,7 +283,7 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
 
-	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared.Spec.Config)
+	tunnelId, tunnelToken, err := r.lookupTunnel(ctx, cloudflared)
 	if err != nil {
 		return err
 	}
@@ -389,7 +357,8 @@ func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alp
 	}
 }
 
-func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, config *cfv1alpha1.CloudflaredConfig) (id, token *string, err error) {
+func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (id, token *string, err error) {
+	config := cloudflared.Spec.Config
 	if config == nil || config.TunnelId == nil {
 		return nil, nil, nil
 	}
@@ -413,7 +382,6 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, config *cfv1al
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnelId, tunnelToken *string) corev1.PodTemplateSpec {
 	template := corev1.PodTemplateSpec{}
-
 	if cloudflared.Spec.Template != nil {
 		cloudflared.Spec.Template.DeepCopyInto(&template)
 	}

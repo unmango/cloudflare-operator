@@ -491,6 +491,12 @@ var _ = Describe("Cloudflared Controller", func() {
 						))
 						Expect(container.Args).To(HaveExactElements("run", tunnelId))
 					})
+
+					It("should update the resource status", func() {
+						resource := &cfv1alpha1.Cloudflared{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
+					})
 				})
 
 				Context("and the api token environment variable is not set", func() {
@@ -1233,6 +1239,12 @@ var _ = Describe("Cloudflared Controller", func() {
 								corev1.EnvVar{Name: "TUNNEL_TOKEN", Value: token},
 							))
 							Expect(container.Args).To(HaveExactElements("run", tunnelId))
+						})
+
+						It("should update the resource status", func() {
+							resource := &cfv1alpha1.Cloudflared{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+							Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
 						})
 					})
 
