@@ -18,9 +18,15 @@ package controller
 
 import (
 	"context"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	"github.com/unmango/cloudflare-operator/internal/testing"
+	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
@@ -53,7 +59,17 @@ var _ = Describe("Cloudflared Controller", func() {
 			"app.kubernetes.io/version":    "latest",
 		}
 
+		var (
+			ctrl   *gomock.Controller
+			cfmock *testing.MockClient
+		)
+
 		BeforeEach(func() {
+			Expect(os.Setenv("CLOUDFLARE_API_TOKEN", "test-api-token")).To(Succeed())
+
+			ctrl = gomock.NewController(GinkgoT())
+			cfmock = testing.NewMockClient(ctrl)
+
 			By("Initializing the Cloudfared resource")
 			cloudflared = &cfv1alpha1.Cloudflared{
 				ObjectMeta: metav1.ObjectMeta{
@@ -66,9 +82,10 @@ var _ = Describe("Cloudflared Controller", func() {
 		JustBeforeEach(func() {
 			By("Reconciling the resource")
 			controllerReconciler := &CloudflaredReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Recorder:   &record.FakeRecorder{},
+				Cloudflare: cfmock,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -89,9 +106,10 @@ var _ = Describe("Cloudflared Controller", func() {
 			// TODO: Is there a better way to ensure the resource is deleted?
 			By("Reconciling to remove the finalizer")
 			controllerReconciler := &CloudflaredReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Recorder:   &record.FakeRecorder{},
+				Cloudflare: cfmock,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -223,9 +241,10 @@ var _ = Describe("Cloudflared Controller", func() {
 				BeforeEach(func() {
 					By("Reconciling to create the DaemonSet")
 					controllerReconciler := &CloudflaredReconciler{
-						Client:   k8sClient,
-						Scheme:   k8sClient.Scheme(),
-						Recorder: &record.FakeRecorder{},
+						Client:     k8sClient,
+						Scheme:     k8sClient.Scheme(),
+						Recorder:   &record.FakeRecorder{},
+						Cloudflare: cfmock,
 					}
 					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
@@ -257,9 +276,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 					It("should update the DaemonSet", func() {
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -295,9 +315,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					It("should create a Deployment", func() {
 						By("Reconciling to create the Deployment")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -426,6 +447,68 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 		})
 
+		Context("and inline config is provided", func() {
+			const (
+				tunnelId  string = "test-tunnel-id"
+				accountId string = "test-account-id"
+				token     string = "test-token"
+			)
+
+			BeforeEach(func() {
+				cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+						TunnelId:  ptr.To(tunnelId),
+						AccountId: ptr.To(accountId),
+					},
+				}
+			})
+
+			Context("and the resource is created", func() {
+				BeforeEach(func() {
+					By("Creating the custom resource for the Kind Cloudflared")
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+				})
+
+				Context("and the token call succeeds", func() {
+					BeforeEach(func() {
+						cfmock.EXPECT().
+							GetTunnelToken(gomock.Eq(ctx), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredTokenGetParams{
+								AccountID: cloudflare.F(accountId),
+							})).
+							Return(ptr.To(token), nil)
+					})
+
+					It("should run the given tunnel", func() {
+						resource := &appsv1.DaemonSet{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						container := &corev1.Container{}
+						Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+							HaveField("Name", "cloudflared"), container,
+						))
+						Expect(container.Env).To(ConsistOf(
+							corev1.EnvVar{Name: "TUNNEL_TOKEN", Value: token},
+						))
+						Expect(container.Args).To(HaveExactElements("run", tunnelId))
+					})
+				})
+
+				Context("and the api token environment variable is not set", func() {
+					BeforeEach(func() {
+						Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
+
+						cfmock.EXPECT().
+							GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
+							Times(0)
+					})
+
+					It("should not attempt to lookup the tunnel token", func() {
+						// Assertion is handled via the cfmock
+					})
+				})
+			})
+		})
+
 		Context("and kind is DaemonSet", func() {
 			BeforeEach(func() {
 				By("Setting the kind to DaemonSet")
@@ -534,9 +617,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					BeforeEach(func() {
 						By("Reconciling to create the DaemonSet")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -568,9 +652,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the DaemonSet", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -606,9 +691,10 @@ var _ = Describe("Cloudflared Controller", func() {
 						It("should create a Deployment", func() {
 							By("Reconciling to create the Deployment")
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -844,9 +930,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					BeforeEach(func() {
 						By("Reconciling to create the Deployment")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -871,9 +958,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the Deployment", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -905,9 +993,10 @@ var _ = Describe("Cloudflared Controller", func() {
 						It("should create a DaemonSet", func() {
 							By("Reconciling to create the DaemonSet")
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -939,9 +1028,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the Deployment", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -1095,6 +1185,68 @@ var _ = Describe("Cloudflared Controller", func() {
 								HaveKeyWithValue("app.kubernetes.io/managed-by", "CloudflaredController"),
 								HaveKeyWithValue("app.kubernetes.io/version", "0.0.69"),
 							))
+						})
+					})
+				})
+			})
+
+			Context("and inline config is provided", func() {
+				const (
+					tunnelId  string = "test-tunnel-id"
+					accountId string = "test-account-id"
+					token     string = "test-token"
+				)
+
+				BeforeEach(func() {
+					cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+						CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+							TunnelId:  ptr.To(tunnelId),
+							AccountId: ptr.To(accountId),
+						},
+					}
+				})
+
+				Context("and the resource is created", func() {
+					BeforeEach(func() {
+						By("Creating the custom resource for the Kind Cloudflared")
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					})
+
+					Context("and the token call succeeds", func() {
+						BeforeEach(func() {
+							cfmock.EXPECT().
+								GetTunnelToken(gomock.Eq(ctx), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredTokenGetParams{
+									AccountID: cloudflare.F(accountId),
+								})).
+								Return(ptr.To(token), nil)
+						})
+
+						It("should run the given tunnel", func() {
+							resource := &appsv1.Deployment{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							container := &corev1.Container{}
+							Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+								HaveField("Name", "cloudflared"), container,
+							))
+							Expect(container.Env).To(ConsistOf(
+								corev1.EnvVar{Name: "TUNNEL_TOKEN", Value: token},
+							))
+							Expect(container.Args).To(HaveExactElements("run", tunnelId))
+						})
+					})
+
+					Context("and the api token environment variable is not set", func() {
+						BeforeEach(func() {
+							Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
+
+							cfmock.EXPECT().
+								GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
+								Times(0)
+						})
+
+						It("should not attempt to lookup the tunnel token", func() {
+							// Assertion is handled via the cfmock
 						})
 					})
 				})

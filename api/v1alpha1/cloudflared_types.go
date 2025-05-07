@@ -44,8 +44,38 @@ type CloudflaredConfigReference struct {
 	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
 }
 
+// CloudflaredTunnelReference defines the minimum required information to
+// locate a CloudflareTunnel resource.
+type CloudflaredTunnelReference struct {
+	// The name of a CloudflareTunnel resource in the same namespace.
+	//
+	// +required
+	Name string `json:"name"`
+}
+
+// CloudflaredConfigInline defines cloudflared configuration provided directly in the CRD.
+type CloudflaredConfigInline struct {
+	// UUID of the tunnel.
+	//
+	// +optional
+	TunnelId *string `json:"tunnelId,omitempty"`
+
+	// Cloudflare account ID.
+	//
+	// +optional
+	AccountId *string `json:"accountId,omitempty"`
+}
+
 // CloudflaredConfig defines the configuration for the `cloudflared` instance.
+// Only one of tunnelId, tunnelRef, or valueFrom may be defined.
 type CloudflaredConfig struct {
+	CloudflaredConfigInline `json:",inline"`
+
+	// A reference to an existing object containing the id of the Cloudflare tunnel to run.
+	//
+	// +optional
+	TunnelRef *CloudflaredTunnelReference `json:"tunnelRef,omitempty"`
+
 	// ValueFrom defines an existing source in the cluster to pull the cloudflared config from.
 	//
 	// +optional
@@ -84,14 +114,17 @@ type CloudflaredSpec struct {
 	Version string `json:"version,omitempty"`
 }
 
-// +kubebuilder:printcolumn:JSONPath=".status.kind",name=Kind,type=string
-
 // CloudflaredStatus defines the observed state of Cloudflared.
 type CloudflaredStatus struct {
 	// The Kind of the app managing the cloudflared instance.
 	//
 	// +optional
 	Kind CloudflaredKind `json:"kind,omitempty"`
+
+	// The id of the tunnel currently being run by this cloudflared instance.
+	//
+	// +optional
+	TunnelId *string `json:"tunnelId,omitempty"`
 
 	// +listType=map
 	// +listMapKey=type
@@ -103,6 +136,8 @@ type CloudflaredStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.kind",name=Kind,type=string
+// +kubebuilder:printcolumn:JSONPath=".status.tunnelId",name=Tunnel ID,type=string
 
 // Cloudflared is the Schema for the cloudflareds API.
 type Cloudflared struct {
