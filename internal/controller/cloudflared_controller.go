@@ -403,7 +403,7 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 		}
 	}
 
-	return
+	return id, token, nil
 }
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnelId, tunnelToken *string) corev1.PodTemplateSpec {
