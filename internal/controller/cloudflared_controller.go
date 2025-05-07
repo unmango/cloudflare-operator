@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -401,24 +402,25 @@ func (r CloudflaredReconciler) canLookup(config *cfv1alpha1.CloudflaredConfig) b
 }
 
 func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, config *cfv1alpha1.CloudflaredConfig) (id, token *string, err error) {
-	if config.TunnelId != nil {
-		if config.AccountId == nil {
-			return nil, nil, fmt.Errorf("accountId is required when tunnelId != nil")
-		}
-
-		token, err = r.Cloudflare.GetTunnelToken(ctx, *config.TunnelId, zero_trust.TunnelCloudflaredTokenGetParams{
-			AccountID: cloudflare.F(*config.AccountId),
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-
-		return config.TunnelId, token, nil
+	if config == nil || config.TunnelId == nil {
+		return nil, nil, nil
+	}
+	if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
+		logf.FromContext(ctx).V(1).Info("No Cloudflare API token set, not looking up tunnel")
+		return nil, nil, nil
+	}
+	if config.AccountId == nil {
+		return nil, nil, fmt.Errorf("accountId is required when tunnelId != nil")
 	}
 
-	// TODO: Tunnel ref
+	token, err = r.Cloudflare.GetTunnelToken(ctx, *config.TunnelId, zero_trust.TunnelCloudflaredTokenGetParams{
+		AccountID: cloudflare.F(*config.AccountId),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return nil, nil, fmt.Errorf("tunnel ref not yet implemented")
+	return config.TunnelId, token, nil
 }
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnelId, tunnelToken *string) corev1.PodTemplateSpec {

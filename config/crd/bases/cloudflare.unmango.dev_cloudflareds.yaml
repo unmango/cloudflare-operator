@@ -50,9 +50,10 @@ spec:
                 description: Config describes how to configure the cloudflared instance.
                 properties:
                   accountId:
+                    description: Cloudflare account ID.
                     type: string
                   tunnelId:
-                    description: The id of an existing Cloudflare tunnel to run.
+                    description: UUID of the tunnel.
                     type: string
                   tunnelRef:
                     description: A reference to an existing object containing the

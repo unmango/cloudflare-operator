@@ -65,6 +65,8 @@ var _ = Describe("Cloudflared Controller", func() {
 		)
 
 		BeforeEach(func() {
+			Expect(os.Setenv("CLOUDFLARE_API_TOKEN", "test-api-token")).To(Succeed())
+
 			ctrl = gomock.NewController(GinkgoT())
 			cfmock = testing.NewMockClient(ctrl)
 

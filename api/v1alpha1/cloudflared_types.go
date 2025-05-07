@@ -55,11 +55,14 @@ type CloudflaredTunnelReference struct {
 
 // CloudflaredConfigInline defines cloudflared configuration provided directly in the CRD.
 type CloudflaredConfigInline struct {
-	// The id of an existing Cloudflare tunnel to run.
+	// UUID of the tunnel.
 	//
 	// +optional
 	TunnelId *string `json:"tunnelId,omitempty"`
 
+	// Cloudflare account ID.
+	//
+	// +optional
 	AccountId *string `json:"accountId,omitempty"`
 }
 
