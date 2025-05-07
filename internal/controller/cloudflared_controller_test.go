@@ -79,9 +79,10 @@ var _ = Describe("Cloudflared Controller", func() {
 		JustBeforeEach(func() {
 			By("Reconciling the resource")
 			controllerReconciler := &CloudflaredReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Recorder:   &record.FakeRecorder{},
+				Cloudflare: cfmock,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -102,9 +103,10 @@ var _ = Describe("Cloudflared Controller", func() {
 			// TODO: Is there a better way to ensure the resource is deleted?
 			By("Reconciling to remove the finalizer")
 			controllerReconciler := &CloudflaredReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Recorder:   &record.FakeRecorder{},
+				Cloudflare: cfmock,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -236,9 +238,10 @@ var _ = Describe("Cloudflared Controller", func() {
 				BeforeEach(func() {
 					By("Reconciling to create the DaemonSet")
 					controllerReconciler := &CloudflaredReconciler{
-						Client:   k8sClient,
-						Scheme:   k8sClient.Scheme(),
-						Recorder: &record.FakeRecorder{},
+						Client:     k8sClient,
+						Scheme:     k8sClient.Scheme(),
+						Recorder:   &record.FakeRecorder{},
+						Cloudflare: cfmock,
 					}
 					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
@@ -270,9 +273,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 					It("should update the DaemonSet", func() {
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -308,9 +312,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					It("should create a Deployment", func() {
 						By("Reconciling to create the Deployment")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -595,9 +600,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					BeforeEach(func() {
 						By("Reconciling to create the DaemonSet")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -629,9 +635,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the DaemonSet", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -667,9 +674,10 @@ var _ = Describe("Cloudflared Controller", func() {
 						It("should create a Deployment", func() {
 							By("Reconciling to create the Deployment")
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -905,9 +913,10 @@ var _ = Describe("Cloudflared Controller", func() {
 					BeforeEach(func() {
 						By("Reconciling to create the Deployment")
 						controllerReconciler := &CloudflaredReconciler{
-							Client:   k8sClient,
-							Scheme:   k8sClient.Scheme(),
-							Recorder: &record.FakeRecorder{},
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
 						}
 						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
@@ -932,9 +941,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the Deployment", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -966,9 +976,10 @@ var _ = Describe("Cloudflared Controller", func() {
 						It("should create a DaemonSet", func() {
 							By("Reconciling to create the DaemonSet")
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
@@ -1000,9 +1011,10 @@ var _ = Describe("Cloudflared Controller", func() {
 
 						It("should update the Deployment", func() {
 							controllerReconciler := &CloudflaredReconciler{
-								Client:   k8sClient,
-								Scheme:   k8sClient.Scheme(),
-								Recorder: &record.FakeRecorder{},
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
 							}
 							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
