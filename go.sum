@@ -144,8 +144,6 @@ github.com/chavacava/garif v0.1.0 h1:2JHa3hbYf5D9dsgseMKAmc/MZ109otzgNFk5s87H9Pc
 github.com/chavacava/garif v0.1.0/go.mod h1:XMyYCkEL58DF0oyW4qDjjnPWONs2HBqYKI+UIPD+Gww=
 github.com/ckaznocha/intrange v0.3.1 h1:j1onQyXvHUsPWujDH6WIjhyH26gkRt/txNlV7LspvJs=
 github.com/ckaznocha/intrange v0.3.1/go.mod h1:QVepyz1AkUoFQkpEqksSYpNpUo3c5W7nWh/s6SHIJJk=
-github.com/cloudflare/cloudflare-go/v4 v4.2.0 h1:Mm/jSSdv7vGFUzkb6xiMuD/7EkT1Qx1hHgUHArBTc5E=
-github.com/cloudflare/cloudflare-go/v4 v4.2.0/go.mod h1:XcYpLe7Mf6FN87kXzEWVnJ6z+vskW/k6eUqgqfhFE9k=
 github.com/cloudflare/cloudflare-go/v4 v4.3.0 h1:AG/Aq6u96GCvVqEOiPSc8OqCYJnfzwA1HeRv74YBOZI=
 github.com/cloudflare/cloudflare-go/v4 v4.3.0/go.mod h1:XcYpLe7Mf6FN87kXzEWVnJ6z+vskW/k6eUqgqfhFE9k=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
@@ -1024,8 +1022,7 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0 h1:CPT0ExVicCzcp
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0/go.mod h1:Ve9uj1L+deCXFrPOk1LpFXqTg7LCFzFso6PA48q/XZw=
 sigs.k8s.io/controller-runtime v0.20.4 h1:X3c+Odnxz+iPTRobG4tp092+CvBU9UK0t/bRf+n0DGU=
 sigs.k8s.io/controller-runtime v0.20.4/go.mod h1:xg2XB0K5ShQzAgsoujxuKN4LNXR2LfwwHsPj7Iaw+XY=
-sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20250407161039-6ad5c1dd4418 h1:04bBdoLjAbJzwbBTmcu/PukrGLTBj2suuFmQSEpmCH8=
-sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20250407161039-6ad5c1dd4418/go.mod h1:bJr92VVEbIDLODpQ2NPN7Wlwsdv7uGzTAUvi9/gCgcc=
+sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20250505003155-b6c5897febe5 h1:JEwlRJjPhtYUIabBd0XCdoSdmlR5o2qAzLSMm0U05Zo=
 sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20250505003155-b6c5897febe5/go.mod h1:bJr92VVEbIDLODpQ2NPN7Wlwsdv7uGzTAUvi9/gCgcc=
 sigs.k8s.io/controller-tools v0.17.3 h1:lwFPLicpBKLgIepah+c8ikRBubFW5kOQyT88r3EwfNw=
 sigs.k8s.io/controller-tools v0.17.3/go.mod h1:1ii+oXcYZkxcBXzwv3YZBlzjt1fvkrCGjVF73blosJI=

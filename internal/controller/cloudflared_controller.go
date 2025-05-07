@@ -22,6 +22,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,8 +56,9 @@ const (
 // CloudflaredReconciler reconciles a Cloudflared object
 type CloudflaredReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme     *runtime.Scheme
+	Recorder   record.EventRecorder
+	Cloudflare cfclient.Client
 }
 
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds,verbs=get;list;watch;create;update;patch;delete
@@ -198,9 +202,17 @@ func (r *CloudflaredReconciler) create(ctx context.Context, cloudflared *cfv1alp
 	}
 }
 
-func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
-	template := r.podTemplateSpec(cloudflared)
+
+	var tunnelId, tunnelToken *string
+	if config := cloudflared.Spec.Config; r.canLookup(config) {
+		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
+			return err
+		}
+	}
+
+	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 
 	daemonset := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -231,9 +243,17 @@ func (r *CloudflaredReconciler) createDaemonSet(ctx context.Context, cloudflared
 	return nil
 }
 
-func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
+func (r *CloudflaredReconciler) createDeployment(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
-	template := r.podTemplateSpec(cloudflared)
+
+	var tunnelId, tunnelToken *string
+	if config := cloudflared.Spec.Config; r.canLookup(config) {
+		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
+			return err
+		}
+	}
+
+	template := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -276,12 +296,19 @@ func (r *CloudflaredReconciler) update(ctx context.Context, app client.Object, c
 	}
 }
 
-func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) error {
+func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
+
+	var tunnelId, tunnelToken *string
+	if config := cloudflared.Spec.Config; r.canLookup(config) {
+		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
+			return err
+		}
+	}
 
 	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
 		// Blindly apply the spec and let the DaemonSet controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared)
+		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 	}); err != nil {
 		log.Error(err, "Failed to patch Cloudflared DaemonSet")
 		return err
@@ -290,12 +317,19 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 	}
 }
 
-func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) error {
+func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) (err error) {
 	log := logf.FromContext(ctx)
+
+	var tunnelId, tunnelToken *string
+	if config := cloudflared.Spec.Config; r.canLookup(config) {
+		if tunnelId, tunnelToken, err = r.lookupTunnel(ctx, config); err != nil {
+			return err
+		}
+	}
 
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
 		// Blindly apply the spec and let the Deployment controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared)
+		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 		if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
 			obj.Spec.Replicas = replicas
 		}
@@ -362,7 +396,32 @@ func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alp
 	}
 }
 
-func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1.PodTemplateSpec {
+func (r CloudflaredReconciler) canLookup(config *cfv1alpha1.CloudflaredConfig) bool {
+	return config != nil && config.TunnelId != nil // TODO: Tunnel ref
+}
+
+func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, config *cfv1alpha1.CloudflaredConfig) (id, token *string, err error) {
+	if config.TunnelId != nil {
+		if config.AccountId == nil {
+			return nil, nil, fmt.Errorf("accountId is required when tunnelId != nil")
+		}
+
+		token, err = r.Cloudflare.GetTunnelToken(ctx, *config.TunnelId, zero_trust.TunnelCloudflaredTokenGetParams{
+			AccountID: cloudflare.F(*config.AccountId),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return config.TunnelId, token, nil
+	}
+
+	// TODO: Tunnel ref
+
+	return nil, nil, fmt.Errorf("tunnel ref not yet implemented")
+}
+
+func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnelId, tunnelToken *string) corev1.PodTemplateSpec {
 	template := corev1.PodTemplateSpec{}
 
 	if cloudflared.Spec.Template != nil {
@@ -421,6 +480,19 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		}}
 	}
 
+	env := []corev1.EnvVar{}
+	if tunnelToken != nil {
+		env = append(env, corev1.EnvVar{
+			Name:  "TUNNEL_TOKEN",
+			Value: *tunnelToken,
+		})
+	}
+
+	args := []string{"--hello-world"}
+	if tunnelId != nil {
+		args = []string{"run", *tunnelId}
+	}
+
 	version := strings.TrimPrefix(cloudflared.Spec.Version, "v")
 
 	// create the base container
@@ -431,7 +503,8 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 			"cloudflared", "tunnel", "--no-autoupdate",
 			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),
 		},
-		Args: []string{"--hello-world"},
+		Args: args,
+		Env:  env,
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
