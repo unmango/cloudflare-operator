@@ -33,7 +33,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/a8m/envsubst"
-	"github.com/unmango/cloudflare-operator/internal/client"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
@@ -49,7 +48,7 @@ var _ = Describe("Manager", Ordered, func() {
 	var (
 		controllerPodName string
 		tunnelId          string
-		cf                client.Client
+		cf                cfclient.Client
 	)
 
 	const testNamespace = "cloudflared-test"
@@ -361,29 +360,6 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(checkLogs).Should(Succeed())
 		})
 
-		It("should delete the cloudflared resource", func() {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflared.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Deleting the cloudflared resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
-			cmd.Stdin = bytes.NewReader(sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Checking the DaemonSet is removed")
-			daemonSetNotFound := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", testNamespace, "cloudflared-sample")
-				output, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
-					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
-				))
-			}
-			Eventually(daemonSetNotFound).Should(Succeed())
-		})
-
 		It("should delete the cloudflare tunnel resource", func(ctx context.Context) {
 			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflaretunnel.yaml")
 			Expect(err).NotTo(HaveOccurred())
@@ -402,6 +378,34 @@ var _ = Describe("Manager", Ordered, func() {
 				return err
 			}
 			Eventually(verifyDelete).Should(Succeed())
+		})
+
+		It("should delete the cloudflared resource", func() {
+			// Deleting the CloudflareTunnel should trigger deletion of the Cloudflared resource
+			// via owner reference. All we need to do is verify that it is gone.
+			By("Checking the DaemonSet is removed")
+			cloudflaredNotFound := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cloudflared",
+					"--namespace", testNamespace, "cloudflared-sample")
+				output, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
+					`Error from server (NotFound): cloudflareds.cloudflare.unmango.dev "cloudflared-sample" not found`,
+				))
+			}
+			Eventually(cloudflaredNotFound).Should(Succeed())
+
+			By("Checking the DaemonSet is removed")
+			daemonSetNotFound := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "daemonset",
+					"--namespace", testNamespace, "cloudflared-sample")
+				output, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
+					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
+				))
+			}
+			Eventually(daemonSetNotFound).Should(Succeed())
 		})
 	})
 })
