@@ -122,7 +122,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching cloudflared DaemonSet logs")
-			cmd = exec.Command("kubectl", "logs", "daemonset/cloudflared-sample", "-n", testNamespace, "--all-containers=true")
+			cmd = exec.Command("kubectl", "logs", "daemonset/cloudflared-sample",
+				"--namespace", testNamespace,
+				"--all-containers=true")
 			dameonSetLogs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "DaemonSet logs:\n %s", dameonSetLogs)
@@ -350,9 +352,9 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should register a tunnel connection", func() {
 			checkLogs := func(g Gomega) {
-				cmd := exec.Command("kubectl", "rollout", "status",
-					"daemonset/cloudflared-sample", "--namespace", testNamespace,
-					"--timeout", "2m")
+				cmd := exec.Command("kubectl", "logs", "daemonset/cloudflared-sample",
+					"--namespace", testNamespace,
+					"--all-containers=true")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("Registered tunnel connection"))
