@@ -214,7 +214,7 @@ func (r *CloudflaredReconciler) getApp(ctx context.Context, key client.ObjectKey
 	return
 }
 
-//// I wrote this and I want to use it but not in this PR so commented it becomes
+// // I wrote this and I want to use it but not in this PR so commented it becomes
 // func (r *CloudflaredReconciler) appReady(app client.Object) bool {
 // 	switch app := app.(type) {
 // 	case *appsv1.DaemonSet:
