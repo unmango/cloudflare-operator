@@ -174,9 +174,12 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		if !hasOwnerRef {
+			log.Info("Adding owner reference to CloudflareTunnel on Cloudflared", "tunnel", tunnel.Name, "cloudflared", cloudflared.Name)
 			// All cloudflared connections need to be closed before deleting the tunnel,
 			// set an owner reference to ensure proper deletion order
-			if err := controllerutil.SetOwnerReference(tunnel, cloudflared, r.Scheme); err != nil {
+			if err := controllerutil.SetOwnerReference(tunnel, cloudflared, r.Scheme,
+				controllerutil.WithBlockOwnerDeletion(true),
+			); err != nil {
 				log.Error(err, "Failed to set owner reference to CloudflareTunnel on Cloudflared")
 				return ctrl.Result{}, nil
 			}
