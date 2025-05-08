@@ -426,7 +426,7 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 
 	if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
 		logf.FromContext(ctx).V(1).Info("No Cloudflare API token set, not looking up tunnel")
-		return
+		return tunnel, nil
 	}
 
 	if tunnel.Id = config.TunnelId; tunnel.Id != nil {
