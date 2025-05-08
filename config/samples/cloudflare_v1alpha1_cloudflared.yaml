@@ -5,4 +5,7 @@ metadata:
     app.kubernetes.io/name: cloudflare-operator
     app.kubernetes.io/managed-by: kustomize
   name: cloudflared-sample
-spec: {}
+spec:
+  config:
+    tunnelRef:
+      name: cloudflaretunnel-sample

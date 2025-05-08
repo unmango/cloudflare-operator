@@ -329,12 +329,13 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 		return err
 	}
 
+	templateSpec := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
 		// Blindly apply the spec and let the DaemonSet controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnel)
+		obj.Spec.Template = templateSpec
 	}); err != nil {
 		log.Error(err, "Failed to patch Cloudflared DaemonSet")
-		return err
+		return client.IgnoreNotFound(err)
 	} else {
 		return nil
 	}
@@ -348,15 +349,16 @@ func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv
 		return err
 	}
 
+	templateSpec := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
 		// Blindly apply the spec and let the Deployment controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnel)
+		obj.Spec.Template = templateSpec
 		if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
 			obj.Spec.Replicas = replicas
 		}
 	}); err != nil {
 		log.Error(err, "Failed to patch Cloudflared Deployment")
-		return err
+		return client.IgnoreNotFound(err)
 	} else {
 		return nil
 	}
