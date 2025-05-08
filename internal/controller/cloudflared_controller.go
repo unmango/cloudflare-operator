@@ -329,7 +329,7 @@ func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1
 		return err
 	}
 
-	templateSpec := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
+	templateSpec := r.podTemplateSpec(cloudflared, tunnel)
 	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
 		// Blindly apply the spec and let the DaemonSet controller reconcile differences
 		obj.Spec.Template = templateSpec
@@ -349,7 +349,7 @@ func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv
 		return err
 	}
 
-	templateSpec := r.podTemplateSpec(cloudflared, tunnelId, tunnelToken)
+	templateSpec := r.podTemplateSpec(cloudflared, tunnel)
 	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
 		// Blindly apply the spec and let the Deployment controller reconcile differences
 		obj.Spec.Template = templateSpec
