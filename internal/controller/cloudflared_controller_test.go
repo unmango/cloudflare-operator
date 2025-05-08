@@ -586,6 +586,41 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 						Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
 					})
+
+					It("should add an owner reference", func() {
+						cfmock.EXPECT().
+							GetTunnelToken(gomock.Eq(ctx), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredTokenGetParams{
+								AccountID: cloudflare.F(accountId),
+							})).
+							Return(ptr.To(token), nil)
+
+						// TODO: We should be able to get rid of this reconcile, but it will
+						//       require implementing the child "Ready" logic
+						By("Reconciling to apply the reference")
+						controllerReconciler := &CloudflaredReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Recorder:   &record.FakeRecorder{},
+							Cloudflare: cfmock,
+						}
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.Cloudflared{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource).NotTo(BeNil())
+						owner := &metav1.OwnerReference{}
+						Expect(resource.OwnerReferences).To(ContainElement(
+							HaveField("Name", typeNamespacedName.Name), owner,
+						))
+						Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+						Expect(owner.Kind).To(Equal("CloudflareTunnel"))
+						Expect(owner.Controller).To(BeNil(), "The reference is not a controller reference")
+						Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)), "BlockOwnerDeletion should be true")
+					})
 				})
 
 				Context("and the api token environment variable is not set", func() {
@@ -1417,6 +1452,41 @@ var _ = Describe("Cloudflared Controller", func() {
 							resource := &cfv1alpha1.Cloudflared{}
 							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 							Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
+						})
+
+						It("should add an owner reference", func() {
+							cfmock.EXPECT().
+								GetTunnelToken(gomock.Eq(ctx), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredTokenGetParams{
+									AccountID: cloudflare.F(accountId),
+								})).
+								Return(ptr.To(token), nil)
+
+							// TODO: We should be able to get rid of this reconcile, but it will
+							//       require implementing the child "Ready" logic
+							By("Reconciling to apply the reference")
+							controllerReconciler := &CloudflaredReconciler{
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Recorder:   &record.FakeRecorder{},
+								Cloudflare: cfmock,
+							}
+							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+								NamespacedName: typeNamespacedName,
+							})
+							Expect(err).NotTo(HaveOccurred())
+
+							resource := &cfv1alpha1.Cloudflared{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+							Expect(resource).NotTo(BeNil())
+							owner := &metav1.OwnerReference{}
+							Expect(resource.OwnerReferences).To(ContainElement(
+								HaveField("Name", typeNamespacedName.Name), owner,
+							))
+							Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+							Expect(owner.Kind).To(Equal("CloudflareTunnel"))
+							Expect(owner.Controller).To(BeNil(), "The reference is not a controller reference")
+							Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)), "BlockOwnerDeletion should be true")
 						})
 					})
 
