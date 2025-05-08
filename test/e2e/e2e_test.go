@@ -367,17 +367,17 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the tunnel resource")
-			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
+			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the tunnel was deleted")
-			verifyDelete := func() error {
+			verifyDelete := func(g Gomega) {
 				_, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
 					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
 				})
-				return err
+				g.Expect(err).To(HaveOccurred())
 			}
 			Eventually(verifyDelete).Should(Succeed())
 		})
