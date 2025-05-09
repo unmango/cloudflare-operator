@@ -367,7 +367,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the tunnel resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-")
+			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-", "--timeout=1m")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
