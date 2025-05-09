@@ -292,8 +292,11 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		It("should create a cloudflare tunnel", func(ctx context.Context) {
+		It("should have the API token set", func() {
 			Expect(os.Getenv("CLOUDFLARE_API_TOKEN")).NotTo(BeEmpty(), "API token is required for testing")
+		})
+
+		It("should create a cloudflare tunnel", func(ctx context.Context) {
 			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflaretunnel.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
