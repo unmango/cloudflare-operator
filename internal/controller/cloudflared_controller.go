@@ -34,9 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -83,12 +81,12 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudflared := &cfv1alpha1.Cloudflared{}
 	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-		log.V(1).Info("Cloudflared resource not found, ignoring")
+		log.V(2).Info("Cloudflared resource not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if !cloudflared.DeletionTimestamp.IsZero() {
-		log.Info("Object is being deleted")
+		log.V(2).Info("Object is being deleted")
 		return ctrl.Result{}, nil
 	}
 
@@ -101,12 +99,12 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to update cloudflared status conditions")
-			return ctrl.Result{}, err
+			log.Error(err, "Failed to patch cloudflared status conditions")
+			return ctrl.Result{}, nil
 		}
 	}
 
-	if cloudflared.Spec.Config.TunnelRef != nil {
+	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
 		tunnel, err := r.getTunnelRef(ctx, cloudflared)
 		if err != nil {
 			log.Error(err, "Failed to look up tunnel")
@@ -125,7 +123,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if cloudflared.Status.Kind == "" {
 		if err := r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully created app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -141,13 +139,13 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
 
 		// TODO: Probably should just clear Status.Kind and re-queue
 		if err = r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully created app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -162,7 +160,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		)
 		if err := r.deleteApp(ctx, app); err != nil {
 			log.Error(err, "Failed to delete app for Cloudflared", "kind", app.GetObjectKind())
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement",
 				"kind", app.GetObjectKind(),
@@ -204,7 +202,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err = r.updateApp(ctx, app, cloudflared); err != nil {
 		log.Error(err, "Failed to update app for Cloudflared")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	} else {
 		log.Info("Successfully updated app for Cloudflared")
 		return ctrl.Result{}, nil
@@ -587,16 +585,6 @@ func (r *CloudflaredReconciler) labels(ctr corev1.Container) map[string]string {
 	}
 }
 
-func (r *CloudflaredReconciler) respondToTunnelDeletes(ctx context.Context, obj client.Object) []reconcile.Request {
-	if obj.GetDeletionTimestamp() != nil {
-		return []reconcile.Request{{
-			NamespacedName: client.ObjectKeyFromObject(obj),
-		}}
-	} else {
-		return []reconcile.Request{}
-	}
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -604,9 +592,5 @@ func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("cloudflared").
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&appsv1.Deployment{}).
-		Watches(
-			&cfv1alpha1.CloudflareTunnel{},
-			handler.TypedEnqueueRequestsFromMapFunc(r.respondToTunnelDeletes),
-		).
 		Complete(r)
 }
