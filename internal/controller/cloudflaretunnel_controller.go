@@ -99,24 +99,24 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !tunnel.DeletionTimestamp.IsZero() {
 		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
-			return ctrl.Result{}, err
 		} else {
 			log.Info("Successfully deleted cloudflare tunnel")
-			return ctrl.Result{}, nil
 		}
+
+		return ctrl.Result{}, nil
 	}
 
 	if id := tunnel.Status.Id; id != "" {
 		log.Info("Fetching existing cloudflare tunnel", "id", id)
 		if err := r.updateTunnel(ctx, id, tunnel); err != nil {
 			log.Error(err, "Failed to update existing cloudflare tunnel", "id", id)
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
 	} else {
 		log.Info("Creating cloudflare tunnel", "name", req.Name)
 		if err := r.createTunnel(ctx, tunnel); err != nil {
 			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
 	}
 
@@ -125,7 +125,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
 		}); err != nil {
 			log.Error(err, "Failed to add finalizer to CloudflareTunnel")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
 	}
 

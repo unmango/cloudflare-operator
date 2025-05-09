@@ -377,9 +377,10 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("Verifying the tunnel was deleted")
 			verifyDelete := func(g Gomega) {
-				_, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
+				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
 					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
 				})
+				g.Expect(res).To(BeNil())
 				g.Expect(err).To(HaveOccurred())
 			}
 			Eventually(verifyDelete).Should(Succeed())

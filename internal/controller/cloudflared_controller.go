@@ -167,14 +167,18 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement",
 				"kind", app.GetObjectKind(),
 			)
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{Requeue: true}, nil
 		}
 	}
 
 	log.Info("Checking for tunnel ref", "config", cloudflared.Spec.Config)
 	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
 		tunnel := &cfv1alpha1.CloudflareTunnel{}
-		if err := r.Get(ctx, req.NamespacedName, tunnel); err != nil {
+		key := client.ObjectKey{
+			Namespace: cloudflared.Namespace,
+			Name:      config.TunnelRef.Name,
+		}
+		if err := r.Get(ctx, key, tunnel); err != nil {
 			log.Error(err, "Failed to lookup referenced CloudflareTunnel")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
@@ -590,13 +594,45 @@ func (r *CloudflaredReconciler) labels(ctr corev1.Container) map[string]string {
 }
 
 func (r *CloudflaredReconciler) respondToTunnelDeletes(ctx context.Context, obj client.Object) []reconcile.Request {
-	if obj.GetDeletionTimestamp() != nil {
-		return []reconcile.Request{{
-			NamespacedName: client.ObjectKeyFromObject(obj),
-		}}
-	} else {
+	log := logf.FromContext(ctx)
+	if obj.GetDeletionTimestamp() == nil {
+		log.V(1).Info("Object is not being deleted, ignoring")
 		return []reconcile.Request{}
 	}
+
+	tunnel, ok := obj.(*cfv1alpha1.CloudflareTunnel)
+	if !ok {
+		log.V(1).Info("Unsupported object type", "obj", obj)
+		return []reconcile.Request{}
+	}
+
+	var cloudflareds cfv1alpha1.CloudflaredList
+	if err := r.List(ctx, &cloudflareds, &client.ListOptions{
+		Namespace: tunnel.Namespace,
+	}); err != nil {
+		log.Error(err, "Failed to list Cloudflareds")
+		return []reconcile.Request{}
+	}
+
+	var cloudflared *cfv1alpha1.Cloudflared
+	for _, c := range cloudflareds.Items {
+		hasOwnerRef, err := controllerutil.HasOwnerReference(c.OwnerReferences, tunnel, r.Scheme)
+		if err != nil {
+			log.Error(err, "Failed to lookup owner reference")
+		}
+		if hasOwnerRef {
+			cloudflared = &c
+		}
+	}
+
+	if cloudflared == nil {
+		log.V(1).Info("No owner reference, ignoring")
+		return []reconcile.Request{}
+	}
+
+	return []reconcile.Request{{
+		NamespacedName: client.ObjectKeyFromObject(cloudflared),
+	}}
 }
 
 // SetupWithManager sets up the controller with the Manager.
