@@ -103,19 +103,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				return k8sClient.Delete(ctx, resource)
 			}).Should(Succeed())
 
-			// TODO: Is there a better way to ensure the resource is deleted?
-			By("Reconciling to remove the finalizer")
-			controllerReconciler := &CloudflaredReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
-				Recorder:   &record.FakeRecorder{},
-				Cloudflare: cfmock,
-			}
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
 			tunnel := &cfv1alpha1.CloudflareTunnel{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, tunnel); err == nil {
 				By("Cleaning up the CloudflareTunnel")
