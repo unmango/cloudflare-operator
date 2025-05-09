@@ -33,7 +33,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -166,37 +165,6 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				"kind", app.GetObjectKind(),
 			)
 			return ctrl.Result{Requeue: true}, err
-		}
-	}
-
-	log.Info("Checking for tunnel ref", "config", cloudflared.Spec.Config)
-	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
-		tunnel := &cfv1alpha1.CloudflareTunnel{}
-		if err := r.Get(ctx, req.NamespacedName, tunnel); err != nil {
-			log.Error(err, "Failed to lookup referenced CloudflareTunnel")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-
-		hasOwnerRef, err := controllerutil.HasOwnerReference(cloudflared.OwnerReferences, tunnel, r.Scheme)
-		if err != nil {
-			log.Error(err, "Failed to lookup owner reference")
-			return ctrl.Result{}, nil
-		}
-
-		if !hasOwnerRef {
-			log.Info("Adding owner reference to CloudflareTunnel on Cloudflared", "tunnel", tunnel.Name, "cloudflared", cloudflared.Name)
-			// All cloudflared connections need to be closed before deleting the tunnel,
-			// set an owner reference to ensure proper deletion order
-			if err := controllerutil.SetOwnerReference(tunnel, cloudflared, r.Scheme,
-				controllerutil.WithBlockOwnerDeletion(true),
-			); err != nil {
-				log.Error(err, "Failed to set owner reference to CloudflareTunnel on Cloudflared")
-				return ctrl.Result{}, nil
-			}
-			if err := r.Update(ctx, cloudflared); err != nil {
-				log.Error(err, "Failed to update Cloudflared with owner reference")
-				return ctrl.Result{}, nil
-			}
 		}
 	}
 
