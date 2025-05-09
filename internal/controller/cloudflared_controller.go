@@ -81,8 +81,13 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudflared := &cfv1alpha1.Cloudflared{}
 	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-		log.V(1).Info("Cloudflared resource not found, ignoring")
+		log.V(2).Info("Cloudflared resource not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if !cloudflared.DeletionTimestamp.IsZero() {
+		log.V(2).Info("Object is being deleted")
+		return ctrl.Result{}, nil
 	}
 
 	if len(cloudflared.Status.Conditions) == 0 {
@@ -94,18 +99,23 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to update cloudflared status conditions")
-			return ctrl.Result{}, err
+			log.Error(err, "Failed to patch cloudflared status conditions")
+			return ctrl.Result{}, nil
 		}
 	}
 
-	if !cloudflared.DeletionTimestamp.IsZero() {
-		if err := r.delete(ctx, cloudflared); err != nil {
-			log.Error(err, "Failed to delete cloudflared")
-			return ctrl.Result{}, err
-		} else {
-			log.Info("Successfully deleted cloudflared")
+	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
+		tunnel, err := r.getTunnelRef(ctx, cloudflared)
+		if err != nil {
+			log.Error(err, "Failed to look up tunnel")
 			return ctrl.Result{}, nil
+		}
+		if !tunnel.DeletionTimestamp.IsZero() {
+			log.Info("CloudflareTunnel is being deleted, cleaning up Cloudflared")
+			if err = r.Delete(ctx, cloudflared); err != nil {
+				log.Error(err, "Failed to delete Cloudflared")
+				return ctrl.Result{}, nil
+			}
 		}
 	}
 
@@ -113,7 +123,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if cloudflared.Status.Kind == "" {
 		if err := r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully created app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -129,13 +139,13 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
 
 		// TODO: Probably should just clear Status.Kind and re-queue
 		if err = r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully created app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -150,7 +160,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		)
 		if err := r.deleteApp(ctx, app); err != nil {
 			log.Error(err, "Failed to delete app for Cloudflared", "kind", app.GetObjectKind())
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement",
 				"kind", app.GetObjectKind(),
@@ -192,7 +202,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err = r.updateApp(ctx, app, cloudflared); err != nil {
 		log.Error(err, "Failed to update app for Cloudflared")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	} else {
 		log.Info("Successfully updated app for Cloudflared")
 		return ctrl.Result{}, nil
@@ -370,53 +380,6 @@ func (r *CloudflaredReconciler) deleteApp(ctx context.Context, app client.Object
 	}
 }
 
-func (r *CloudflaredReconciler) delete(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) error {
-	log := logf.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(cloudflared, cloudflaredFinalizer) {
-		log.V(1).Info("No finalizer on Cloudflared, nothing to do")
-		return nil
-	}
-
-	log.Info("Performing finalizer operations before deleting Cloudflared")
-	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
-		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
-			Type:    typeDegradedCloudflared,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Finalizing",
-			Message: "Performing finalizer operations",
-		})
-	}); err != nil {
-		return err
-	}
-
-	r.Recorder.Event(cloudflared, "Warning", "Deleting",
-		fmt.Sprintf("Custom resource %s is being deleted from the namespace %s",
-			cloudflared.Name, cloudflared.Namespace),
-	)
-
-	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
-		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
-			Type:    typeDegradedCloudflared,
-			Status:  metav1.ConditionTrue,
-			Reason:  "Finalizing",
-			Message: "Finalizer operations were successfully accomplished",
-		})
-	}); err != nil {
-		return err
-	}
-
-	log.Info("Removing Cloudflared finalizer after successfully finalizing")
-	if err := patch(ctx, r, cloudflared, func(obj *cfv1alpha1.Cloudflared) {
-		_ = controllerutil.RemoveFinalizer(cloudflared, cloudflaredFinalizer)
-	}); err != nil {
-		log.Error(err, "Failed to remove finalizer from Cloudflared")
-		return err
-	} else {
-		return nil
-	}
-}
-
 func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (tunnel tunnel, err error) {
 	log := logf.FromContext(ctx)
 	config := cloudflared.Spec.Config
@@ -437,14 +400,9 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 	}
 
 	if ref := config.TunnelRef; ref != nil {
-		cftunnel := &cfv1alpha1.CloudflareTunnel{}
-		key := client.ObjectKey{
-			Namespace: cloudflared.Namespace,
-			Name:      ref.Name,
-		}
-
-		log.Info("Using tunnel ref for Cloudflare tunnel lookup")
-		if err := r.Get(ctx, key, cftunnel); err != nil {
+		cftunnel, err := r.getTunnelRef(ctx, cloudflared)
+		if err != nil {
+			log.Error(err, "Failed to look up referenced CloudflareTunnel")
 			return tunnel, err
 		}
 
@@ -467,6 +425,24 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 	}
 
 	return tunnel, nil
+}
+
+func (r *CloudflaredReconciler) getTunnelRef(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (*cfv1alpha1.CloudflareTunnel, error) {
+	if cloudflared.Spec.Config == nil || cloudflared.Spec.Config.TunnelRef == nil {
+		return nil, fmt.Errorf("no tunnel reference specified")
+	}
+
+	tunnel := &cfv1alpha1.CloudflareTunnel{}
+	key := client.ObjectKey{
+		Namespace: cloudflared.Namespace,
+		Name:      cloudflared.Spec.Config.TunnelRef.Name,
+	}
+
+	if err := r.Get(ctx, key, tunnel); err != nil {
+		return nil, err
+	} else {
+		return tunnel, nil
+	}
 }
 
 func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnel tunnel) corev1.PodTemplateSpec {
