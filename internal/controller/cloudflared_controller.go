@@ -379,35 +379,52 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 		}},
 	}
 
-	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil {
-		if ref := config.ValueFrom.SecretKeyRef; ref != nil {
-			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
-				Name: "config",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: ref.Name,
-						Items: []corev1.KeyToPath{{
-							Key:  ref.Key,
-							Path: "config.yml",
-						}},
-					},
-				},
-			})
-		}
-		if ref := config.ValueFrom.ConfigMapKeyRef; ref != nil {
-			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
-				Name: "config",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: ref.Name,
+	env := []corev1.EnvVar{}
+	if tunnel.Token != nil {
+		env = append(env, corev1.EnvVar{
+			Name:  "TUNNEL_TOKEN",
+			Value: *tunnel.Token,
+		})
+	}
+
+	if config := cloudflared.Spec.Config; config != nil {
+		if vf := config.ValueFrom; vf != nil {
+			if ref := vf.SecretKeyRef; ref != nil {
+				template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
+					Name: "config",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: ref.Name,
+							Items: []corev1.KeyToPath{{
+								Key:  ref.Key,
+								Path: "config.yml",
+							}},
 						},
-						Items: []corev1.KeyToPath{{
-							Key:  ref.Key,
-							Path: "config.yml",
-						}},
 					},
-				},
+				})
+			}
+			if ref := vf.ConfigMapKeyRef; ref != nil {
+				template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
+					Name: "config",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: ref.Name,
+							},
+							Items: []corev1.KeyToPath{{
+								Key:  ref.Key,
+								Path: "config.yml",
+							}},
+						},
+					},
+				})
+			}
+		}
+
+		if config.HelloWorld {
+			env = append(env, corev1.EnvVar{
+				Name:  "TUNNEL_HELLO_WORLD",
+				Value: "true",
 			})
 		}
 	}
@@ -420,15 +437,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 		}}
 	}
 
-	env := []corev1.EnvVar{}
-	if tunnel.Token != nil {
-		env = append(env, corev1.EnvVar{
-			Name:  "TUNNEL_TOKEN",
-			Value: *tunnel.Token,
-		})
-	}
-
-	args := []string{"--hello-world"}
+	args := []string{}
 	if tunnel.Id != nil {
 		args = []string{"run", *tunnel.Id}
 	}
