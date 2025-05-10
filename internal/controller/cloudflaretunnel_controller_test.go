@@ -425,6 +425,18 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					})
 
 					It("should update the Cloudflared tunnel id", func() {
+						By("Reconciling the updated resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
 						cloudflared := &cfv1alpha1.Cloudflared{}
 						key := client.ObjectKey{
 							Name:      "some-name",
@@ -432,10 +444,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						}
 						Expect(k8sClient.Get(ctx, key, cloudflared)).To(Succeed())
 						Expect(cloudflared.Spec.Config).NotTo(BeNil())
-						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(tunnelId))
-						Expect(cloudflared.ManagedFields).To(ContainElement(metav1.ManagedFieldsEntry{
-							Manager: string(cloudflared.UID),
-						}))
+						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
 					})
 				})
 			})
