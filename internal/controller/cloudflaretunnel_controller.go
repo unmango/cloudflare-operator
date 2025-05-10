@@ -134,6 +134,38 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
+	if cf := tunnel.Spec.Cloudflared; cf != nil {
+		if cf.Selector != nil {
+			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
+			if err != nil {
+				log.Error(err, "Failed to convert LabelSelector to elector")
+				return ctrl.Result{}, nil
+			}
+
+			cloudflareds := &cfv1alpha1.CloudflaredList{}
+			if err := r.List(ctx, cloudflareds, &client.ListOptions{
+				Namespace:     req.Namespace,
+				LabelSelector: selector,
+			}); err != nil {
+				log.Error(err, "Failed to list Cloudflareds")
+				return ctrl.Result{}, nil
+			}
+
+			for _, c := range cloudflareds.Items {
+				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+						TunnelId: &tunnelId,
+					},
+				}
+
+				if err := r.Update(ctx, &c, client.FieldOwner("CloudflareTunnel")); err != nil {
+					log.Error(err, "Failed to update Cloudflared")
+					return ctrl.Result{}, nil
+				}
+			}
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
