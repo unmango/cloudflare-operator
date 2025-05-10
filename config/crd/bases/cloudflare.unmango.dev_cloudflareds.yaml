@@ -52,6 +52,9 @@ spec:
                   accountId:
                     description: Cloudflare account ID.
                     type: string
+                  helloWorld:
+                    description: Run Hello World Server.
+                    type: boolean
                   tunnelId:
                     description: UUID of the tunnel.
                     type: string
