@@ -98,23 +98,8 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to patch cloudflared status conditions")
+			log.Error(err, "Failed to patch Cloudflared status conditions")
 			return ctrl.Result{}, nil
-		}
-	}
-
-	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
-		tunnel, err := r.getTunnelRef(ctx, cloudflared)
-		if err != nil {
-			log.Error(err, "Failed to look up tunnel")
-			return ctrl.Result{}, nil
-		}
-		if !tunnel.DeletionTimestamp.IsZero() {
-			log.Info("CloudflareTunnel is being deleted, cleaning up Cloudflared")
-			if err = r.Delete(ctx, cloudflared); err != nil {
-				log.Error(err, "Failed to delete Cloudflared")
-				return ctrl.Result{}, nil
-			}
 		}
 	}
 
@@ -135,6 +120,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Name:      cloudflared.Name,
 	}
 
+	log.V(2).Info("Looking up owned application", "kind", kind, "key", appKey)
 	app, err := r.getApp(ctx, appKey, kind)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -143,11 +129,18 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeAvailableCloudflared,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Owned %s resource not found", kind),
+			})
 			obj.Status.Kind = nil
 		}); err != nil {
 			log.Error(err, "Failed to patch Cloudflared status")
 			return ctrl.Result{}, nil
 		} else {
+			log.V(2).Info("Requeueing to create new owned application")
 			return ctrl.Result{Requeue: true}, nil
 		}
 	}
