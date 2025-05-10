@@ -128,14 +128,33 @@ var _ = Describe("Cloudflared Controller", func() {
 			It("should default to a DaemonSet", func() {
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
 				Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 			})
 
 			It("should default to the latest tag", func() {
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-				Expect(resource.Spec.Version).To(Equal("latest"))
+
+				Expect(resource).NotTo(BeNil())
+				container := &corev1.Container{}
+				Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+					HaveField("Name", "cloudflared"), container,
+				))
+				Expect(container.Name).To(Equal("cloudflared"))
+				Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+				Expect(container.Command).To(HaveExactElements(
+					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
+				))
+
+				probe := container.LivenessProbe
+				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.FromInt(2000),
+					Scheme: "HTTP",
+				}))
+				Expect(probe.FailureThreshold).To(Equal(int32(1)))
+				Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+				Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 			})
 
 			It("should update the Cloudflared status", func() {
@@ -505,6 +524,26 @@ var _ = Describe("Cloudflared Controller", func() {
 				It("should create a DaemonSet", func() {
 					resource := &appsv1.DaemonSet{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+					Expect(resource).NotTo(BeNil())
+					container := &corev1.Container{}
+					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
+						HaveField("Name", "cloudflared"), container,
+					))
+					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+					Expect(container.Command).To(HaveExactElements(
+						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
+					))
+
+					probe := container.LivenessProbe
+					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+						Path:   "/ready",
+						Port:   intstr.FromInt(2000),
+						Scheme: "HTTP",
+					}))
+					Expect(probe.FailureThreshold).To(Equal(int32(1)))
+					Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+					Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 				})
 
 				It("should create a selector that matches pod labels", func() {
@@ -793,9 +832,6 @@ var _ = Describe("Cloudflared Controller", func() {
 						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 					))
 
-					// Unless otherwise specified, run a hello world tunnel
-					Expect(container.Args).To(HaveExactElements("--hello-world"))
-
 					probe := container.LivenessProbe
 					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
 						Path:   "/ready",
@@ -855,7 +891,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				It("should update the Cloudflared status", func() {
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
 					Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DeploymentCloudflaredKind)))
 				})
 
