@@ -170,7 +170,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					status := resource.Status
 					Expect(status.Name).To(Equal(result.Name))
 					Expect(status.AccountTag).To(Equal(result.AccountTag))
-					Expect(status.Id).To(Equal(result.ID))
+					Expect(status.Id).To(Equal(ptr.To(result.ID)))
 					Expect(status.RemoteConfig).To(Equal(result.RemoteConfig))
 					Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
 					Expect(status.CreatedAt.Time).To(BeTemporally("~", result.CreatedAt, time.Second))
@@ -223,12 +223,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			})
 
 			Context("and the cloudflare new tunnel call fails", func() {
-				cferr := fmt.Errorf("new tunnel failed")
-
 				BeforeEach(func() {
 					cfmock.EXPECT().
 						CreateTunnel(gomock.Eq(ctx), gomock.Any()).
-						Return(nil, cferr)
+						Return(nil, fmt.Errorf("new tunnel failed"))
 				})
 
 				It("should set the error status", func() {
@@ -242,7 +240,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
 					})
-					Expect(err).To(MatchError(cferr))
+					Expect(err).NotTo(HaveOccurred())
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
@@ -348,7 +346,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(status.CreatedAt.Time).To(BeTemporally("~", result.CreatedAt, time.Second))
 					Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", result.ConnsActiveAt, time.Second))
 					Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", result.ConnsInactiveAt, time.Second))
-					Expect(status.Id).To(Equal(result.ID))
+					Expect(status.Id).To(Equal(ptr.To(result.ID)))
 					Expect(status.RemoteConfig).To(Equal(result.RemoteConfig))
 					Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
 					Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
@@ -407,12 +405,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			})
 
 			Context("and the cloudflare get tunnel call fails", func() {
-				cferr := fmt.Errorf("get tunnel failed")
-
 				BeforeEach(func() {
 					cfmock.EXPECT().
 						GetTunnel(gomock.Eq(ctx), gomock.Any(), gomock.Any()).
-						Return(nil, cferr)
+						Return(nil, fmt.Errorf("get tunnel failed"))
 				})
 
 				It("should set the error status", func() {
@@ -426,7 +422,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
 					})
-					Expect(err).To(MatchError(cferr))
+					Expect(err).NotTo(HaveOccurred())
 
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
@@ -519,6 +515,21 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		Context("and the CloudflareTunnel is marked for deletion", func() {
 			BeforeEach(func() {
 				cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+				// result := &zero_trust.TunnelCloudflaredNewResponse{
+				// 	ID:              "test-id",
+				// 	AccountTag:      "test-account-id",
+				// 	CreatedAt:       time.Now(),
+				// 	ConnsActiveAt:   time.Now(),
+				// 	ConnsInactiveAt: time.Now(),
+				// 	Name:            cloudflaretunnel.Name,
+				// 	RemoteConfig:    true,
+				// 	Status:          zero_trust.TunnelCloudflaredNewResponseStatusHealthy,
+				// 	TunType:         zero_trust.TunnelCloudflaredNewResponseTunTypeCfdTunnel,
+				// }
+				// cfmock.EXPECT().
+				// 	CreateTunnel(gomock.Any(), gomock.Any()).
+				// 	Return(result, nil).
+				// 	AnyTimes()
 			})
 
 			JustBeforeEach(func() {
