@@ -134,6 +134,12 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 			})
 
+			It("should default to the latest tag", func() {
+				resource := &cfv1alpha1.Cloudflared{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+				Expect(resource.Spec.Version).To(Equal("latest"))
+			})
+
 			It("should update the Cloudflared status", func() {
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
@@ -429,26 +435,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				It("should create a DaemonSet", func() {
 					resource := &appsv1.DaemonSet{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					Expect(resource).NotTo(BeNil())
-					container := &corev1.Container{}
-					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-					Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
-					Expect(container.Command).To(HaveExactElements(
-						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
-					))
-
-					probe := container.LivenessProbe
-					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
-						Path:   "/ready",
-						Port:   intstr.FromInt(2000),
-						Scheme: "HTTP",
-					}))
-					Expect(probe.FailureThreshold).To(Equal(int32(1)))
-					Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
-					Expect(probe.PeriodSeconds).To(Equal(int32(10)))
 				})
 
 				It("should create a selector that matches pod labels", func() {
@@ -472,36 +458,6 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(owner.Kind).To(Equal("Cloudflared"))
 					Expect(owner.Controller).To(Equal(ptr.To(true)))
 					Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-				})
-
-				// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
-				It("should configure the pod security context", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					sec := resource.Spec.Template.Spec.SecurityContext
-					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-					Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
-					Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
-						Name:  "net.ipv4.ping_group_range",
-						Value: "65532 65532",
-					}))
-				})
-
-				It("should configure the container security context", func() {
-					resource := &appsv1.DaemonSet{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					container := &corev1.Container{}
-					Expect(resource.Spec.Template.Spec.Containers).To(ContainElement(
-						HaveField("Name", "cloudflared"), container,
-					))
-
-					sec := container.SecurityContext
-					Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
-					Expect(sec.RunAsUser).To(Equal(ptr.To[int64](1001)))
-					Expect(sec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
-					Expect(sec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 				})
 
 				It("should update the Cloudflared status", func() {
@@ -1423,5 +1379,52 @@ var _ = Describe("Cloudflared Controller", func() {
 			Entry(nil, "2025.4.2"),
 			Entry(nil, "v2025.4.2"),
 		)
+	})
+
+	Describe("tunnel", func() {
+		It("should configure the pod template spec", func() {
+			t := tunnel{}
+			resource := &cfv1alpha1.Cloudflared{
+				Spec: cfv1alpha1.CloudflaredSpec{
+					Version: "latest",
+				},
+			}
+
+			template := t.podTemplateSpec(resource)
+
+			// https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/#routing-with-cloudflare-tunnel
+			sec := template.Spec.SecurityContext
+			Expect(sec.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(sec.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+			Expect(sec.Sysctls).To(ConsistOf(corev1.Sysctl{
+				Name:  "net.ipv4.ping_group_range",
+				Value: "65532 65532",
+			}))
+
+			container := &corev1.Container{}
+			Expect(template.Spec.Containers).To(ContainElement(
+				HaveField("Name", "cloudflared"), container,
+			))
+			Expect(container.Image).To(Equal("docker.io/cloudflare/cloudflared:latest"))
+			Expect(container.Command).To(HaveExactElements(
+				"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
+			))
+
+			ctrsec := container.SecurityContext
+			Expect(ctrsec.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(ctrsec.RunAsUser).To(Equal(ptr.To[int64](1001)))
+			Expect(ctrsec.AllowPrivilegeEscalation).To(Equal(ptr.To(false)))
+			Expect(ctrsec.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+
+			probe := container.LivenessProbe
+			Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
+				Path:   "/ready",
+				Port:   intstr.FromInt(2000),
+				Scheme: "HTTP",
+			}))
+			Expect(probe.FailureThreshold).To(Equal(int32(1)))
+			Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+			Expect(probe.PeriodSeconds).To(Equal(int32(10)))
+		})
 	})
 })
