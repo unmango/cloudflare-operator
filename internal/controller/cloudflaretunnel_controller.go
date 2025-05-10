@@ -74,7 +74,6 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to update cloudflare tunnel status conditions")
 			return ctrl.Result{}, err
 		}
 	}
@@ -88,16 +87,35 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				Message: "Cloudflare API token not provided to controller",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to update cloudflare tunnel status conditions")
 			return ctrl.Result{}, err
-		} else {
-			log.Info("Unable to create tunnel, no API token provided")
+		}
+
+		log.Info("Unable to create tunnel, no API token provided")
+		return ctrl.Result{}, nil
+	}
+
+	var tunnelId string
+	if id := tunnel.Status.Id; id == nil {
+		log.V(2).Info("Creating cloudflare tunnel", "name", req.Name)
+		if err := r.createTunnel(ctx, tunnel); err != nil {
+			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
 			return ctrl.Result{}, nil
 		}
+
+		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Created cloudflare tunnel")
+		return ctrl.Result{Requeue: true}, nil
+	} else {
+		tunnelId = *id
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
-		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
+		if err := r.deleteTunnel(ctx, tunnelId, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
 			return ctrl.Result{}, err
 		} else {
@@ -106,27 +124,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	if id := tunnel.Status.Id; id != "" {
-		log.Info("Fetching existing cloudflare tunnel", "id", id)
-		if err := r.updateTunnel(ctx, id, tunnel); err != nil {
-			log.Error(err, "Failed to update existing cloudflare tunnel", "id", id)
-			return ctrl.Result{}, err
-		}
-	} else {
-		log.Info("Creating cloudflare tunnel", "name", req.Name)
-		if err := r.createTunnel(ctx, tunnel); err != nil {
-			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
-			return ctrl.Result{}, err
-		}
-	}
-
-	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
-		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
-		}); err != nil {
-			log.Error(err, "Failed to add finalizer to CloudflareTunnel")
-			return ctrl.Result{}, err
-		}
+	log.V(2).Info("Updating existing cloudflare tunnel", "id", tunnelId)
+	if err := r.updateTunnel(ctx, tunnelId, tunnel); err != nil {
+		log.Error(err, "Failed to update existing cloudflare tunnel", "id", tunnelId)
+		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -171,7 +172,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		})
 		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
-		obj.Status.Id = res.ID
+		obj.Status.Id = &res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
@@ -242,7 +243,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
 		obj.Status.ConnectionsInactiveAt = metav1.NewTime(res.ConnsInactiveAt)
-		obj.Status.Id = res.ID
+		obj.Status.Id = &res.ID
 		obj.Status.RemoteConfig = res.RemoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
