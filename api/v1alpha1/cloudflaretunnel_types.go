@@ -99,6 +99,13 @@ type CloudflareTunnelSecret struct {
 	ValueFrom *CloudflareTunnelSecretReference `json:"valueFrom,omitempty"`
 }
 
+type CloudflareTunnelCloudflared struct {
+	// Selector defines which Cloudflared resource(s) is/are responsible for running the tunnel.
+	//
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+}
+
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
 // https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
 type CloudflareTunnelSpec struct {
@@ -114,6 +121,13 @@ type CloudflareTunnelSpec struct {
 	//
 	// +required
 	// ApiToken CloudflareApiToken `json:"apiToken"`
+
+	// Cloudflared defines how the tunnel will interact with the cloudflared instance running it.
+	// If undefined the user is responsible for configuring the cloudflared instance and managing
+	// its lifecycle.
+	//
+	// +optional
+	Cloudflared *CloudflareTunnelCloudflared `json:"cloudflared,omitempty"`
 
 	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
 	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the

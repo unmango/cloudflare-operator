@@ -82,9 +82,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
+		log.V(2).Info("Deleting tunnel from the cloudflare API")
 		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully deleted cloudflare tunnel")
 			return ctrl.Result{}, nil
@@ -105,6 +106,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
+		log.V(2).Info("Adding finalizer to CloudflareTunnel")
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
 		}); err != nil {
@@ -130,6 +132,42 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.updateTunnel(ctx, tunnelId, tunnel); err != nil {
 		log.Error(err, "Failed to update existing cloudflare tunnel", "id", tunnelId)
 		return ctrl.Result{}, nil
+	}
+
+	if cf := tunnel.Spec.Cloudflared; cf != nil {
+		if cf.Selector != nil {
+			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
+			if err != nil {
+				log.Error(err, "Failed to convert LabelSelector to selector")
+				return ctrl.Result{}, nil
+			}
+
+			log.V(2).Info("Listing selected Cloudflared resources")
+			cloudflareds := &cfv1alpha1.CloudflaredList{}
+			if err := r.List(ctx, cloudflareds, &client.ListOptions{
+				Namespace:     req.Namespace,
+				LabelSelector: selector,
+			}); err != nil {
+				log.Error(err, "Failed to list Cloudflareds")
+				return ctrl.Result{}, nil
+			}
+
+			for _, c := range cloudflareds.Items {
+				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+						TunnelId: &tunnelId,
+					},
+				}
+
+				log.V(2).Info("Applying tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
+				if err := r.Update(ctx, &c); err != nil {
+					log.Error(err, "Failed to update Cloudflared")
+					return ctrl.Result{}, nil
+				} else {
+					log.Info("Applied tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
+				}
+			}
+		}
 	}
 
 	return ctrl.Result{}, nil
