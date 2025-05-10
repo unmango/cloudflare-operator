@@ -80,12 +80,11 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudflared := &cfv1alpha1.Cloudflared{}
 	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-		log.V(2).Info("Cloudflared resource not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if !cloudflared.DeletionTimestamp.IsZero() {
-		log.V(2).Info("Object is being deleted")
+		log.V(2).Info("Cloudflared is being deleted")
 		return ctrl.Result{}, nil
 	}
 
@@ -98,8 +97,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to patch Cloudflared status conditions")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 	}
 
