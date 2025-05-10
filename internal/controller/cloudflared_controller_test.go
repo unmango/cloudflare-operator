@@ -129,7 +129,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should default to a DaemonSet", func() {
-				By("Fetching the resource")
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -137,7 +136,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should create a DaemonSet", func() {
-				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -175,7 +173,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should add an owner reference", func() {
-				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -221,7 +218,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should update the Cloudflared status", func() {
-				By("Fetching the resource")
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 				Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
@@ -642,7 +638,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				})
 
 				It("should create a selector that matches pod labels", func() {
-					By("Fetching the DaemonSet")
 					resource := &appsv1.DaemonSet{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -696,10 +691,8 @@ var _ = Describe("Cloudflared Controller", func() {
 				})
 
 				It("should update the Cloudflared status", func() {
-					By("Fetching the resource")
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
 					Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
 				})
 
@@ -1020,7 +1013,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				})
 
 				It("should update the Cloudflared status", func() {
-					By("Fetching the resource")
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -1474,7 +1466,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should mount the config in the cloudflared container", func() {
-				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
@@ -1524,7 +1515,6 @@ var _ = Describe("Cloudflared Controller", func() {
 			})
 
 			It("should mount the secret in the cloudflared container", func() {
-				By("Fetching the DaemonSet")
 				resource := &appsv1.DaemonSet{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
