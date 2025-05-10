@@ -119,7 +119,7 @@ type CloudflaredStatus struct {
 	// The Kind of the app managing the cloudflared instance.
 	//
 	// +optional
-	Kind CloudflaredKind `json:"kind,omitempty"`
+	Kind *CloudflaredKind `json:"kind,omitempty"`
 
 	// The id of the tunnel currently being run by this cloudflared instance.
 	//

@@ -98,28 +98,13 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to patch cloudflared status conditions")
+			log.Error(err, "Failed to patch Cloudflared status conditions")
 			return ctrl.Result{}, nil
-		}
-	}
-
-	if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
-		tunnel, err := r.getTunnelRef(ctx, cloudflared)
-		if err != nil {
-			log.Error(err, "Failed to look up tunnel")
-			return ctrl.Result{}, nil
-		}
-		if !tunnel.DeletionTimestamp.IsZero() {
-			log.Info("CloudflareTunnel is being deleted, cleaning up Cloudflared")
-			if err = r.Delete(ctx, cloudflared); err != nil {
-				log.Error(err, "Failed to delete Cloudflared")
-				return ctrl.Result{}, nil
-			}
 		}
 	}
 
 	// Kind hasn't been set, we need to create the app
-	if cloudflared.Status.Kind == "" {
+	if cloudflared.Status.Kind == nil {
 		if err := r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -129,30 +114,39 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	kind := *cloudflared.Status.Kind
 	appKey := client.ObjectKey{
 		Namespace: cloudflared.Namespace,
 		Name:      cloudflared.Name,
 	}
 
-	app, err := r.getApp(ctx, appKey, cloudflared.Status.Kind)
+	log.V(2).Info("Looking up owned application", "kind", kind, "key", appKey)
+	app, err := r.getApp(ctx, appKey, kind)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
 			return ctrl.Result{}, nil
 		}
 
-		// TODO: Probably should just clear Status.Kind and re-queue
-		if err = r.createApp(ctx, cloudflared); err != nil {
-			log.Error(err, "Failed to create app for Cloudflared")
+		if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeAvailableCloudflared,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Owned %s resource not found", kind),
+			})
+			obj.Status.Kind = nil
+		}); err != nil {
+			log.Error(err, "Failed to patch Cloudflared status")
 			return ctrl.Result{}, nil
 		} else {
-			log.Info("Successfully created app for Cloudflared")
-			return ctrl.Result{}, nil
+			log.V(2).Info("Requeueing to create new owned application")
+			return ctrl.Result{Requeue: true}, nil
 		}
 	}
 
 	// Kind has changed, we need to re-create the app
-	if cloudflared.Status.Kind != cloudflared.Spec.Kind {
+	if *cloudflared.Status.Kind != cloudflared.Spec.Kind {
 		log.Info("Spec app Kind does not match observed app Kind, deleting app",
 			"spec", cloudflared.Spec.Kind,
 			"status", cloudflared.Status.Kind,
@@ -247,7 +241,7 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 			Reason:  "Reconciling",
 			Message: fmt.Sprintf("%s created successfully", cloudflared.Spec.Kind),
 		})
-		obj.Status.Kind = cloudflared.Spec.Kind
+		obj.Status.Kind = &cloudflared.Spec.Kind
 		obj.Status.TunnelId = tunnel.Id
 	}); err != nil {
 		log.Error(err, "Failed to update cloudflared status conditions")

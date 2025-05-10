@@ -224,8 +224,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				By("Fetching the resource")
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
+				Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
 			})
 
 			Context("and a matching DaemonSet exists", func() {
@@ -290,6 +289,8 @@ var _ = Describe("Cloudflared Controller", func() {
 				})
 
 				Context("and the Kind is changed to Deployment", func() {
+					var result reconcile.Result
+
 					BeforeEach(func() {
 						By("Re-fetching the resource")
 						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
@@ -300,25 +301,34 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
 					})
 
-					It("should delete the DaemonSet", func() {
-						err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
-						Expect(err).To(MatchError(`daemonsets.apps "test-resource" not found`))
-					})
-
-					It("should create a Deployment", func() {
-						By("Reconciling to create the Deployment")
+					JustBeforeEach(func() {
 						controllerReconciler := &CloudflaredReconciler{
 							Client:     k8sClient,
 							Scheme:     k8sClient.Scheme(),
 							Recorder:   &record.FakeRecorder{},
 							Cloudflare: cfmock,
 						}
-						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+
+						var err error
+						result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 							NamespacedName: typeNamespacedName,
 						})
 						Expect(err).NotTo(HaveOccurred())
+					})
 
-						Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})).To(Succeed())
+					It("should delete the DaemonSet", func() {
+						err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
+						Expect(err).To(MatchError(`daemonsets.apps "test-resource" not found`))
+					})
+
+					It("should clear the Kind status", func() {
+						resource := &cfv1alpha1.Cloudflared{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource.Status.Kind).To(BeNil())
+					})
+
+					It("should requeue reconciliation", func() {
+						Expect(result.Requeue).To(BeTrue())
 					})
 				})
 			})
@@ -690,7 +700,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
+					Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
 				})
 
 				Context("and a matching DaemonSet exists", func() {
@@ -755,6 +765,8 @@ var _ = Describe("Cloudflared Controller", func() {
 					})
 
 					Context("and the Kind is changed to Deployment", func() {
+						var result reconcile.Result
+
 						BeforeEach(func() {
 							By("Re-fetching the resource")
 							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
@@ -765,25 +777,34 @@ var _ = Describe("Cloudflared Controller", func() {
 							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
 						})
 
-						It("should delete the DaemonSet", func() {
-							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
-							Expect(err).To(MatchError(`daemonsets.apps "test-resource" not found`))
-						})
-
-						It("should create a Deployment", func() {
-							By("Reconciling to create the Deployment")
+						JustBeforeEach(func() {
 							controllerReconciler := &CloudflaredReconciler{
 								Client:     k8sClient,
 								Scheme:     k8sClient.Scheme(),
 								Recorder:   &record.FakeRecorder{},
 								Cloudflare: cfmock,
 							}
-							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+
+							var err error
+							result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
 							})
 							Expect(err).NotTo(HaveOccurred())
+						})
 
-							Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})).To(Succeed())
+						It("should delete the DaemonSet", func() {
+							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})
+							Expect(err).To(MatchError(`daemonsets.apps "test-resource" not found`))
+						})
+
+						It("should clear the Kind status", func() {
+							resource := &cfv1alpha1.Cloudflared{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+							Expect(resource.Status.Kind).To(BeNil())
+						})
+
+						It("should requeue reconciliation", func() {
+							Expect(result.Requeue).To(BeTrue())
 						})
 					})
 				})
@@ -1003,7 +1024,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					Expect(resource.Status.Kind).To(Equal(cfv1alpha1.DeploymentCloudflaredKind))
+					Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DeploymentCloudflaredKind)))
 				})
 
 				Context("and a matching Deployment exists", func() {
@@ -1057,6 +1078,8 @@ var _ = Describe("Cloudflared Controller", func() {
 					})
 
 					Context("and the Kind is changed to DaemonSet", func() {
+						var result reconcile.Result
+
 						BeforeEach(func() {
 							By("Re-fetching the resource")
 							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
@@ -1067,25 +1090,34 @@ var _ = Describe("Cloudflared Controller", func() {
 							Expect(k8sClient.Update(ctx, cloudflared)).To(Succeed())
 						})
 
-						It("should delete the Deployment", func() {
-							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})
-							Expect(err).To(MatchError(`deployments.apps "test-resource" not found`))
-						})
-
-						It("should create a DaemonSet", func() {
-							By("Reconciling to create the DaemonSet")
+						JustBeforeEach(func() {
 							controllerReconciler := &CloudflaredReconciler{
 								Client:     k8sClient,
 								Scheme:     k8sClient.Scheme(),
 								Recorder:   &record.FakeRecorder{},
 								Cloudflare: cfmock,
 							}
-							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+
+							var err error
+							result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 								NamespacedName: typeNamespacedName,
 							})
 							Expect(err).NotTo(HaveOccurred())
+						})
 
-							Expect(k8sClient.Get(ctx, typeNamespacedName, &appsv1.DaemonSet{})).To(Succeed())
+						It("should delete the Deployment", func() {
+							err := k8sClient.Get(ctx, typeNamespacedName, &appsv1.Deployment{})
+							Expect(err).To(MatchError(`deployments.apps "test-resource" not found`))
+						})
+
+						It("should clear the Kind status", func() {
+							resource := &cfv1alpha1.Cloudflared{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+							Expect(resource.Status.Kind).To(BeNil())
+						})
+
+						It("should requeue reconciliation", func() {
+							Expect(result.Requeue).To(BeTrue())
 						})
 					})
 
