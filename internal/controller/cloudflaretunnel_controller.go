@@ -82,9 +82,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
+		log.V(2).Info("Deleting tunnel from the cloudflare API")
 		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		} else {
 			log.Info("Successfully deleted cloudflare tunnel")
 			return ctrl.Result{}, nil
@@ -105,6 +106,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
+		log.V(2).Info("Adding finalizer to CloudflareTunnel")
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
 		}); err != nil {
