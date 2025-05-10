@@ -128,7 +128,7 @@ var _ = Describe("Cloudflared Controller", func() {
 			It("should default to a DaemonSet", func() {
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-				Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
+				Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
 			})
 
 			It("should default to the latest tag", func() {
