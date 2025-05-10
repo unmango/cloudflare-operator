@@ -538,7 +538,7 @@ var _ = Describe("Cloudflared Controller", func() {
 				By("Updating the CloudflareTunnel status")
 				tunnel.Status = cfv1alpha1.CloudflareTunnelStatus{
 					AccountTag: accountId,
-					Id:         tunnelId,
+					Id:         ptr.To(tunnelId),
 				}
 				Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
 
@@ -1392,7 +1392,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					By("Updating the CloudflareTunnel status")
 					tunnel.Status = cfv1alpha1.CloudflareTunnelStatus{
 						AccountTag: accountId,
-						Id:         tunnelId,
+						Id:         ptr.To(tunnelId),
 					}
 					Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
 
