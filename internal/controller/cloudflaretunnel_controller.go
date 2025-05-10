@@ -138,10 +138,11 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if cf.Selector != nil {
 			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
 			if err != nil {
-				log.Error(err, "Failed to convert LabelSelector to elector")
+				log.Error(err, "Failed to convert LabelSelector to selector")
 				return ctrl.Result{}, nil
 			}
 
+			log.V(2).Info("Listing selected Cloudflared resources")
 			cloudflareds := &cfv1alpha1.CloudflaredList{}
 			if err := r.List(ctx, cloudflareds, &client.ListOptions{
 				Namespace:     req.Namespace,
@@ -158,9 +159,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					},
 				}
 
-				if err := r.Update(ctx, &c, client.FieldOwner("CloudflareTunnel")); err != nil {
+				log.V(2).Info("Applying tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
+				if err := r.Update(ctx, &c); err != nil {
 					log.Error(err, "Failed to update Cloudflared")
 					return ctrl.Result{}, nil
+				} else {
+					log.Info("Applied tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
 				}
 			}
 		}
