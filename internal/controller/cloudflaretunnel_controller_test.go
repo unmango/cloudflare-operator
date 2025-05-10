@@ -402,6 +402,42 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(resource.Status.Name).To(Equal(cloudflaretunnel.Spec.Name))
 					})
 				})
+
+				Context("and the cloudflared selector is configured", func() {
+					BeforeEach(func() {
+						By("Creating a Cloudflared to operate on")
+						cloudflared := &cfv1alpha1.Cloudflared{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "some-name",
+								Namespace: typeNamespacedName.Namespace,
+								Labels: map[string]string{
+									"cloudflare.unmango.dev/tunnel": resourceName,
+								},
+							},
+						}
+						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+
+						cloudflaretunnel.Spec.Cloudflared = &cfv1alpha1.CloudflareTunnelCloudflared{
+							Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
+								"cloudflare.unmango.dev/tunnel": resourceName,
+							}},
+						}
+					})
+
+					It("should update the Cloudflared tunnel id", func() {
+						cloudflared := &cfv1alpha1.Cloudflared{}
+						key := client.ObjectKey{
+							Name:      "some-name",
+							Namespace: typeNamespacedName.Namespace,
+						}
+						Expect(k8sClient.Get(ctx, key, cloudflared)).To(Succeed())
+						Expect(cloudflared.Spec.Config).NotTo(BeNil())
+						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(tunnelId))
+						Expect(cloudflared.ManagedFields).To(ContainElement(metav1.ManagedFieldsEntry{
+							Manager: string(cloudflared.UID),
+						}))
+					})
+				})
 			})
 
 			Context("and the cloudflare get tunnel call fails", func() {
