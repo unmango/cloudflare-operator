@@ -206,6 +206,11 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 		return fmt.Errorf("lookup tunnel: %w", err)
 	}
 
+	if tunnel.Id == nil {
+		log.Info("No tunnel id")
+		return nil
+	}
+
 	template := tunnel.podTemplateSpec(cloudflared)
 
 	var app client.Object
