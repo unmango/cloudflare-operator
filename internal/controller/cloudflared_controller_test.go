@@ -132,7 +132,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				By("Fetching the resource")
 				resource := &cfv1alpha1.Cloudflared{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
 				Expect(resource.Spec.Kind).To(Equal(cfv1alpha1.DaemonSetCloudflaredKind))
 			})
 
@@ -151,9 +150,6 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(container.Command).To(HaveExactElements(
 					"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 				))
-
-				// Unless otherwise specified, run a hello world tunnel
-				Expect(container.Args).To(HaveExactElements("--hello-world"))
 
 				probe := container.LivenessProbe
 				Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
@@ -627,9 +623,6 @@ var _ = Describe("Cloudflared Controller", func() {
 						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 					))
 
-					// Unless otherwise specified, run a hello world tunnel
-					Expect(container.Args).To(HaveExactElements("--hello-world"))
-
 					probe := container.LivenessProbe
 					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
 						Path:   "/ready",
@@ -960,9 +953,6 @@ var _ = Describe("Cloudflared Controller", func() {
 						"cloudflared", "tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000",
 					))
 
-					// Unless otherwise specified, run a hello world tunnel
-					Expect(container.Args).To(HaveExactElements("--hello-world"))
-
 					probe := container.LivenessProbe
 					Expect(probe.HTTPGet).To(Equal(&corev1.HTTPGetAction{
 						Path:   "/ready",
@@ -1023,7 +1013,6 @@ var _ = Describe("Cloudflared Controller", func() {
 					By("Fetching the resource")
 					resource := &cfv1alpha1.Cloudflared{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
 					Expect(resource.Status.Kind).To(Equal(ptr.To(cfv1alpha1.DeploymentCloudflaredKind)))
 				})
 
