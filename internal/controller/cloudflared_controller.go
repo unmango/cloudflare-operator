@@ -369,7 +369,7 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 		}
 
 		tunnel.AccountId = &cftunnel.Status.AccountTag
-		tunnel.Id = &cftunnel.Status.Id
+		tunnel.Id = cftunnel.Status.Id
 
 		log.Info("Found tunnel credentials",
 			"tunnelId", tunnel.Id,

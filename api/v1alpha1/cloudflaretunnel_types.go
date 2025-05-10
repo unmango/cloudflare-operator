@@ -149,7 +149,7 @@ type CloudflareTunnelStatus struct {
 	// UUID of the tunnel.
 	//
 	// +optional
-	Id string `json:"id,omitempty" format:"uuid"`
+	Id *string `json:"id,omitempty" format:"uuid"`
 
 	// Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
 	// If null, the tunnel is inactive.

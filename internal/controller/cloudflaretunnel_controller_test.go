@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -261,7 +262,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 			JustBeforeEach(func() {
 				By("Updating the CloudflareTunnel status")
-				cloudflaretunnel.Status.Id = tunnelId
+				cloudflaretunnel.Status.Id = ptr.To(tunnelId)
 				Expect(k8sClient.Status().Update(ctx, cloudflaretunnel)).To(Succeed())
 			})
 
