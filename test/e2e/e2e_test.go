@@ -370,7 +370,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the cloudflared resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-", "--timeout=1m")
+			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -405,7 +405,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the tunnel resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "-f", "-", "--timeout=1m")
+			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -415,8 +415,9 @@ var _ = Describe("Manager", Ordered, func() {
 				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
 					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
 				})
-				g.Expect(res).To(BeNil())
-				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(res).NotTo(BeNil())
+				g.Expect(res.DeletedAt.IsZero()).To(BeFalseBecause("The DeletedAt timestamp is set"))
 			}
 			Eventually(verifyDelete).Should(Succeed())
 		})
