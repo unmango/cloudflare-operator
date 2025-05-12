@@ -204,9 +204,10 @@ func main() {
 	}
 
 	if err = (&controller.CloudflaredReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("cloudflared-controller"),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("cloudflared-controller"),
+		Cloudflare: cfclient.New(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cloudflared")
 		os.Exit(1)
