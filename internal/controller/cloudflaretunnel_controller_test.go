@@ -435,7 +435,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						}
 					})
 
-					It("should update the Cloudflared tunnel id", func() {
+					It("should update the Cloudflared spec", func() {
 						By("Reconciling the updated resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
 							Client:     k8sClient,
@@ -456,6 +456,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(k8sClient.Get(ctx, key, cloudflared)).To(Succeed())
 						Expect(cloudflared.Spec.Config).NotTo(BeNil())
 						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
+						Expect(cloudflared.Spec.Config.AccountId).To(Equal(ptr.To(cloudflaretunnel.Spec.AccountId)))
 					})
 
 					It("should update the tunnel status", func() {
