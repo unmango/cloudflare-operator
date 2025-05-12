@@ -162,7 +162,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
 						TunnelId:  &tunnelId,
-						AccountId: &tunnel.Spec.AccountId,
+						AccountId: &tunnel.Status.AccountTag,
 					},
 				}
 
