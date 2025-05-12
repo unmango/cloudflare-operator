@@ -152,6 +152,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				return ctrl.Result{}, nil
 			}
 
+			if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				obj.Status.Instances = int32(len(cloudflareds.Items))
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+
 			for _, c := range cloudflareds.Items {
 				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
