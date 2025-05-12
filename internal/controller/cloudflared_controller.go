@@ -469,8 +469,9 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt32(defaultMetricsPort),
-					Path: "/ready",
+					Port:   intstr.FromInt32(defaultMetricsPort),
+					Path:   "/ready",
+					Scheme: "HTTP",
 				},
 			},
 			InitialDelaySeconds: 10,
