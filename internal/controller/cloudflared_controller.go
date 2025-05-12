@@ -80,12 +80,11 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	cloudflared := &cfv1alpha1.Cloudflared{}
 	if err := r.Get(ctx, req.NamespacedName, cloudflared); err != nil {
-		log.V(2).Info("Cloudflared resource not found, ignoring")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if !cloudflared.DeletionTimestamp.IsZero() {
-		log.V(2).Info("Object is being deleted")
+		log.V(2).Info("Cloudflared is being deleted")
 		return ctrl.Result{}, nil
 	}
 
@@ -98,8 +97,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Message: "Starting reconciliation",
 			})
 		}); err != nil {
-			log.Error(err, "Failed to patch Cloudflared status conditions")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -210,7 +208,7 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 		return err
 	}
 
-	template := r.podTemplateSpec(cloudflared, tunnel)
+	template := tunnel.podTemplateSpec(cloudflared)
 
 	var app client.Object
 	switch cloudflared.Spec.Kind {
@@ -283,54 +281,30 @@ func (r *CloudflaredReconciler) createDeployment(cloudflared *cfv1alpha1.Cloudfl
 }
 
 func (r *CloudflaredReconciler) updateApp(ctx context.Context, app client.Object, cloudflared *cfv1alpha1.Cloudflared) error {
+	tunnel, err := r.lookupTunnel(ctx, cloudflared)
+	if err != nil {
+		return fmt.Errorf("lookup tunnel: %w", err)
+	}
+
+	template := tunnel.podTemplateSpec(cloudflared)
+
+	// For now, we'll blindly apply the spec and let the app controller reconcile differences.
+	// TODO: Is there a clean way to check for a diff to avoid unnecessary operations?
 	switch app := app.(type) {
 	case *appsv1.DaemonSet:
-		return r.updateDaemonSet(ctx, app, cloudflared)
+		return patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
+			obj.Spec.Template = template
+		})
 	case *appsv1.Deployment:
-		return r.updateDeployment(ctx, app, cloudflared)
+		return patch(ctx, r, app, func(obj *appsv1.Deployment) {
+			// Blindly apply the spec and let the Deployment controller reconcile differences
+			obj.Spec.Template = tunnel.podTemplateSpec(cloudflared)
+			if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
+				obj.Spec.Replicas = replicas
+			}
+		})
 	default:
 		return fmt.Errorf("unsupported app type: %T", app)
-	}
-}
-
-func (r *CloudflaredReconciler) updateDaemonSet(ctx context.Context, app *appsv1.DaemonSet, cloudflared *cfv1alpha1.Cloudflared) (err error) {
-	log := logf.FromContext(ctx)
-
-	tunnel, err := r.lookupTunnel(ctx, cloudflared)
-	if err != nil {
-		return err
-	}
-
-	if err := patch(ctx, r, app, func(obj *appsv1.DaemonSet) {
-		// Blindly apply the spec and let the DaemonSet controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnel)
-	}); err != nil {
-		log.Error(err, "Failed to patch Cloudflared DaemonSet")
-		return err
-	} else {
-		return nil
-	}
-}
-
-func (r *CloudflaredReconciler) updateDeployment(ctx context.Context, app *appsv1.Deployment, cloudflared *cfv1alpha1.Cloudflared) (err error) {
-	log := logf.FromContext(ctx)
-
-	tunnel, err := r.lookupTunnel(ctx, cloudflared)
-	if err != nil {
-		return err
-	}
-
-	if err := patch(ctx, r, app, func(obj *appsv1.Deployment) {
-		// Blindly apply the spec and let the Deployment controller reconcile differences
-		obj.Spec.Template = r.podTemplateSpec(cloudflared, tunnel)
-		if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
-			obj.Spec.Replicas = replicas
-		}
-	}); err != nil {
-		log.Error(err, "Failed to patch Cloudflared Deployment")
-		return err
-	} else {
-		return nil
 	}
 }
 
@@ -407,7 +381,7 @@ func (r *CloudflaredReconciler) getTunnelRef(ctx context.Context, cloudflared *c
 	}
 }
 
-func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared, tunnel tunnel) corev1.PodTemplateSpec {
+func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1.PodTemplateSpec {
 	template := corev1.PodTemplateSpec{}
 	if cloudflared.Spec.Template != nil {
 		cloudflared.Spec.Template.DeepCopyInto(&template)
@@ -493,8 +467,9 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt32(defaultMetricsPort),
-					Path: "/ready",
+					Port:   intstr.FromInt32(defaultMetricsPort),
+					Path:   "/ready",
+					Scheme: "HTTP",
 				},
 			},
 			InitialDelaySeconds: 10,
@@ -516,25 +491,25 @@ func (r *CloudflaredReconciler) podTemplateSpec(cloudflared *cfv1alpha1.Cloudfla
 	var containers []corev1.Container
 	for _, ctr := range template.Spec.Containers {
 		if ctr.Name == "cloudflared" {
-			r.applyCustomizations(&container, &ctr)
+			tunnel.applyCustomizations(&container, &ctr)
 		} else {
 			containers = append(containers, ctr)
 		}
 	}
 
 	template.Spec.Containers = append(containers, container)
-	template.Labels = r.labels(container)
+	template.Labels = tunnel.labels(container)
 
 	return template
 }
 
-func (r *CloudflaredReconciler) applyCustomizations(base, custom *corev1.Container) {
+func (tunnel) applyCustomizations(base, custom *corev1.Container) {
 	if len(custom.Image) > 0 {
 		base.Image = custom.Image
 	}
 }
 
-func (r *CloudflaredReconciler) labels(ctr corev1.Container) map[string]string {
+func (tunnel) labels(ctr corev1.Container) map[string]string {
 	version := "latest"
 	if s := strings.Split(ctr.Image, ":"); len(s) > 1 {
 		version = strings.TrimPrefix(s[1], "v")
