@@ -160,10 +160,12 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	AccountTag string `json:"accountTag,omitempty"`
 
-	// UUID of the tunnel.
-	//
+	// +listType=map
+	// +listMapKey=type
+	// +patchStrategy=merge
+	// +patchMergeKey=type
 	// +optional
-	Id *string `json:"id,omitempty" format:"uuid"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,1,rep,name=conditions"`
 
 	// Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
 	// If null, the tunnel is inactive.
@@ -181,6 +183,16 @@ type CloudflareTunnelStatus struct {
 	//
 	// +optional
 	CreatedAt metav1.Time `json:"createdAt,omitempty"`
+
+	// UUID of the tunnel.
+	//
+	// +optional
+	Id *string `json:"id,omitempty" format:"uuid"`
+
+	// Total number of cloudflared instances targeted by this tunnel (their labels match the selector).
+	//
+	// +optional
+	Instances int32 `json:"instances,omitempty"`
 
 	// A user-friendly name for a tunnel.
 	//
@@ -205,13 +217,6 @@ type CloudflareTunnelStatus struct {
 	//
 	// +optional
 	Type CloudflareTunnelType `json:"type,omitempty"`
-
-	// +listType=map
-	// +listMapKey=type
-	// +patchStrategy=merge
-	// +patchMergeKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true
