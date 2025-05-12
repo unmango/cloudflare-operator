@@ -116,22 +116,37 @@ type CloudflaredSpec struct {
 
 // CloudflaredStatus defines the observed state of Cloudflared.
 type CloudflaredStatus struct {
-	// The Kind of the app managing the cloudflared instance.
-	//
-	// +optional
-	Kind *CloudflaredKind `json:"kind,omitempty"`
-
-	// The id of the tunnel currently being run by this cloudflared instance.
-	//
-	// +optional
-	TunnelId *string `json:"tunnelId,omitempty"`
-
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge
 	// +patchMergeKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,1,rep,name=conditions"`
+
+	// The Kind of the app managing the cloudflared instance.
+	//
+	// +optional
+	Kind *CloudflaredKind `json:"kind,omitempty"`
+
+	// Total number of available pods (ready for at least minReadySeconds).
+	//
+	// +optional
+	NumberAvailable int32 `json:"numberAvailable,omitempty"`
+
+	// Total number of pods with a Ready condition.
+	//
+	// +optional
+	NumberReady int32 `json:"numberReady,omitempty"`
+
+	// Total number of unavailable pods.
+	//
+	// +optional
+	NumberUnavailable int32 `json:"numberUnavailable,omitempty"`
+
+	// The id of the tunnel currently being run by this cloudflared instance.
+	//
+	// +optional
+	TunnelId *string `json:"tunnelId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
