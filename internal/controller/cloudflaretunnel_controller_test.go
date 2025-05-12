@@ -424,6 +424,17 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						}
 					})
 
+					AfterEach(func() {
+						resource := &cfv1alpha1.Cloudflared{}
+						if err := k8sClient.Get(ctx, types.NamespacedName{
+							Namespace: typeNamespacedName.Namespace,
+							Name:      "some-name",
+						}, resource); err == nil {
+							By("Deleting the Cloudflared")
+							Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+						}
+					})
+
 					It("should update the Cloudflared tunnel id", func() {
 						By("Reconciling the updated resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
@@ -445,6 +456,24 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(k8sClient.Get(ctx, key, cloudflared)).To(Succeed())
 						Expect(cloudflared.Spec.Config).NotTo(BeNil())
 						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
+					})
+
+					It("should update the tunnel status", func() {
+						By("Reconciling the updated resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+						Expect(resource.Status.Instances).To(Equal(int32(1)))
 					})
 				})
 			})
