@@ -228,6 +228,7 @@ type CloudflareTunnelStatus struct {
 // +kubebuilder:printcolumn:name="Created",type=string,JSONPath=".status.createdAt"
 // +kubebuilder:printcolumn:name="Active At",type=string,JSONPath=".status.connsActiveAt"
 // +kubebuilder:printcolumn:name="Inactive At",type=string,JSONPath=".status.connsInactiveAt"
+// +kubebuilder:printcolumn:name="Instances",type=string,JSONPath=".status.instances"
 
 // CloudflareTunnel is the Schema for the cloudflaretunnels API.
 type CloudflareTunnel struct {

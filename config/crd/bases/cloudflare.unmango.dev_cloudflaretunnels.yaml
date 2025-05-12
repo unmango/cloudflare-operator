@@ -36,6 +36,9 @@ spec:
     - jsonPath: .status.connsInactiveAt
       name: Inactive At
       type: string
+    - jsonPath: .status.instances
+      name: Instances
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:

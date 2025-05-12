@@ -8300,6 +8300,9 @@ spec:
     - jsonPath: .status.connsInactiveAt
       name: Inactive At
       type: string
+    - jsonPath: .status.instances
+      name: Instances
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -8564,6 +8567,11 @@ spec:
               id:
                 description: UUID of the tunnel.
                 type: string
+              instances:
+                description: Total number of cloudflared instances targeted by this
+                  tunnel (their labels match the selector).
+                format: int32
+                type: integer
               name:
                 description: A user-friendly name for a tunnel.
                 type: string
