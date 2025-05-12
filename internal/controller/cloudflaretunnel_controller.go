@@ -161,7 +161,8 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			for _, c := range cloudflareds.Items {
 				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
-						TunnelId: &tunnelId,
+						TunnelId:  &tunnelId,
+						AccountId: &tunnel.Status.AccountTag,
 					},
 				}
 
@@ -170,7 +171,11 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					log.Error(err, "Failed to update Cloudflared")
 					return ctrl.Result{}, nil
 				} else {
-					log.Info("Applied tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
+					log.Info("Applied config to Cloudflared",
+						"name", c.Name,
+						"id", tunnelId,
+						"account", tunnel.Spec.AccountId,
+					)
 				}
 			}
 		}

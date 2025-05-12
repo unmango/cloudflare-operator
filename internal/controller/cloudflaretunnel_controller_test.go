@@ -265,12 +265,13 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			})
 
 			Context("and the cloudflare get tunnel call succeeds", func() {
+				const accountTag = "test-account-tag"
 				result := &zero_trust.TunnelCloudflaredGetResponse{}
 
 				BeforeEach(func() {
 					result = &zero_trust.TunnelCloudflaredGetResponse{
 						ID:              tunnelId,
-						AccountTag:      "test-account-tag",
+						AccountTag:      accountTag,
 						CreatedAt:       time.Now(),
 						ConnsActiveAt:   time.Now(),
 						ConnsInactiveAt: time.Now(),
@@ -405,22 +406,22 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				Context("and the cloudflared selector is configured", func() {
 					BeforeEach(func() {
+						labels := map[string]string{
+							"cloudflare.unmango.dev/tunnel": resourceName,
+						}
+
 						By("Creating a Cloudflared to operate on")
 						cloudflared := &cfv1alpha1.Cloudflared{
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "some-name",
 								Namespace: typeNamespacedName.Namespace,
-								Labels: map[string]string{
-									"cloudflare.unmango.dev/tunnel": resourceName,
-								},
+								Labels:    labels,
 							},
 						}
 						Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 
 						cloudflaretunnel.Spec.Cloudflared = &cfv1alpha1.CloudflareTunnelCloudflared{
-							Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
-								"cloudflare.unmango.dev/tunnel": resourceName,
-							}},
+							Selector: &metav1.LabelSelector{MatchLabels: labels},
 						}
 					})
 
@@ -435,7 +436,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						}
 					})
 
-					It("should update the Cloudflared tunnel id", func() {
+					It("should update the Cloudflared spec", func() {
 						By("Reconciling the updated resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
 							Client:     k8sClient,
@@ -456,6 +457,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(k8sClient.Get(ctx, key, cloudflared)).To(Succeed())
 						Expect(cloudflared.Spec.Config).NotTo(BeNil())
 						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
+						Expect(cloudflared.Spec.Config.AccountId).To(Equal(ptr.To(accountTag)))
 					})
 
 					It("should update the tunnel status", func() {
