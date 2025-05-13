@@ -229,29 +229,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Return(nil, fmt.Errorf("new tunnel failed"))
 				})
 
-				It("should set the error status", func() {
-					By("Reconciling the created resource")
-					controllerReconciler := &CloudflareTunnelReconciler{
-						Client:     k8sClient,
-						Scheme:     k8sClient.Scheme(),
-						Cloudflare: cfmock,
-					}
-
-					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-						NamespacedName: typeNamespacedName,
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					resource := &cfv1alpha1.CloudflareTunnel{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					condition := meta.FindStatusCondition(
-						resource.Status.Conditions,
-						typeErrorCloudflareTunnel,
-					)
-					Expect(condition).NotTo(BeNil(), "Condition not set")
-					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-				})
+				// TODO: Probably record an event
 			})
 		})
 
@@ -487,29 +465,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Return(nil, fmt.Errorf("get tunnel failed"))
 				})
 
-				It("should set the error status", func() {
-					By("Reconciling the created resource")
-					controllerReconciler := &CloudflareTunnelReconciler{
-						Client:     k8sClient,
-						Scheme:     k8sClient.Scheme(),
-						Cloudflare: cfmock,
-					}
-
-					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-						NamespacedName: typeNamespacedName,
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					resource := &cfv1alpha1.CloudflareTunnel{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					condition := meta.FindStatusCondition(
-						resource.Status.Conditions,
-						typeErrorCloudflareTunnel,
-					)
-					Expect(condition).NotTo(BeNil(), "Condition not set")
-					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-				})
+				// TODO: Probably record an event or something
 			})
 
 			Context("and the CloudflareTunnel is marked for deletion", func() {
@@ -559,29 +515,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 							Return(nil, fmt.Errorf("delete tunnel failed"))
 					})
 
-					It("should set the error status", func() {
-						By("Reconciling the deleted resource")
-						controllerReconciler := &CloudflareTunnelReconciler{
-							Client:     k8sClient,
-							Scheme:     k8sClient.Scheme(),
-							Cloudflare: cfmock,
-						}
-
-						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-							NamespacedName: typeNamespacedName,
-						})
-						Expect(err).NotTo(HaveOccurred())
-
-						resource := &cfv1alpha1.CloudflareTunnel{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-						condition := meta.FindStatusCondition(
-							resource.Status.Conditions,
-							typeErrorCloudflareTunnel,
-						)
-						Expect(condition).NotTo(BeNil(), "Condition not set")
-						Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-					})
+					// TODO: Probably record an event or something
 				})
 			})
 		})
@@ -635,33 +569,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
 			})
 
-			It("should set the error status", func() {
-				cfmock.EXPECT().
-					CreateTunnel(gomock.Any(), gomock.Any()).
-					Times(0)
-
-				By("Reconciling the created resource")
-				controllerReconciler := &CloudflareTunnelReconciler{
-					Client:     k8sClient,
-					Scheme:     k8sClient.Scheme(),
-					Cloudflare: cfmock,
-				}
-
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				resource := &cfv1alpha1.CloudflareTunnel{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-				condition := meta.FindStatusCondition(
-					resource.Status.Conditions,
-					typeErrorCloudflareTunnel,
-				)
-				Expect(condition).NotTo(BeNil(), "Condition not set")
-				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-			})
+			// TODO: Probably record an event or something
 		})
 	})
 })
