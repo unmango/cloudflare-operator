@@ -32,7 +32,7 @@ var _ = Describe("Errors", func() {
 			StatusCode: http.StatusNotFound,
 		}
 
-		Expect(client.IgnoreNotFound(err)).To(BeNil())
+		Expect(client.IgnoreNotFound(err)).To(Succeed())
 	})
 
 	It("should ignore conflict errors", func() {
@@ -40,6 +40,6 @@ var _ = Describe("Errors", func() {
 			StatusCode: http.StatusConflict,
 		}
 
-		Expect(client.IgnoreConflict(err)).To(BeNil())
+		Expect(client.IgnoreConflict(err)).To(Succeed())
 	})
 })
