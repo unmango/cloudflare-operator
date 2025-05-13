@@ -6,6 +6,7 @@ godebug default=go1.24
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+	github.com/onsi/ginkgo/v2/ginkgo
 	github.com/unmango/devctl
 	go.uber.org/mock/mockgen
 	helm.sh/helm/v3/cmd/helm
