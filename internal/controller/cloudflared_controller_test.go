@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -65,8 +64,6 @@ var _ = Describe("Cloudflared Controller", func() {
 		)
 
 		BeforeEach(func() {
-			Expect(os.Setenv("CLOUDFLARE_API_TOKEN", "test-api-token")).To(Succeed())
-
 			ctrl = gomock.NewController(GinkgoT())
 			cfmock = testing.NewMockClient(ctrl)
 
@@ -421,20 +418,6 @@ var _ = Describe("Cloudflared Controller", func() {
 						Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
 					})
 				})
-
-				Context("and the api token environment variable is not set", func() {
-					BeforeEach(func() {
-						Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
-
-						cfmock.EXPECT().
-							GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
-							Times(0)
-					})
-
-					It("should not attempt to lookup the tunnel token", func() {
-						// Assertion is handled via the cfmock
-					})
-				})
 			})
 		})
 
@@ -502,20 +485,6 @@ var _ = Describe("Cloudflared Controller", func() {
 						resource := &cfv1alpha1.Cloudflared{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 						Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
-					})
-				})
-
-				Context("and the api token environment variable is not set", func() {
-					BeforeEach(func() {
-						Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
-
-						cfmock.EXPECT().
-							GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
-							Times(0)
-					})
-
-					It("should not attempt to lookup the tunnel token", func() {
-						// Assertion is handled via the cfmock
 					})
 				})
 			})
@@ -1218,20 +1187,6 @@ var _ = Describe("Cloudflared Controller", func() {
 							Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
 						})
 					})
-
-					Context("and the api token environment variable is not set", func() {
-						BeforeEach(func() {
-							Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
-
-							cfmock.EXPECT().
-								GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
-								Times(0)
-						})
-
-						It("should not attempt to lookup the tunnel token", func() {
-							// Assertion is handled via the cfmock
-						})
-					})
 				})
 			})
 
@@ -1299,20 +1254,6 @@ var _ = Describe("Cloudflared Controller", func() {
 							resource := &cfv1alpha1.Cloudflared{}
 							Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 							Expect(resource.Status.TunnelId).To(Equal(ptr.To(tunnelId)))
-						})
-					})
-
-					Context("and the api token environment variable is not set", func() {
-						BeforeEach(func() {
-							Expect(os.Unsetenv("CLOUDFLARE_API_TOKEN")).To(Succeed())
-
-							cfmock.EXPECT().
-								GetTunnelToken(gomock.Any(), gomock.Any(), gomock.Any()).
-								Times(0)
-						})
-
-						It("should not attempt to lookup the tunnel token", func() {
-							// Assertion is handled via the cfmock
 						})
 					})
 				})

@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v4"
@@ -135,8 +134,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			})
 			obj.Status.Kind = nil
 		}); err != nil {
-			log.Error(err, "Failed to patch Cloudflared status")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		} else {
 			log.V(2).Info("Requeueing to create new owned application")
 			return ctrl.Result{Requeue: true}, nil
@@ -205,7 +203,7 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 
 	tunnel, err := r.lookupTunnel(ctx, cloudflared)
 	if err != nil {
-		return err
+		return fmt.Errorf("lookup tunnel: %w", err)
 	}
 
 	template := tunnel.podTemplateSpec(cloudflared)
@@ -223,13 +221,10 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 	}
 
 	if err := ctrl.SetControllerReference(cloudflared, app, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference")
-		return err
+		return fmt.Errorf("set controller reference: %w", err)
 	}
-
 	if err := r.Create(ctx, app); err != nil {
-		log.Error(err, "Failed to create a new app for Cloudflared")
-		return err
+		return fmt.Errorf("create app: %w", err)
 	}
 
 	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
@@ -242,11 +237,10 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 		obj.Status.Kind = &cloudflared.Spec.Kind
 		obj.Status.TunnelId = tunnel.Id
 	}); err != nil {
-		log.Error(err, "Failed to update cloudflared status conditions")
 		return err
-	} else {
-		return nil
 	}
+
+	return nil
 }
 
 func (r *CloudflaredReconciler) createDaemonSet(cloudflared *cfv1alpha1.Cloudflared, podTemplate corev1.PodTemplateSpec) *appsv1.DaemonSet {
@@ -317,38 +311,25 @@ func (r *CloudflaredReconciler) deleteApp(ctx context.Context, app client.Object
 }
 
 func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *cfv1alpha1.Cloudflared) (tunnel tunnel, err error) {
-	log := logf.FromContext(ctx)
 	config := cloudflared.Spec.Config
 	if config == nil {
 		return tunnel, nil
 	}
 
-	if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
-		logf.FromContext(ctx).V(1).Info("No Cloudflare API token set, not looking up tunnel")
-		return tunnel, nil
-	}
-
+	// Prefer inline configuration
 	if tunnel.Id = config.TunnelId; tunnel.Id != nil {
-		log.Info("Using inline config for Cloudflare tunnel lookup")
 		if tunnel.AccountId = config.AccountId; tunnel.AccountId == nil {
 			return tunnel, fmt.Errorf("accountId is required when tunnelId != nil")
 		}
-	}
-
-	if ref := config.TunnelRef; ref != nil {
+	} else if ref := config.TunnelRef; ref != nil {
+		// Fallback to a tunnel reference if provided
 		cftunnel, err := r.getTunnelRef(ctx, cloudflared)
 		if err != nil {
-			log.Error(err, "Failed to look up referenced CloudflareTunnel")
-			return tunnel, err
+			return tunnel, fmt.Errorf("get tunnel ref: %w", err)
 		}
 
 		tunnel.AccountId = &cftunnel.Status.AccountTag
 		tunnel.Id = cftunnel.Status.Id
-
-		log.Info("Found tunnel credentials",
-			"tunnelId", tunnel.Id,
-			"accountId", tunnel.AccountId,
-		)
 	}
 
 	if tunnel.Id != nil && tunnel.AccountId != nil {
@@ -356,7 +337,7 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 			AccountID: cloudflare.F(*tunnel.AccountId),
 		})
 		if err != nil {
-			return tunnel, err
+			return tunnel, fmt.Errorf("get tunnel token: %w", err)
 		}
 	}
 
