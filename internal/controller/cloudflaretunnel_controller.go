@@ -85,7 +85,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.V(2).Info("Deleting tunnel from the cloudflare API")
 		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
 			log.Error(err, "Failed to delete cloudflare tunnel")
-			return ctrl.Result{}, nil
+			return ctrl.Result{Requeue: true}, nil
 		} else {
 			log.Info("Successfully deleted cloudflare tunnel")
 			return ctrl.Result{}, nil
