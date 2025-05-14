@@ -212,6 +212,11 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				},
 			}
 
+			if err := controllerutil.SetControllerReference(tunnel, cloudflared, r.Scheme); err != nil {
+				log.Error(err, "Failed to set controller reference")
+				return ctrl.Result{}, nil
+			}
+
 			if err := r.Create(ctx, cloudflared); err != nil {
 				log.Error(err, "Failed to create Cloudflared")
 				return ctrl.Result{Requeue: true}, nil
