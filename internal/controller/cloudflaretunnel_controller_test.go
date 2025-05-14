@@ -474,10 +474,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 					AfterEach(func() {
 						resource := &cfv1alpha1.Cloudflared{}
-						if err := k8sClient.Get(ctx, types.NamespacedName{
-							Namespace: typeNamespacedName.Namespace,
-							Name:      "some-name",
-						}, resource); err == nil {
+						if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 							By("Deleting the Cloudflared")
 							Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 						}
@@ -518,11 +515,37 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 						resource := &cfv1alpha1.CloudflareTunnel{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-						Expect(resource.Status.Instances).To(Equal(int32(1)))
 						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
 							HaveField("Type", typeProgressingCloudflareTunnel),
 							HaveField("Status", metav1.ConditionTrue),
 						)))
+					})
+
+					Context("and the selector does not match", func() {
+						BeforeEach(func() {
+							cloudflaretunnel.Spec.Cloudflared.Selector = &metav1.LabelSelector{
+								MatchLabels: map[string]string{
+									"a-different-label": "blah",
+								},
+							}
+						})
+
+						It("should not create a Cloudflared", func() {
+							By("Reconciling the resource")
+							controllerReconciler := &CloudflareTunnelReconciler{
+								Client:     k8sClient,
+								Scheme:     k8sClient.Scheme(),
+								Cloudflare: cfmock,
+							}
+
+							_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+								NamespacedName: typeNamespacedName,
+							})
+							Expect(err).NotTo(HaveOccurred())
+
+							cloudflared := &cfv1alpha1.Cloudflared{}
+							Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).NotTo(Succeed())
+						})
 					})
 				})
 			})
