@@ -499,6 +499,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(cloudflared.Spec.Config).NotTo(BeNil())
 						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
 						Expect(cloudflared.Spec.Config.AccountId).To(Equal(ptr.To(accountTag)))
+
+						owner := &metav1.OwnerReference{}
+						Expect(cloudflared.OwnerReferences).To(ContainElement(
+							HaveField("Name", typeNamespacedName.Name), owner,
+						))
+						Expect(owner.APIVersion).To(Equal("cloudflare.unmango.dev/v1alpha1"))
+						Expect(owner.Kind).To(Equal("CloudflareTunnel"))
+						Expect(owner.Controller).To(Equal(ptr.To(true)))
+						Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
 					})
 
 					It("should update the tunnel status", func() {
