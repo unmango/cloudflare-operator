@@ -39,7 +39,9 @@ const (
 )
 
 const (
-	typeAvailableCloudflareTunnel = "Available"
+	typeAvailableCloudflareTunnel   = "Available"
+	typeDegradedCloudflareTunnel    = "Degraded"
+	typeProgressingCloudflareTunnel = "Progressing"
 )
 
 // CloudflareTunnelReconciler reconciles a CloudflareTunnel object
@@ -87,6 +89,18 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				Reason:  "Reconciling",
 				Message: "Starting reconciliation",
 			})
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Starting reconciliation",
+			})
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeProgressingCloudflareTunnel,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Starting reconciliation",
+			})
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -122,48 +136,52 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if cf := tunnel.Spec.Cloudflared; cf != nil {
-		if cf.Selector != nil {
-			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
-			if err != nil {
-				log.Error(err, "Failed to convert LabelSelector to selector")
+		selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
+		if err != nil {
+			log.Error(err, "Failed to convert LabelSelector to selector")
+			return ctrl.Result{}, nil
+		}
+
+		log.V(2).Info("Listing selected Cloudflared resources")
+		cloudflareds := &cfv1alpha1.CloudflaredList{}
+		if err := r.List(ctx, cloudflareds, &client.ListOptions{
+			Namespace:     req.Namespace,
+			LabelSelector: selector,
+		}); err != nil {
+			log.Error(err, "Failed to list Cloudflareds")
+			return ctrl.Result{}, nil
+		}
+
+		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeProgressingCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "Selecting cloudflared resources",
+			})
+			obj.Status.Instances = int32(len(cloudflareds.Items))
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		for _, c := range cloudflareds.Items {
+			c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+				CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+					TunnelId:  &tunnelId,
+					AccountId: &tunnel.Status.AccountTag,
+				},
+			}
+
+			log.V(2).Info("Applying tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
+			if err := r.Update(ctx, &c); err != nil {
+				log.Error(err, "Failed to update Cloudflared")
 				return ctrl.Result{}, nil
-			}
-
-			log.V(2).Info("Listing selected Cloudflared resources")
-			cloudflareds := &cfv1alpha1.CloudflaredList{}
-			if err := r.List(ctx, cloudflareds, &client.ListOptions{
-				Namespace:     req.Namespace,
-				LabelSelector: selector,
-			}); err != nil {
-				log.Error(err, "Failed to list Cloudflareds")
-				return ctrl.Result{}, nil
-			}
-
-			if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-				obj.Status.Instances = int32(len(cloudflareds.Items))
-			}); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			for _, c := range cloudflareds.Items {
-				c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
-					CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
-						TunnelId:  &tunnelId,
-						AccountId: &tunnel.Status.AccountTag,
-					},
-				}
-
-				log.V(2).Info("Applying tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
-				if err := r.Update(ctx, &c); err != nil {
-					log.Error(err, "Failed to update Cloudflared")
-					return ctrl.Result{}, nil
-				} else {
-					log.Info("Applied config to Cloudflared",
-						"name", c.Name,
-						"id", tunnelId,
-						"account", tunnel.Spec.AccountId,
-					)
-				}
+			} else {
+				log.Info("Applied config to Cloudflared",
+					"name", c.Name,
+					"id", tunnelId,
+					"account", tunnel.Spec.AccountId,
+				)
 			}
 		}
 	}
@@ -189,7 +207,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
-			Type:    typeAvailableCloudflareTunnel,
+			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Reconciling",
 			Message: "Successfully created cloudflare tunnel",
@@ -231,7 +249,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
-			Type:    typeAvailableCloudflareTunnel,
+			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Reconciling",
 			Message: "Tunnel status updated",
@@ -258,6 +276,17 @@ func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id *strin
 	}
 
 	if id != nil {
+		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "Deleting tunnel from Cloudflare API",
+			})
+		}); err != nil {
+			return err
+		}
+
 		_, err := r.Cloudflare.DeleteTunnel(ctx, *id, zero_trust.TunnelCloudflaredDeleteParams{
 			// TODO: This should probably come from the status, not the spec
 			AccountID: cloudflare.F(tunnel.Spec.AccountId),
