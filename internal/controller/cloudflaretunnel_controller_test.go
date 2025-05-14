@@ -29,7 +29,6 @@ import (
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -143,12 +142,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					condition := meta.FindStatusCondition(
-						resource.Status.Conditions,
-						typeAvailableCloudflareTunnel,
-					)
-					Expect(condition).NotTo(BeNil(), "Condition not set")
-					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+					Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeProgressingCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+					)))
 				})
 
 				It("should update the tunnel status with the result of the request", func() {
@@ -296,12 +293,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 
-					condition := meta.FindStatusCondition(
-						resource.Status.Conditions,
-						typeAvailableCloudflareTunnel,
-					)
-					Expect(condition).NotTo(BeNil(), "Condition not set")
-					Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+					Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeProgressingCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+					)))
 				})
 
 				It("should update the status from the observed tunnel", func() {
@@ -454,6 +449,28 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						resource := &cfv1alpha1.CloudflareTunnel{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 						Expect(resource.Status.Instances).To(Equal(int32(1)))
+					})
+
+					It("should mark the CloudflareTunnel resource as progressing and not available", func() {
+						By("Reconciling the created resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
+
+						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeProgressingCloudflareTunnel),
+							HaveField("Status", metav1.ConditionTrue),
+						)))
 					})
 				})
 			})
