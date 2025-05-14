@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -164,6 +165,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, err
 		}
 
+		var count int
 		for _, c := range cloudflareds.Items {
 			c.Spec.Config = &cfv1alpha1.CloudflaredConfig{
 				CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
@@ -177,11 +179,43 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				log.Error(err, "Failed to update Cloudflared")
 				return ctrl.Result{}, nil
 			} else {
+				count++
 				log.Info("Applied config to Cloudflared",
 					"name", c.Name,
 					"id", tunnelId,
 					"account", tunnel.Spec.AccountId,
 				)
+			}
+		}
+
+		if cf.Template != nil && count == 0 {
+			if !selector.Matches(labels.Set(cf.Template.Labels)) {
+				log.Info("Given label selector does not match Cloudflared template labels",
+					"selector", selector,
+					"labels", cf.Template.Labels,
+					"template", cf.Template,
+				)
+				return ctrl.Result{}, nil
+			}
+
+			cloudflared := &cfv1alpha1.Cloudflared{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tunnel.Name,
+					Namespace: tunnel.Namespace,
+				},
+				Spec: cf.Template.Spec,
+			}
+
+			cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+				CloudflaredConfigInline: cfv1alpha1.CloudflaredConfigInline{
+					TunnelId:  &tunnelId,
+					AccountId: &tunnel.Status.AccountTag,
+				},
+			}
+
+			if err := r.Create(ctx, cloudflared); err != nil {
+				log.Error(err, "Failed to create Cloudflared")
+				return ctrl.Result{Requeue: true}, nil
 			}
 		}
 	}
