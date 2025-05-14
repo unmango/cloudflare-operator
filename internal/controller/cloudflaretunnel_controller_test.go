@@ -768,32 +768,8 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			})
 
 			Context("and an owned Cloudflared exists matching the given selector", func() {
-				BeforeEach(func() {
-					cloudflared := &cfv1alpha1.Cloudflared{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "test-cloudflared",
-							Namespace: typeNamespacedName.Namespace,
-							Labels: map[string]string{
-								"delete-test": "blah",
-							},
-						},
-					}
-
-					err := controllerutil.SetControllerReference(cloudflaretunnel, cloudflared, k8sClient.Scheme())
-					Expect(err).NotTo(HaveOccurred())
-					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
-
-					cloudflaretunnel.Spec.Cloudflared = &cfv1alpha1.CloudflareTunnelCloudflared{
-						Selector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{
-								"delete-test": "blah",
-							},
-						},
-					}
-				})
-
 				It("should delete the Cloudflared", func() {
-					By("Reconciling the resource")
+					By("Reconciling to create the resource")
 					controllerReconciler := &CloudflareTunnelReconciler{
 						Client:     k8sClient,
 						Scheme:     k8sClient.Scheme(),
@@ -805,8 +781,41 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					})
 					Expect(err).NotTo(HaveOccurred())
 
-					resource := &cfv1alpha1.Cloudflared{}
-					err = k8sClient.Get(ctx, typeNamespacedName, resource)
+					By("Creating a matching cloudflared")
+					cloudflared := &cfv1alpha1.Cloudflared{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-cloudflared",
+							Namespace: typeNamespacedName.Namespace,
+							Labels: map[string]string{
+								"delete-test": "blah",
+							},
+						},
+					}
+
+					err = controllerutil.SetControllerReference(cloudflaretunnel, cloudflared, k8sClient.Scheme())
+					Expect(err).NotTo(HaveOccurred())
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+
+					By("Updating the CloudflareTunnel")
+					tunnel := &cfv1alpha1.CloudflareTunnel{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+
+					tunnel.Spec.Cloudflared = &cfv1alpha1.CloudflareTunnelCloudflared{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"delete-test": "blah",
+							},
+						},
+					}
+					Expect(k8sClient.Update(ctx, tunnel)).To(Succeed())
+
+					By("Reconciling the resource")
+					_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					err = k8sClient.Get(ctx, typeNamespacedName, cloudflared)
 					Expect(errors.IsNotFound(err)).To(BeTrueBecause("Resource was deleted"))
 				})
 			})
