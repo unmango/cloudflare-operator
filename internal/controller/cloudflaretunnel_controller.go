@@ -193,7 +193,6 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				log.Info("Given label selector does not match Cloudflared template labels",
 					"selector", selector,
 					"labels", cf.Template.Labels,
-					"template", cf.Template,
 				)
 				return ctrl.Result{}, nil
 			}
