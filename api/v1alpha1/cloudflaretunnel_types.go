@@ -99,11 +99,21 @@ type CloudflareTunnelSecret struct {
 	ValueFrom *CloudflareTunnelSecretReference `json:"valueFrom,omitempty"`
 }
 
+// CloudflareTunnelCloudflared describes how cloudflared should run this tunnel. If template is
+// provided the labels must match selector. The spec.config.tunnelId and spec.config.accountId fields
+// will be managed by the CloudflareTunnel controller. If template is nil the controller will begin
+// managing the spec.config.tunnelId and spec.config.accountId fields on all Cloudflared resources
+// matched by selector.
 type CloudflareTunnelCloudflared struct {
 	// Selector defines which Cloudflared resource(s) is/are responsible for running the tunnel.
 	//
+	// +required
+	Selector *metav1.LabelSelector `json:"selector"`
+
+	// Template describes the cloudflareds that will be created.
+	//
 	// +optional
-	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+	Template *CloudflaredTemplateSpec `json:"template,omitempty"`
 }
 
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.

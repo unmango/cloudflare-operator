@@ -1,6 +1,24 @@
 package v1alpha1
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// CloudflaredTemplateSpec describes the data a cloudflared should have when created from a template
+type CloudflaredTemplateSpec struct {
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	//
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Specification of the desired behavior of the cloudflared.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
+	//
+	// +optional
+	Spec CloudflaredSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+}
 
 // These types are currently unused. I have this janky idea to spawn a job in the CRD namespace
 // to perform cloudflare API operations. It would allow specifying the API token on the CRD
