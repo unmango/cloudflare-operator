@@ -449,10 +449,62 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						resource := &cfv1alpha1.CloudflareTunnel{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 						Expect(resource.Status.Instances).To(Equal(int32(1)))
+						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeProgressingCloudflareTunnel),
+							HaveField("Status", metav1.ConditionTrue),
+						)))
+					})
+				})
+
+				Context("and the cloudflared template is configured", func() {
+					BeforeEach(func() {
+						cloudflaretunnel.Spec.Cloudflared = &cfv1alpha1.CloudflareTunnelCloudflared{
+							Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
+								"some-label": "test",
+							}},
+							Template: &cfv1alpha1.CloudflaredTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{
+										"some-label": "test",
+									},
+								},
+							},
+						}
 					})
 
-					It("should mark the CloudflareTunnel resource as progressing and not available", func() {
-						By("Reconciling the created resource")
+					AfterEach(func() {
+						resource := &cfv1alpha1.Cloudflared{}
+						if err := k8sClient.Get(ctx, types.NamespacedName{
+							Namespace: typeNamespacedName.Namespace,
+							Name:      "some-name",
+						}, resource); err == nil {
+							By("Deleting the Cloudflared")
+							Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+						}
+					})
+
+					It("should create a Cloudflared matching the spec", func() {
+						By("Reconciling the resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						cloudflared := &cfv1alpha1.Cloudflared{}
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflared)).To(Succeed())
+						Expect(cloudflared.Spec.Config).NotTo(BeNil())
+						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
+						Expect(cloudflared.Spec.Config.AccountId).To(Equal(ptr.To(accountTag)))
+					})
+
+					It("should update the tunnel status", func() {
+						By("Reconciling the updated resource")
 						controllerReconciler := &CloudflareTunnelReconciler{
 							Client:     k8sClient,
 							Scheme:     k8sClient.Scheme(),
@@ -466,7 +518,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 						resource := &cfv1alpha1.CloudflareTunnel{}
 						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
+						Expect(resource.Status.Instances).To(Equal(int32(1)))
 						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
 							HaveField("Type", typeProgressingCloudflareTunnel),
 							HaveField("Status", metav1.ConditionTrue),
