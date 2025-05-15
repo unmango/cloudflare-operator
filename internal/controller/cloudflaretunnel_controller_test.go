@@ -617,7 +617,24 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 							Return(nil, fmt.Errorf("delete tunnel failed"))
 					})
 
-					// TODO: Probably record an event or something
+					It("should not remove the finalizer", func() {
+						By("Reconciling the deleted resource")
+						controllerReconciler := &CloudflareTunnelReconciler{
+							Client:     k8sClient,
+							Scheme:     k8sClient.Scheme(),
+							Cloudflare: cfmock,
+						}
+
+						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: typeNamespacedName,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						resource := &cfv1alpha1.CloudflareTunnel{}
+						err = k8sClient.Get(ctx, typeNamespacedName, resource)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(resource.Finalizers).NotTo(BeEmpty())
+					})
 				})
 			})
 		})
@@ -734,45 +751,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					resource := &cfv1alpha1.CloudflareTunnel{}
 					err = k8sClient.Get(ctx, typeNamespacedName, resource)
 					Expect(errors.IsNotFound(err)).To(BeTrueBecause("Resource was deleted"))
-				})
-			})
-
-			Context("and the Cloudflare API call fails", func() {
-				BeforeEach(func() {
-					result := &zero_trust.TunnelCloudflaredNewResponse{
-						ID:              "test-id",
-						AccountTag:      "test-account-id",
-						CreatedAt:       time.Now(),
-						ConnsActiveAt:   time.Now(),
-						ConnsInactiveAt: time.Now(),
-						Name:            cloudflaretunnel.Name,
-						RemoteConfig:    true,
-						Status:          zero_trust.TunnelCloudflaredNewResponseStatusHealthy,
-						TunType:         zero_trust.TunnelCloudflaredNewResponseTunTypeCfdTunnel,
-					}
-					cfmock.EXPECT().
-						CreateTunnel(gomock.Any(), gomock.Any()).
-						Return(result, nil).
-						AnyTimes()
-				})
-
-				It("should not remove the finalizer", func() {
-					By("Reconciling the deleted resource")
-					controllerReconciler := &CloudflareTunnelReconciler{
-						Client:     k8sClient,
-						Scheme:     k8sClient.Scheme(),
-						Cloudflare: cfmock,
-					}
-
-					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-						NamespacedName: typeNamespacedName,
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					resource := &cfv1alpha1.CloudflareTunnel{}
-					err = k8sClient.Get(ctx, typeNamespacedName, resource)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(resource.Finalizers).NotTo(BeEmpty())
 				})
 			})
 
