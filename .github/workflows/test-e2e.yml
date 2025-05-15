@@ -10,6 +10,7 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    concurrency: e2e
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
