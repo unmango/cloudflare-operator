@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -311,6 +312,46 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id *string, tunnel *cfv1alpha1.CloudflareTunnel) error {
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
 		return nil
+	}
+
+	if cf := tunnel.Spec.Cloudflared; cf != nil {
+		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "Deleting owned Cloudflared instances",
+			})
+		}); err != nil {
+			return err
+		}
+
+		selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
+		if err != nil {
+			return fmt.Errorf("converting label selector into label: %w", err)
+		}
+
+		cloudflareds := &cfv1alpha1.CloudflaredList{}
+		if err := r.List(ctx, cloudflareds, &client.ListOptions{
+			Namespace:     tunnel.Namespace,
+			LabelSelector: selector,
+		}); err != nil {
+			return fmt.Errorf("listing cloudflareds: %w", err)
+		}
+
+		for _, c := range cloudflareds.Items {
+			hasOwnerRef, err := controllerutil.HasOwnerReference(c.OwnerReferences, tunnel, r.Scheme)
+			if err != nil {
+				return fmt.Errorf("checking owner ref: %w", err)
+			}
+			if !hasOwnerRef {
+				continue
+			}
+
+			if err = r.Delete(ctx, &c); err != nil {
+				return fmt.Errorf("deleing owned cloudflared: %w", err)
+			}
+		}
 	}
 
 	if id != nil {
