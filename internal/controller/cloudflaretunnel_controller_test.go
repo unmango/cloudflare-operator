@@ -778,18 +778,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 			Context("and an owned Cloudflared exists matching the given selector", func() {
 				It("should delete the Cloudflared", func() {
-					By("Reconciling to create the resource")
-					controllerReconciler := &CloudflareTunnelReconciler{
-						Client:     k8sClient,
-						Scheme:     k8sClient.Scheme(),
-						Cloudflare: cfmock,
-					}
-
-					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-						NamespacedName: typeNamespacedName,
-					})
-					Expect(err).NotTo(HaveOccurred())
-
 					By("Creating a matching cloudflared")
 					cloudflared := &cfv1alpha1.Cloudflared{
 						ObjectMeta: metav1.ObjectMeta{
@@ -801,7 +789,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						},
 					}
 
-					err = controllerutil.SetControllerReference(cloudflaretunnel, cloudflared, k8sClient.Scheme())
+					err := controllerutil.SetControllerReference(cloudflaretunnel, cloudflared, k8sClient.Scheme())
 					Expect(err).NotTo(HaveOccurred())
 					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
 
@@ -819,6 +807,12 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(k8sClient.Update(ctx, tunnel)).To(Succeed())
 
 					By("Reconciling the resource")
+					controllerReconciler := &CloudflareTunnelReconciler{
+						Client:     k8sClient,
+						Scheme:     k8sClient.Scheme(),
+						Cloudflare: cfmock,
+					}
+
 					_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
 					})
