@@ -8,4 +8,11 @@ metadata:
 spec:
   accountId: $CLOUDFLARE_ACCOUNT_ID
   configSource: cloudflare
-  name: cloudflaretunnel-sample
+  cloudflared:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: sample
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: sample
