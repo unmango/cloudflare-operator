@@ -127,7 +127,7 @@ type CloudflareTunnelOriginRequestAccess struct {
 	// Deny traffic that has not fulfilled Access authorization.
 	//
 	// +optional
-	Required *bool `json:"required,omitempty"`
+	Required bool `json:"required,omitempty"`
 }
 
 // Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
@@ -135,13 +135,13 @@ type CloudflareTunnelOriginRequest struct {
 	// For all L7 requests to this hostname, cloudflared will validate each request's Cf-Access-Jwt-Assertion request header.
 	//
 	// +optional
-	Access *CloudflareTunnelOriginRequestAccess `json:"access,omitempty"`
+	Access CloudflareTunnelOriginRequestAccess `json:"access,omitempty"`
 
 	// Path to the certificate authority (CA) for the certificate of your origin.
 	// This option should be used only if your certificate is not signed by Cloudflare.
 	//
 	// +ptional
-	CaPool *string `json:"caPool"`
+	CaPool string `json:"caPool"`
 
 	// Timeout for establishing a new TCP connection to your origin server.
 	// This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
@@ -154,18 +154,18 @@ type CloudflareTunnelOriginRequest struct {
 	// Useful if you are running a WSGI server.
 	//
 	// +optional
-	DisableChunkedEncoding *bool `json:"diableChunkedEncoding,omitempty"`
+	DisableChunkedEncoding bool `json:"diableChunkedEncoding,omitempty"`
 
 	// Attempt to connect to origin using HTTP2.
 	// Origin must be configured as https.
 	//
 	// +optional
-	Http20Origin *bool `json:"http20Origin,omitempty"`
+	Http2Origin bool `json:"http2Origin,omitempty"`
 
 	// Sets the HTTP Host header on requests sent to the local service.
 	//
 	// +optional
-	HttpHostHeader *string `json:"httpHostHeader,omitempty"`
+	HttpHostHeader string `json:"httpHostHeader,omitempty"`
 
 	// Maximum number of idle keepalive connections between Tunnel and your origin.
 	// This does not restrict the total number of concurrent connections.
@@ -183,18 +183,18 @@ type CloudflareTunnelOriginRequest struct {
 	// Disable the “happy eyeballs” algorithm for IPv4/IPv6 fallback if your local network has misconfigured one of the protocols.
 	//
 	// +optional
-	NoHappyEyeballs *bool `json:"noHappyEyeballs,omitempty"`
+	NoHappyEyeballs bool `json:"noHappyEyeballs,omitempty"`
 
 	// Disables TLS verification of the certificate presented by your origin.
 	// Will allow any certificate from the origin to be accepted.
 	//
 	// +optional
-	NoTlsVerify *bool `json:"noTlsVerify,omitempty"`
+	NoTlsVerify bool `json:"noTlsVerify,omitempty"`
 
 	// Hostname that cloudflared should expect from your origin server certificate.
 	//
 	// +optional
-	OriginServerName *string `json:"originServerName,omitempty"`
+	OriginServerName string `json:"originServerName,omitempty"`
 
 	// cloudflared starts a proxy server to translate HTTP traffic into TCP when proxying, for example, SSH or RDP.
 	// This configures what type of proxy will be started.
@@ -202,7 +202,7 @@ type CloudflareTunnelOriginRequest struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Enum=;socks
-	ProxyType *string `json:"proxyType,omitempty"`
+	ProxyType string `json:"proxyType,omitempty"`
 
 	// The timeout after which a TCP keepalive packet is sent on a connection between Tunnel and the origin server.
 	//
@@ -233,12 +233,12 @@ type CloudflareTunnelConfigIngress struct {
 	// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
 	//
 	// +optional
-	OriginRequest *CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
+	OriginRequest CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
 
 	// Requests with this path route to this public hostname.
 	//
 	// +optional
-	Path *string `json:"path,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 // Enable private network access from WARP users to private network routes.
@@ -255,7 +255,7 @@ type CloudflareTunnelConfig struct {
 	// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
 	//
 	// +optional
-	OriginRequest *CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
+	OriginRequest CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
 
 	// Enable private network access from WARP users to private network routes.
 	// This is enabled if the tunnel has an assigned route.
@@ -309,11 +309,6 @@ type CloudflareTunnelSpec struct {
 	//
 	// +optional
 	TunnelSecret *CloudflareTunnelSecret `json:"tunnelSecret,omitempty"`
-
-	// The type of tunnel.
-	//
-	// +required
-	Type CloudflareTunnelType `json:"type,omitempty"`
 }
 
 // CloudflareTunnelStatus defines the observed state of CloudflareTunnel.

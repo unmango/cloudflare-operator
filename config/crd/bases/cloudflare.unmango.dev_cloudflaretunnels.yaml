@@ -8576,7 +8576,7 @@ spec:
                                 Disables chunked transfer encoding.
                                 Useful if you are running a WSGI server.
                               type: boolean
-                            http20Origin:
+                            http2Origin:
                               description: |-
                                 Attempt to connect to origin using HTTP2.
                                 Origin must be configured as https.
@@ -8699,7 +8699,7 @@ spec:
                           Disables chunked transfer encoding.
                           Useful if you are running a WSGI server.
                         type: boolean
-                      http20Origin:
+                      http2Origin:
                         description: |-
                           Attempt to connect to origin using HTTP2.
                           Origin must be configured as https.
@@ -8850,21 +8850,9 @@ spec:
                         x-kubernetes-map-type: atomic
                     type: object
                 type: object
-              type:
-                description: The type of tunnel.
-                enum:
-                - cfd_tunnel
-                - warp_connector
-                - warp
-                - magic
-                - ip_sec
-                - gre
-                - cni
-                type: string
             required:
             - accountId
             - configSource
-            - type
             type: object
           status:
             description: CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
