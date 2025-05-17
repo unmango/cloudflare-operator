@@ -115,3 +115,18 @@ func (mr *MockClientMockRecorder) GetTunnelToken(ctx, tunnelId, params any) *gom
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTunnelToken", reflect.TypeOf((*MockClient)(nil).GetTunnelToken), ctx, tunnelId, params)
 }
+
+// UpdateConfiguration mocks base method.
+func (m *MockClient) UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateConfiguration", ctx, tunnelId, params)
+	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredConfigurationUpdateResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateConfiguration indicates an expected call of UpdateConfiguration.
+func (mr *MockClientMockRecorder) UpdateConfiguration(ctx, tunnelId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateConfiguration", reflect.TypeOf((*MockClient)(nil).UpdateConfiguration), ctx, tunnelId, params)
+}
