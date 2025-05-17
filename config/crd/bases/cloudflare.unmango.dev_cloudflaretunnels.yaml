@@ -8569,6 +8569,7 @@ spec:
                               description: |-
                                 Timeout for establishing a new TCP connection to your origin server.
                                 This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
+                              format: int64
                               type: integer
                             diableChunkedEncoding:
                               description: |-
@@ -8589,11 +8590,13 @@ spec:
                               description: |-
                                 Maximum number of idle keepalive connections between Tunnel and your origin.
                                 This does not restrict the total number of concurrent connections.
+                              format: int64
                               type: integer
                             keepAliveTimeout:
                               default: 90
                               description: Timeout after which an idle keepalive connection
                                 can be discarded.
+                              format: int64
                               type: integer
                             noHappyEyeballs:
                               description: Disable the “happy eyeballs” algorithm
@@ -8622,12 +8625,14 @@ spec:
                               description: The timeout after which a TCP keepalive
                                 packet is sent on a connection between Tunnel and
                                 the origin server.
+                              format: int64
                               type: integer
                             tlsTimeout:
                               default: 10
                               description: Timeout for completing a TLS handshake
                                 to your origin server, if you have chosen to connect
                                 Tunnel to an HTTPS server.
+                              format: int64
                               type: integer
                           required:
                           - caPool
@@ -8687,6 +8692,7 @@ spec:
                         description: |-
                           Timeout for establishing a new TCP connection to your origin server.
                           This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
+                        format: int64
                         type: integer
                       diableChunkedEncoding:
                         description: |-
@@ -8707,11 +8713,13 @@ spec:
                         description: |-
                           Maximum number of idle keepalive connections between Tunnel and your origin.
                           This does not restrict the total number of concurrent connections.
+                        format: int64
                         type: integer
                       keepAliveTimeout:
                         default: 90
                         description: Timeout after which an idle keepalive connection
                           can be discarded.
+                        format: int64
                         type: integer
                       noHappyEyeballs:
                         description: Disable the “happy eyeballs” algorithm for IPv4/IPv6
@@ -8739,12 +8747,14 @@ spec:
                         default: 30
                         description: The timeout after which a TCP keepalive packet
                           is sent on a connection between Tunnel and the origin server.
+                        format: int64
                         type: integer
                       tlsTimeout:
                         default: 10
                         description: Timeout for completing a TLS handshake to your
                           origin server, if you have chosen to connect Tunnel to an
                           HTTPS server.
+                        format: int64
                         type: integer
                     required:
                     - caPool

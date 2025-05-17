@@ -148,7 +148,7 @@ type CloudflareTunnelOriginRequest struct {
 	//
 	// +kubebuilder:default:=10
 	// +optional
-	ConnectTimeout int `json:"connectTimeout"`
+	ConnectTimeout int64 `json:"connectTimeout"`
 
 	// Disables chunked transfer encoding.
 	// Useful if you are running a WSGI server.
@@ -172,13 +172,13 @@ type CloudflareTunnelOriginRequest struct {
 	//
 	// +kubebuilder:default:=100
 	// +optional
-	KeepAliveConnections int `json:"keepAliveConnections"`
+	KeepAliveConnections int64 `json:"keepAliveConnections"`
 
 	// Timeout after which an idle keepalive connection can be discarded.
 	//
 	// +kubebuilder:default:=90
 	// +optional
-	KeepAliveTimeout int `json:"keepAliveTimeout"`
+	KeepAliveTimeout int64 `json:"keepAliveTimeout"`
 
 	// Disable the “happy eyeballs” algorithm for IPv4/IPv6 fallback if your local network has misconfigured one of the protocols.
 	//
@@ -208,13 +208,13 @@ type CloudflareTunnelOriginRequest struct {
 	//
 	// +kubebuilder:default:=30
 	// +optional
-	TcpKeepAlive int `json:"tcpKeepAlive"`
+	TcpKeepAlive int64 `json:"tcpKeepAlive"`
 
 	// Timeout for completing a TLS handshake to your origin server, if you have chosen to connect Tunnel to an HTTPS server.
 	//
 	// +kubebuilder:default:=10
 	// +optional
-	TlsTimeout int `json:"tlsTimeout"`
+	TlsTimeout int64 `json:"tlsTimeout"`
 }
 
 type CloudflareTunnelConfigIngress struct {
