@@ -25,6 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+const ingressClassName = "cloudflare"
+
 
 // IngressReconciler reconciles a Ingress object
 type IngressReconciler struct {

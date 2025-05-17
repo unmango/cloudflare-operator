@@ -18,15 +18,64 @@ package controller
 
 import (
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	networkingv1 "k8s.io/api/networking/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Ingress Controller", func() {
+	var (
+		reconciler         IngressReconciler
+		typeNamespacedName types.NamespacedName
+		ingress            *networkingv1.Ingress
+	)
+
+	BeforeEach(func() {
+		reconciler = IngressReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		typeNamespacedName = types.NamespacedName{
+			Namespace: "default",
+			Name:      "resource-name",
+		}
+		ingress = &networkingv1.Ingress{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      typeNamespacedName.Name,
+				Namespace: typeNamespacedName.Namespace,
+				Annotations: map[string]string{
+					IngressAnnotations.ConfigSource.String(): "cloudflare",
+					IngressAnnotations.AccountId.String():    "test-account",
+				},
+			},
+			Spec: networkingv1.IngressSpec{
+				IngressClassName: ptr.To("cloudflare"),
+				Rules: []networkingv1.IngressRule{{
+					Host: "example.com",
+				}},
+			},
+		}
+	})
+
+	JustBeforeEach(func() {
+		Expect(k8sClient.Create(ctx, ingress)).To(Succeed())
+	})
+
 	Context("When reconciling a resource", func() {
-
 		It("should successfully reconcile the resource", func() {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
 
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			tunnel := &cfv1alpha1.CloudflareTunnel{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
 		})
 	})
 })
