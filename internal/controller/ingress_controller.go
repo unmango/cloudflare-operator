@@ -40,7 +40,6 @@ type ingressAnnotations[T any] struct {
 	Cloudflared  T
 	Name         T
 	TunnelSecret T
-	Type         T
 }
 
 var IngressAnnotations = ingressAnnotations[annotation.Annotation]{
@@ -49,7 +48,6 @@ var IngressAnnotations = ingressAnnotations[annotation.Annotation]{
 	Cloudflared:  ingressPrefix.Annotation("cloudflared"),
 	Name:         ingressPrefix.Annotation("name"),
 	TunnelSecret: ingressPrefix.Annotation("tunnelSecret"),
-	Type:         ingressPrefix.Annotation("type"),
 }
 
 // IngressReconciler reconciles a Ingress object
@@ -119,9 +117,6 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 			}
 		}
 	}
-	if typ, err := annotations.Type(); err == nil {
-		tunnel.Spec.Type = cfv1alpha1.CloudflareTunnelType(typ)
-	}
 	if err := r.Create(ctx, tunnel); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -156,7 +151,6 @@ func readIngressAnnotations(ingress *networkingv1.Ingress) (a ingressAnnotations
 	a.ConfigSource = IngressAnnotations.ConfigSource.Get(ingress)
 	a.Name = IngressAnnotations.Name.Get(ingress)
 	a.TunnelSecret = IngressAnnotations.TunnelSecret.Get(ingress)
-	a.Type = IngressAnnotations.Type.Get(ingress)
 
 	return a
 }
