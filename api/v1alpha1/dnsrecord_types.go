@@ -20,16 +20,108 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type RecordTags string
+
+// Settings for the DNS record.
+type RecordSettings struct {
+	// When enabled, only A records will be generated, and AAAA records will not be created.
+	// This setting is intended for exceptional cases.
+	// Note that this option only applies to proxied records and it has no effect on whether Cloudflare communicates with the origin using IPv4 or IPv6.
+	//
+	// +optional
+	Ipv4Only bool `json:"ipv4Only,omitempty"`
+
+	// When enabled, only AAAA records will be generated, and A records will not be created.
+	// This setting is intended for exceptional cases.
+	// Note that this option only applies to proxied records and it has no effect on whether Cloudflare communicates with the origin using IPv4 or IPv6.
+	//
+	// +optional
+	Ipv6Only bool `json:"ipv6Only,omitempty"`
+}
+
+// Components of a CAA record.
+type RecordData struct {
+	// Flags for the CAA record.
+	//
+	// +kubebuilder:validation:Maximum:=255
+	// +kubebuilder:validation:Minimum:=0
+	// +optional
+	Flags int64 `json:"flags,omitempty"`
+
+	// Name of the property controlled by this record (e.g.: issue, issuewild, iodef).
+	//
+	// +optional
+	Tag string `json:"tag,omitempty"`
+
+	// Value of the record. This field's semantics depend on the chosen tag.
+	//
+	// +optional
+	Value string `json:"value,omitempty"`
+}
+
+type Record struct {
+	// Comments or notes about the DNS record. This field has no effect on DNS responses.
+	//
+	// +optional
+	Comment string `json:"comment,omitempty"`
+
+	// A valid IPv4 address.
+	//
+	// +optional
+	Content string `json:"content,omitempty"`
+
+	// Components of a CAA record.
+	//
+	// +optional
+	Data RecordData `json:"data,omitempty"`
+
+	// DNS record name (or @ for the zone apex) in Punycode.
+	//
+	// +kubebuilder:validation:MaxLength:=255
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Whether the record is receiving the performance and security benefits of Cloudflare.
+	//
+	// +optional
+	Proxied bool `json:"proxied,omitempty"`
+
+	// Settings for the DNS record.
+	//
+	// +optional
+	Settings RecordSettings `json:"settings,omitempty"`
+
+	// Custom tags for the DNS record.
+	// This field has no effect on DNS responses.
+	//
+	// +optional
+	Tags []RecordTags `json:"tags,omitempty"`
+
+	// Time To Live (TTL) of the DNS record in seconds. Setting to 1 means 'automatic'.
+	// Value must be between 60 and 86400, with the minimum reduced to 30 for Enterprise zones.
+	//
+	// +optional
+	Ttl int64 `json:"ttl,omitempty"`
+
+	// Record type.
+	//
+	// +optional
+	Type string `json:"type,omitempty"`
+}
 
 // DnsRecordSpec defines the desired state of DnsRecord.
 type DnsRecordSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Identifier.
+	//
+	// +kubebuilder:validation:MaxLength:=32
+	// +required
+	ZoneId string `json:"zoneId"`
 
-	// Foo is an example field of DnsRecord. Edit dnsrecord_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Record details.
+	//
+	// +required
+	Record Record `json:"record"`
 }
 
 // DnsRecordStatus defines the observed state of DnsRecord.
