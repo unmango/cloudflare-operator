@@ -116,6 +116,154 @@ type CloudflareTunnelCloudflared struct {
 	Template *CloudflaredTemplateSpec `json:"template,omitempty"`
 }
 
+// For all L7 requests to this hostname, cloudflared will validate each request's Cf-Access-Jwt-Assertion request header.
+type CloudflareTunnelOriginRequestAccess struct {
+	// Access applications that are allowed to reach this hostname for this Tunnel. Audience tags can be identified in the dashboard or via the List Access policies API.
+	AudTag []string `json:"audTag"`
+
+	// (default: "Your Zero Trust organization name.")
+	TeamName string `json:"teamName"`
+
+	// Deny traffic that has not fulfilled Access authorization.
+	//
+	// +optional
+	Required *bool `json:"required,omitempty"`
+}
+
+// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
+type CloudflareTunnelOriginRequest struct {
+	// For all L7 requests to this hostname, cloudflared will validate each request's Cf-Access-Jwt-Assertion request header.
+	//
+	// +optional
+	Access *CloudflareTunnelOriginRequestAccess `json:"access,omitempty"`
+
+	// Path to the certificate authority (CA) for the certificate of your origin.
+	// This option should be used only if your certificate is not signed by Cloudflare.
+	//
+	// +ptional
+	CaPool *string `json:"caPool"`
+
+	// Timeout for establishing a new TCP connection to your origin server.
+	// This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
+	//
+	// +kubebuilder:default:=10
+	// +optional
+	ConnectTimeout int `json:"connectTimeout"`
+
+	// Disables chunked transfer encoding.
+	// Useful if you are running a WSGI server.
+	//
+	// +optional
+	DisableChunkedEncoding *bool `json:"diableChunkedEncoding,omitempty"`
+
+	// Attempt to connect to origin using HTTP2.
+	// Origin must be configured as https.
+	//
+	// +optional
+	Http20Origin *bool `json:"http20Origin,omitempty"`
+
+	// Sets the HTTP Host header on requests sent to the local service.
+	//
+	// +optional
+	HttpHostHeader *string `json:"httpHostHeader,omitempty"`
+
+	// Maximum number of idle keepalive connections between Tunnel and your origin.
+	// This does not restrict the total number of concurrent connections.
+	//
+	// +kubebuilder:default:=100
+	// +optional
+	KeepAliveConnections int `json:"keepAliveConnections"`
+
+	// Timeout after which an idle keepalive connection can be discarded.
+	//
+	// +kubebuilder:default:=90
+	// +optional
+	KeepAliveTimeout int `json:"keepAliveTimeout"`
+
+	// Disable the “happy eyeballs” algorithm for IPv4/IPv6 fallback if your local network has misconfigured one of the protocols.
+	//
+	// +optional
+	NoHappyEyeballs *bool `json:"noHappyEyeballs,omitempty"`
+
+	// Disables TLS verification of the certificate presented by your origin.
+	// Will allow any certificate from the origin to be accepted.
+	//
+	// +optional
+	NoTlsVerify *bool `json:"noTlsVerify,omitempty"`
+
+	// Hostname that cloudflared should expect from your origin server certificate.
+	//
+	// +optional
+	OriginServerName *string `json:"originServerName,omitempty"`
+
+	// cloudflared starts a proxy server to translate HTTP traffic into TCP when proxying, for example, SSH or RDP.
+	// This configures what type of proxy will be started.
+	// Valid options are: "" for the regular proxy and "socks" for a SOCKS5 proxy.
+	//
+	// +optional
+	// +kubebuilder:validation:Enum=;socks
+	ProxyType *string `json:"proxyType,omitempty"`
+
+	// The timeout after which a TCP keepalive packet is sent on a connection between Tunnel and the origin server.
+	//
+	// +kubebuilder:default:=30
+	// +optional
+	TcpKeepAlive int `json:"tcpKeepAlive"`
+
+	// Timeout for completing a TLS handshake to your origin server, if you have chosen to connect Tunnel to an HTTPS server.
+	//
+	// +kubebuilder:default:=10
+	// +optional
+	TlsTimeout int `json:"tlsTimeout"`
+}
+
+type CloudflareTunnelConfigIngress struct {
+	// Public hostname for this service.
+	//
+	// +required
+	Hostname string `json:"hostname"`
+
+	// Protocol and address of destination server.
+	// Supported protocols: http://, https://, unix://, tcp://, ssh://, rdp://, unix+tls://, smb://.
+	// Alternatively can return a HTTP status code http_status:[code] e.g. 'http_status:404'.
+	//
+	// +required
+	Service string `json:"service"`
+
+	// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
+	//
+	// +optional
+	OriginRequest *CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
+
+	// Requests with this path route to this public hostname.
+	//
+	// +optional
+	Path *string `json:"path,omitempty"`
+}
+
+// Enable private network access from WARP users to private network routes.
+// This is enabled if the tunnel has an assigned route.
+type CloudflareTunnelWarpRouting struct {
+	Enable bool `json:"enable"`
+}
+
+type CloudflareTunnelConfig struct {
+	// List of public hostname definitions.
+	// At least one ingress rule needs to be defined for the tunnel.
+	Ingress []CloudflareTunnelConfigIngress `json:"ingress,omitempty"`
+
+	// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
+	//
+	// +optional
+	OriginRequest *CloudflareTunnelOriginRequest `json:"originRequest,omitempty"`
+
+	// Enable private network access from WARP users to private network routes.
+	// This is enabled if the tunnel has an assigned route.
+	//
+	// +optional
+	WarpRouting *CloudflareTunnelWarpRouting `json:"warpRouting,omitempty"`
+}
+
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
 // https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
 type CloudflareTunnelSpec struct {
@@ -139,6 +287,11 @@ type CloudflareTunnelSpec struct {
 	// +optional
 	Cloudflared *CloudflareTunnelCloudflared `json:"cloudflared,omitempty"`
 
+	// The tunnel configuration and ingress rules.
+	//
+	// +optional
+	Config *CloudflareTunnelConfig `json:"config,omitempty"`
+
 	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
 	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the
 	// tunnel on the Zero Trust dashboard.
@@ -159,7 +312,7 @@ type CloudflareTunnelSpec struct {
 
 	// The type of tunnel.
 	//
-	// +optional
+	// +required
 	Type CloudflareTunnelType `json:"type,omitempty"`
 }
 
