@@ -22,7 +22,9 @@ require (
 	github.com/cloudflare/cloudflare-go/v4 v4.3.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
+	github.com/unmango/go v0.3.0
 	go.uber.org/mock v0.5.2
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.1
 	k8s.io/apimachinery v0.33.1
 	k8s.io/client-go v0.33.1
@@ -300,7 +302,6 @@ require (
 	github.com/ultraware/whitespace v0.2.0 // indirect
 	github.com/unmango/aferox v0.1.2 // indirect
 	github.com/unmango/devctl v0.1.7 // indirect
-	github.com/unmango/go v0.3.0 // indirect
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.3.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
@@ -350,7 +351,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.17.3 // indirect
 	honnef.co/go/tools v0.6.1 // indirect
 	k8s.io/apiextensions-apiserver v0.33.0 // indirect
