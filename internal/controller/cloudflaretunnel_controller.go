@@ -287,9 +287,11 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 	}
 
 	if config := tunnel.Spec.Config; config != nil {
+		c := cfclient.CloudflareTunnelConfig(*config)
 		_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
+			// TODO: AccountId should probably come from the status, not the spec
 			AccountID: cloudflare.F(tunnel.Spec.AccountId),
-			Config:    cloudflare.F(r.mapConfiguration(config)),
+			Config:    cloudflare.F(c.UpdateParams()),
 		})
 		if err != nil {
 			return err
@@ -317,72 +319,6 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 	}
 
 	return nil
-}
-
-func (r *CloudflareTunnelReconciler) mapConfiguration(config *cfv1alpha1.CloudflareTunnelConfig) zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfig {
-	return zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfig{
-		Ingress: cloudflare.F(r.mapIngress(config.Ingress)),
-		// OriginRequest: cloudflare.F(r.mapOriginRequest(config.OriginRequest)),
-	}
-}
-
-func (r *CloudflareTunnelReconciler) mapIngress(config []cfv1alpha1.CloudflareTunnelConfigIngress) (ingress []zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngress) {
-	for _, c := range config {
-		ingress = append(ingress, zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngress{
-			Hostname:      cloudflare.F(c.Hostname),
-			Service:       cloudflare.F(c.Service),
-			OriginRequest: cloudflare.F(r.mapOriginRequest(c.OriginRequest)),
-			Path:          cloudflare.F(*c.Path),
-		})
-	}
-
-	return ingress
-}
-
-func (r *CloudflareTunnelReconciler) mapOriginRequest(origin *cfv1alpha1.CloudflareTunnelOriginRequest) (req zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngressOriginRequest) {
-	if origin.Access != nil {
-		access := zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngressOriginRequestAccess{
-			AUDTag:   cloudflare.F(origin.Access.AudTag),
-			TeamName: cloudflare.F(origin.Access.TeamName),
-		}
-		if origin.Access.Required != nil {
-			access.Required = cloudflare.F(*origin.Access.Required)
-		}
-
-		req.Access = cloudflare.F(access)
-	}
-
-	if origin.CaPool != nil {
-		req.CAPool = cloudflare.F(*origin.CaPool)
-	}
-	req.ConnectTimeout = cloudflare.F(origin.ConnectTimeout)
-	if origin.DisableChunkedEncoding != nil {
-		req.DisableChunkedEncoding = cloudflare.F(*origin.DisableChunkedEncoding)
-	}
-	if origin.Http20Origin != nil {
-		req.HTTP2Origin = cloudflare.F(*origin.Http20Origin)
-	}
-	if origin.HttpHostHeader != nil {
-		req.HTTPHostHeader = cloudflare.F(*origin.HttpHostHeader)
-	}
-	req.KeepAliveConnections = cloudflare.F(origin.KeepAliveConnections)
-	req.KeepAliveTimeout = cloudflare.F(origin.KeepAliveTimeout)
-	if origin.NoHappyEyeballs != nil {
-		req.NoHappyEyeballs = cloudflare.F(*origin.NoHappyEyeballs)
-	}
-	if origin.NoTlsVerify != nil {
-		req.NoTLSVerify = cloudflare.F(*origin.NoTlsVerify)
-	}
-	if origin.OriginServerName != nil {
-		req.OriginServerName = cloudflare.F(*origin.OriginServerName)
-	}
-	if origin.ProxyType != nil {
-		req.ProxyType = cloudflare.F(*origin.ProxyType)
-	}
-	req.TCPKeepAlive = cloudflare.F(origin.TcpKeepAlive)
-	req.TLSTimeout = cloudflare.F(origin.TlsTimeout)
-
-	return req
 }
 
 func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id *string, tunnel *cfv1alpha1.CloudflareTunnel) error {
