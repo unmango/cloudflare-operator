@@ -15,6 +15,7 @@ type Client interface {
 	EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error)
 	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error)
 	GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error)
+	UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error)
 }
 
 type client struct {
@@ -48,4 +49,9 @@ func (c *client) GetTunnel(ctx context.Context, tunnelId string, params zero_tru
 // GetTunnelToken implements Client.
 func (c *client) GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.Token.Get(ctx, tunnelId, params)
+}
+
+// UpdateConfiguration implements Client.
+func (c *client) UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error) {
+	return c.ZeroTrust.Tunnels.Cloudflared.Configurations.Update(ctx, tunnelId, params)
 }

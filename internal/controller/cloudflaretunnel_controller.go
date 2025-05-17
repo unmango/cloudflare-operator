@@ -286,6 +286,18 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		}
 	}
 
+	if config := tunnel.Spec.Config; config != nil {
+		c := cfclient.CloudflareTunnelConfig(*config)
+		_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
+			// TODO: AccountId should probably come from the status, not the spec
+			AccountID: cloudflare.F(tunnel.Spec.AccountId),
+			Config:    cloudflare.F(c.UpdateParams()),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
