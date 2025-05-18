@@ -27,28 +27,16 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
-	"github.com/unmango/cloudflare-operator/internal/annotation"
+	"github.com/unmango/cloudflare-operator/internal/ingress"
+	"github.com/unmango/cloudflare-operator/internal/ingress/annotation"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const ingressClassName = "cloudflare"
-
-type ingressAnnotations[T any] struct {
-	AccountId    T
-	ConfigSource T
-	Cloudflared  T
-	Name         T
-	TunnelSecret T
-}
-
-var IngressAnnotations = ingressAnnotations[annotation.Annotation]{
-	AccountId:    ingressPrefix.Annotation("accountId"),
-	ConfigSource: ingressPrefix.Annotation("configSource"),
-	Cloudflared:  ingressPrefix.Annotation("cloudflared"),
-	Name:         ingressPrefix.Annotation("name"),
-	TunnelSecret: ingressPrefix.Annotation("tunnelSecret"),
-}
+const (
+	defaultIngressClassName = ingress.DefaultClassName
+	ingressControllerName   = ingress.ControllerName
+)
 
 // IngressReconciler reconciles a Ingress object
 type IngressReconciler struct {
@@ -96,7 +84,7 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 		return ctrl.Result{}, err
 	}
 
-	annotations := readIngressAnnotations(ingress)
+	annotations := annotation.Parse(ingress)
 	if accountId, err := annotations.AccountId(); err == nil {
 		tunnel.Spec.AccountId = accountId
 	} else {
@@ -134,23 +122,11 @@ func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *IngressReconciler) isIngressClass(ingress *networkingv1.Ingress) bool {
 	if class := ingress.Spec.IngressClassName; class != nil {
-		return *class == ingressClassName
+		return *class == defaultIngressClassName
 	}
 	if class, ok := annotation.Lookup(ingress, "kubernetes.io/", "ingress.class"); ok {
-		return class == ingressClassName
+		return class == defaultIngressClassName
 	}
 
 	return false
-}
-
-var ingressPrefix = annotation.Prefix("ingress.cloudflare.unmango.dev/")
-
-func readIngressAnnotations(ingress *networkingv1.Ingress) (a ingressAnnotations[annotation.Value]) {
-	a.AccountId = IngressAnnotations.AccountId.Get(ingress)
-	a.Cloudflared = IngressAnnotations.Cloudflared.Get(ingress)
-	a.ConfigSource = IngressAnnotations.ConfigSource.Get(ingress)
-	a.Name = IngressAnnotations.Name.Get(ingress)
-	a.TunnelSecret = IngressAnnotations.TunnelSecret.Get(ingress)
-
-	return a
 }
