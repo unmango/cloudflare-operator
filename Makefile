@@ -42,6 +42,14 @@ help: ## Display this help.
 manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
+.PHONY: pulumi
+pulumi: manifests ## Generate Pulumi SDKs
+	rm -rf $@ && $(CRD2PULUMI) \
+		--dotnetName UnMango.Cloudflare.Operator --dotnetPath pulumi/dotnet \
+		--goName github.com/unmango/cloudflare-operator/pulumi --goPath pulumi/go \
+		--nodejsName @unmango/pulumi-cloudflare-operator --nodejsPath pulumi/nodejs \
+		$(wildcard config/crd/bases/*)
+
 .PHONY: generate
 generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations, as well as Mocks.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -166,13 +174,14 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 ##@ Dependencies
 
 ## Tool Binaries
-KUBECTL ?= kubectl
-KIND ?= go tool kind
-KUSTOMIZE ?= go tool kustomize
-KUBEBUILDER ?= go tool kubebuilder
+KUBECTL        ?= kubectl
+KIND           ?= go tool kind
+KUSTOMIZE      ?= go tool kustomize
+KUBEBUILDER    ?= go tool kubebuilder
 CONTROLLER_GEN ?= go tool controller-gen
-ENVTEST ?= go tool setup-envtest
-GOLANGCI_LINT ?= go tool golangci-lint
+ENVTEST        ?= go tool setup-envtest
+GOLANGCI_LINT  ?= go tool golangci-lint
+CRD2PULUMI     ?= go tool crd2pulumi
 
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
