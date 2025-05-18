@@ -3,8 +3,10 @@
 *.dll
 *.so
 *.dylib
-bin/*
+bin/
+obj/
 Dockerfile.cross
+node_modules
 
 *.test
 *.out
