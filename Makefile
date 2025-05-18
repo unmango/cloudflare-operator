@@ -44,10 +44,7 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 
 .PHONY: pulumi
 pulumi: manifests ## Generate Pulumi SDKs
-	rm -rf $@ && $(CRD2PULUMI) \
-		--dotnetName UnMango.Cloudflare.Operator --dotnetPath pulumi/dotnet \
-		--nodejsName @unmango/pulumi-cloudflare-operator --nodejsPath pulumi/nodejs \
-		$(wildcard config/crd/bases/*)
+	$(MAKE) -C pulumi
 
 .PHONY: generate
 generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations, as well as Mocks.
