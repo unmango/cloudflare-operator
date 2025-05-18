@@ -1,0 +1,4 @@
+[submodule "upstream/api-schemas"]
+	path = upstream/api-schemas
+	url = https://github.com/cloudflare/api-schemas.git
+	shallow = true
