@@ -3,8 +3,8 @@
 *.dll
 *.so
 *.dylib
-bin/*
-obj/*
+bin/
+obj/
 Dockerfile.cross
 node_modules
 
