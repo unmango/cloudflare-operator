@@ -17701,3 +17701,14 @@ spec:
       serviceAccountName: cloudflare-operator-controller-manager
       terminationGracePeriodSeconds: 10
       volumes: []
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: cloudflare-operator
+    control-plane: controller-manager
+  name: cloudflare-operator-cloudflare
+spec:
+  controller: cloudflare.unmango.dev/ingress-controller
