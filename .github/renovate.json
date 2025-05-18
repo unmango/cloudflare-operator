@@ -10,5 +10,8 @@
 	"major": {
 		"dependencyDashboardApproval": true
 	},
+	"git-submodules": {
+		"enabled": true
+	},
 	"packageRules": []
 }
