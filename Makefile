@@ -47,6 +47,9 @@ generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 	go generate ./...
 
+bundled-schema.out: upstream/api-schemas/openapi.json ## Generate a bundled OpenAPI specification from cloudflare/api-schemas
+	$(VACUUM) bundle -q ${CURDIR}/$< $@
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -173,6 +176,7 @@ KUBEBUILDER ?= go tool kubebuilder
 CONTROLLER_GEN ?= go tool controller-gen
 ENVTEST ?= go tool setup-envtest
 GOLANGCI_LINT ?= go tool golangci-lint
+VACUUM ?= go tool vacuum
 
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
