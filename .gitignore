@@ -4,7 +4,9 @@
 *.so
 *.dylib
 bin/*
+obj/*
 Dockerfile.cross
+node_modules
 
 *.test
 *.out
