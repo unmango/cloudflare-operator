@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	"github.com/unmango/cloudflare-operator/internal/ingress/annotation"
 	networkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -50,8 +51,8 @@ var _ = Describe("Ingress Controller", func() {
 				Name:      typeNamespacedName.Name,
 				Namespace: typeNamespacedName.Namespace,
 				Annotations: map[string]string{
-					IngressAnnotations.ConfigSource.String(): "cloudflare",
-					IngressAnnotations.AccountId.String():    "test-account",
+					annotation.Definitions.ConfigSource.String(): "cloudflare",
+					annotation.Definitions.AccountId.String():    "test-account",
 				},
 			},
 			Spec: networkingv1.IngressSpec{
