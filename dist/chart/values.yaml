@@ -86,3 +86,10 @@ certmanager:
 # [NETWORK POLICIES]: To enable NetworkPolicies set true
 networkPolicy:
   enable: false
+
+# [INGRESS]: To disable the IngressClass set false
+ingressClass:
+  enable: true
+  name: cloudflare
+  parameters: {}
+  defaultClass: false
