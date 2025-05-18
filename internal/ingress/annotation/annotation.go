@@ -32,4 +32,7 @@ func Parse(obj client.Object) (a Values) {
 }
 
 // Re-export for convenience
-var Lookup = annotation.Lookup
+var (
+	Lookup     = annotation.Lookup
+	Kubernetes = annotation.Kubernetes
+)
