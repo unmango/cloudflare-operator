@@ -14,4 +14,4 @@ const doc = new OASNormalize(path, {
 
 const derefed = await doc.dereference();
 
-await writeFile('tmp.json', JSON.stringify(derefed));
+await writeFile('bundled-schema.out', JSON.stringify(derefed));
