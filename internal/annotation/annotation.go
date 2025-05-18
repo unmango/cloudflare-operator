@@ -4,6 +4,7 @@ package annotation
 import (
 	"errors"
 
+	"github.com/unmango/cloudflare-operator/internal/config"
 	"github.com/unmango/go/maybe"
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,7 +12,7 @@ import (
 
 type (
 	Prefix string
-	Value  maybe.Maybe[string]
+	Value  config.Value[string]
 )
 
 func (v Value) UnmarshalYAML(obj any) error {
