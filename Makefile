@@ -181,6 +181,7 @@ ENVTEST ?= go tool setup-envtest
 GOLANGCI_LINT ?= go tool golangci-lint
 VACUUM ?= go tool vacuum
 YQ ?= go tool yq
+BUN ?= bun
 
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
