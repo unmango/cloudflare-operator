@@ -50,14 +50,16 @@ type IngressReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;create;update;patch;delete
 
 func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
 	ingress := &networkingv1.Ingress{}
 	if err := r.Get(ctx, req.NamespacedName, ingress); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if !r.isIngressClass(ingress) {
+	class := r.ingressClassName(ingress)
+	if class != nil && *class != defaultIngressClassName {
+		log.V(1).Info("Ignoring ingress with a different class", "class", class)
 		return ctrl.Result{}, nil
 	}
 
@@ -120,13 +122,27 @@ func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *IngressReconciler) isIngressClass(ingress *networkingv1.Ingress) bool {
+func (r *IngressReconciler) ingressClassName(ingress *networkingv1.Ingress) *string {
 	if class := ingress.Spec.IngressClassName; class != nil {
-		return *class == defaultIngressClassName
+		return class
 	}
-	if class, ok := annotation.Lookup(ingress, "kubernetes.io/", "ingress.class"); ok {
-		return class == defaultIngressClassName
+	if class, ok := annotation.Kubernetes.Lookup(ingress, "ingress.class"); ok {
+		return &class
 	}
 
-	return false
+	return nil
 }
+
+// func (r *IngressReconciler) getIngressClass(ctx context.Context, ingress *networkingv1.Ingress) (*networkingv1.IngressClass, error) {
+// 	if ingress.Spec.IngressClassName == nil {
+// 		return nil, fmt.Errorf("ingressClassName not declared in ingress spec")
+// 	}
+
+// 	class := &networkingv1.IngressClass{}
+// 	key := client.ObjectKey{Name: *ingress.Spec.IngressClassName}
+// 	if err := r.Get(ctx, key, class); err != nil {
+// 		return nil, err
+// 	} else {
+// 		return class, nil
+// 	}
+// }

@@ -68,6 +68,15 @@ var _ = Describe("Ingress Controller", func() {
 		Expect(k8sClient.Create(ctx, ingress)).To(Succeed())
 	})
 
+	AfterEach(func() {
+		Expect(k8sClient.Delete(ctx, ingress)).To(Succeed())
+
+		tunnel := &cfv1alpha1.CloudflareTunnel{}
+		if err := k8sClient.Get(ctx, typeNamespacedName, tunnel); err == nil {
+			Expect(k8sClient.Delete(ctx, tunnel)).To(Succeed())
+		}
+	})
+
 	Context("When reconciling a resource", func() {
 		It("should successfully reconcile the resource", func() {
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -77,6 +86,23 @@ var _ = Describe("Ingress Controller", func() {
 
 			tunnel := &cfv1alpha1.CloudflareTunnel{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+		})
+
+		Context("and ingressClassName does not match", func() {
+			BeforeEach(func() {
+				ingress.Spec.IngressClassName = ptr.To("blah")
+			})
+
+			It("should not create a tunnel", func() {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				err = k8sClient.Get(ctx, typeNamespacedName, tunnel)
+				Expect(err).To(MatchError(ContainSubstring("not found")))
+			})
 		})
 	})
 })
