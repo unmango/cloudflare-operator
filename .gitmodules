@@ -1,4 +1,4 @@
-[submodule "vendor/api-schemas"]
-	path = vendor/api-schemas
+[submodule "upstream/api-schemas"]
+	path = upstream/api-schemas
 	url = https://github.com/cloudflare/api-schemas.git
 	shallow = true
