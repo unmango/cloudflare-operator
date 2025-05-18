@@ -48,7 +48,10 @@ generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject
 	go generate ./...
 
 bundled-schema.out: upstream/api-schemas/openapi.json ## Generate a bundled OpenAPI specification from cloudflare/api-schemas
-	$(VACUUM) bundle -q ${CURDIR}/$< $@
+	$(VACUUM) bundle ${CURDIR}/$< $@ 1>/dev/null
+
+tmp.yml: bundled-schema.out
+	$(YQ) '.components.schemas | to_entries | map(select(.key == "tunnel_*")) | from_entries' $< >$@
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -177,6 +180,7 @@ CONTROLLER_GEN ?= go tool controller-gen
 ENVTEST ?= go tool setup-envtest
 GOLANGCI_LINT ?= go tool golangci-lint
 VACUUM ?= go tool vacuum
+YQ ?= go tool yq
 
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
