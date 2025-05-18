@@ -46,7 +46,6 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 pulumi: manifests ## Generate Pulumi SDKs
 	rm -rf $@ && $(CRD2PULUMI) \
 		--dotnetName UnMango.Cloudflare.Operator --dotnetPath pulumi/dotnet \
-		--goName github.com/unmango/cloudflare-operator/pulumi --goPath pulumi/go \
 		--nodejsName @unmango/pulumi-cloudflare-operator --nodejsPath pulumi/nodejs \
 		$(wildcard config/crd/bases/*)
 
