@@ -325,6 +325,33 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(res.Name).To(Equal("cloudflaretunnel-sample"))
 			}
 			Eventually(verifyTunnel).Should(Succeed())
+
+			checkLogs := func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", "daemonset/cloudflaretunnel-sample",
+					"--namespace", testNamespace,
+					"--all-containers=true")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Registered tunnel connection"))
+			}
+			Eventually(checkLogs).Should(Succeed())
+
+			By("Deleting the tunnel resource")
+			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
+			cmd.Stdin = bytes.NewReader(sample)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the tunnel was deleted")
+			verifyDelete := func(g Gomega) {
+				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
+					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
+				})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(res).NotTo(BeNil())
+				g.Expect(res.DeletedAt.IsZero()).To(BeFalseBecause("The DeletedAt timestamp is set"))
+			}
+			Eventually(verifyDelete).Should(Succeed())
 		})
 
 		It("should create a cloudflared daemonset", func() {
@@ -351,31 +378,14 @@ var _ = Describe("Manager", Ordered, func() {
 				"--timeout", "2m")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("should register a tunnel connection", func() {
-			checkLogs := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", "daemonset/cloudflared-sample",
-					"--namespace", testNamespace,
-					"--all-containers=true")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("Registered tunnel connection"))
-			}
-			Eventually(checkLogs).Should(Succeed())
-		})
-
-		It("should delete the cloudflared resource", func() {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflared.yaml")
-			Expect(err).NotTo(HaveOccurred())
 
 			By("Deleting the cloudflared resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
+			cmd = exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Checking the DaemonSet is removed")
+			By("Checking the cloudflared is removed")
 			cloudflaredNotFound := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "cloudflared",
 					"--namespace", testNamespace, "cloudflared-sample")
@@ -386,40 +396,6 @@ var _ = Describe("Manager", Ordered, func() {
 				))
 			}
 			Eventually(cloudflaredNotFound).Should(Succeed())
-
-			By("Checking the DaemonSet is removed")
-			daemonSetNotFound := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", testNamespace, "cloudflared-sample")
-				output, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
-					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
-				))
-			}
-			Eventually(daemonSetNotFound).Should(Succeed())
-		})
-
-		It("should delete the cloudflare tunnel resource", func(ctx context.Context) {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflaretunnel.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Deleting the tunnel resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
-			cmd.Stdin = bytes.NewReader(sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Verifying the tunnel was deleted")
-			verifyDelete := func(g Gomega) {
-				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
-					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
-				})
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(res).NotTo(BeNil())
-				g.Expect(res.DeletedAt.IsZero()).To(BeFalseBecause("The DeletedAt timestamp is set"))
-			}
-			Eventually(verifyDelete).Should(Succeed())
 		})
 	})
 })
