@@ -226,11 +226,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(status.AccountTag).To(Equal(getResult.AccountTag))
 				Expect(status.Id).To(Equal(ptr.To(getResult.ID)))
 				Expect(status.RemoteConfig).To(Equal(getResult.RemoteConfig))
-				Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+				Expect(status.Status).To(Equal(cfv1alpha1.InactiveCloudflareTunnelHealth))
 				Expect(status.CreatedAt.Time).To(BeTemporally("~", getResult.CreatedAt, time.Second))
 				Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", getResult.ConnsActiveAt, time.Second))
 				Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", getResult.ConnsInactiveAt, time.Second))
 				Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
+				Expect(status.Conditions).To(ContainElements(SatisfyAll(
+					HaveField("Type", typeProgressingCloudflareTunnel),
+					HaveField("Status", metav1.ConditionTrue),
+				)))
 			})
 
 			It("should delete the cloudflared", func(ctx context.Context) {
