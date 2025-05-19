@@ -63,7 +63,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	if record.Status.Id == nil {
+	if id := record.Status.Id; id == nil {
 		res, err := r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
 			Record: r.toCloudflare(record),
@@ -81,7 +81,28 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Type = ptr.To(string(res.Type))
 		}); err != nil {
 			return ctrl.Result{}, nil
+		} else {
+			return ctrl.Result{Requeue: true}, nil
 		}
+	} else if !record.DeletionTimestamp.IsZero() {
+		res, err := r.Cloudflare.DeleteDnsRecord(ctx, *id, dns.RecordDeleteParams{
+			ZoneID: cloudflare.F(record.Spec.ZoneId),
+		})
+		if err != nil {
+			log.Error(err, "Failed to delete DNS record")
+			return ctrl.Result{}, cfclient.IgnoreNotFound(err)
+		}
+
+		if controllerutil.RemoveFinalizer(record, dnsRecordFinalizer) {
+			if err := r.Update(ctx, record); err != nil {
+				return ctrl.Result{}, nil
+			}
+		}
+
+		log.Info("Successfully deleted DnsRecord", "id", res.ID)
+	} else if err := r.refresh(ctx, *id, record); err != nil {
+		log.Error(err, "Failed to refresh DnsRecord")
+		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -93,6 +114,23 @@ func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&cfv1alpha1.DnsRecord{}).
 		Named("dnsrecord").
 		Complete(r)
+}
+
+func (r *DnsRecordReconciler) refresh(ctx context.Context, id string, record *cfv1alpha1.DnsRecord) error {
+	res, err := r.Cloudflare.GetDnsRecord(ctx, id, dns.RecordGetParams{
+		ZoneID: cloudflare.F(record.Spec.ZoneId),
+	})
+	if err != nil {
+		return err
+	}
+
+	return patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
+		obj.Status.Comment = &res.Comment
+		obj.Status.Content = &res.Content
+		obj.Status.Id = &res.ID
+		obj.Status.Name = &res.Name
+		obj.Status.Type = ptr.To(string(res.Type))
+	})
 }
 
 func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.RecordUnionParam {
