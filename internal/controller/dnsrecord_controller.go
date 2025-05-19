@@ -103,12 +103,48 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		log.Info("Successfully deleted DnsRecord", "id", res.ID)
-	} else if err := r.refresh(ctx, *id, record); err != nil {
-		log.Error(err, "Failed to refresh DnsRecord")
 		return ctrl.Result{}, nil
+	} else {
+		log.Info("Refreshing DnsRecord")
+		res, err := r.Cloudflare.GetDnsRecord(ctx, *id, dns.RecordGetParams{
+			ZoneID: cloudflare.F(record.Spec.ZoneId),
+		})
+		if err != nil {
+			log.Error(err, "Failed to read DNS record")
+			return ctrl.Result{}, nil
+		}
+
+		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
+			obj.Status.Comment = &res.Comment
+			obj.Status.Content = &res.Content
+			obj.Status.Id = &res.ID
+			obj.Status.Name = &res.Name
+			obj.Status.Type = ptr.To(string(res.Type))
+		}); err != nil {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	if r.diff(record) {
+		log.Info("Updating DnsRecord")
+		res, err := r.Cloudflare.UpdateDnsRecord(ctx, *record.Status.Id, dns.RecordUpdateParams{
+			ZoneID: cloudflare.F(record.Spec.ZoneId),
+			Record: r.toCloudflare(record),
+		})
+		if err != nil {
+			log.Error(err, "Failed to update DNS record")
+			return ctrl.Result{}, nil
+		}
+
+		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
+			obj.Status.Id = &res.ID
+			obj.Status.Comment = &res.Comment
+			obj.Status.Content = &res.Content
+			obj.Status.Name = &res.Name
+			obj.Status.Type = ptr.To(string(res.Type))
+		}); err != nil {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -123,36 +159,56 @@ func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
-	status, spec := record.Status, record.Spec.ARecord
-	conditions := []bool{
-		ptr.Equal(status.Comment, &spec.Comment),
-		ptr.Equal(status.Content, &spec.Content),
-		ptr.Equal(status.Name, &spec.Name),
-		ptr.Equal(status.Type, &spec.Type),
+	status := record.Status
+	var conditions []bool
+
+	if spec := record.Spec.AAAARecord; spec != nil {
+		conditions = []bool{
+			ptr.Equal(status.Comment, &spec.Comment),
+			ptr.Equal(status.Content, &spec.Content),
+			ptr.Equal(status.Name, &spec.Name),
+			ptr.Equal(status.Type, &spec.Type),
+		}
+	}
+	if spec := record.Spec.ARecord; spec != nil {
+		conditions = []bool{
+			ptr.Equal(status.Comment, &spec.Comment),
+			ptr.Equal(status.Content, &spec.Content),
+			ptr.Equal(status.Name, &spec.Name),
+			ptr.Equal(status.Type, &spec.Type),
+		}
+	}
+	if spec := record.Spec.CAARecord; spec != nil {
+		conditions = []bool{
+			ptr.Equal(status.Comment, &spec.Comment),
+			ptr.Equal(status.Content, &spec.Content),
+			ptr.Equal(status.Name, &spec.Name),
+			ptr.Equal(status.Type, &spec.Type),
+		}
+	}
+	if spec := record.Spec.CNAMERecord; spec != nil {
+		conditions = []bool{
+			ptr.Equal(status.Comment, &spec.Comment),
+			ptr.Equal(status.Content, &spec.Content),
+			ptr.Equal(status.Name, &spec.Name),
+			ptr.Equal(status.Type, &spec.Type),
+		}
+	}
+	if spec := record.Spec.TXTRecord; spec != nil {
+		conditions = []bool{
+			ptr.Equal(status.Comment, &spec.Comment),
+			ptr.Equal(status.Content, &spec.Content),
+			ptr.Equal(status.Name, &spec.Name),
+			ptr.Equal(status.Type, &spec.Type),
+		}
 	}
 
+	// Logical AND
 	return slices.Contains(conditions, false)
 }
 
-func (r *DnsRecordReconciler) refresh(ctx context.Context, id string, record *cfv1alpha1.DnsRecord) error {
-	res, err := r.Cloudflare.GetDnsRecord(ctx, id, dns.RecordGetParams{
-		ZoneID: cloudflare.F(record.Spec.ZoneId),
-	})
-	if err != nil {
-		return err
-	}
-
-	return patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
-		obj.Status.Comment = &res.Comment
-		obj.Status.Content = &res.Content
-		obj.Status.Id = &res.ID
-		obj.Status.Name = &res.Name
-		obj.Status.Type = ptr.To(string(res.Type))
-	})
-}
-
 func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.RecordUnionParam {
-	if r := record.Spec.Record.AAAARecord; r != nil {
+	if r := record.Spec.AAAARecord; r != nil {
 		return dns.AAAARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -167,7 +223,7 @@ func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.Record
 			Type: cloudflare.F(dns.AAAARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.Record.ARecord; r != nil {
+	if r := record.Spec.ARecord; r != nil {
 		return dns.ARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -180,6 +236,55 @@ func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.Record
 			Tags: cloudflare.F(toRecordTags(r.Tags)),
 			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
 			Type: cloudflare.F(dns.ARecordType(r.Type)),
+		}
+	}
+	if r := record.Spec.CAARecord; r != nil {
+		return dns.CAARecordParam{
+			Comment: cloudflare.F(r.Comment),
+			Data: cloudflare.F(dns.CAARecordDataParam{
+				Flags: cloudflare.F(float64(r.Data.Flags)),
+				Tag:   cloudflare.F(r.Data.Tag),
+				Value: cloudflare.F(r.Data.Value),
+			}),
+			Name:    cloudflare.F(r.Name),
+			Proxied: cloudflare.F(r.Proxied),
+			Settings: cloudflare.F(dns.CAARecordSettingsParam{
+				IPV4Only: cloudflare.F(r.Settings.Ipv4Only),
+				IPV6Only: cloudflare.F(r.Settings.Ipv6Only),
+			}),
+			Tags: cloudflare.F(toRecordTags(r.Tags)),
+			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
+			Type: cloudflare.F(dns.CAARecordType(r.Type)),
+		}
+	}
+	if r := record.Spec.CNAMERecord; r != nil {
+		return dns.CNAMERecordParam{
+			Comment: cloudflare.F(r.Comment),
+			Content: cloudflare.F(r.Content),
+			Name:    cloudflare.F(r.Name),
+			Proxied: cloudflare.F(r.Proxied),
+			Settings: cloudflare.F(dns.CNAMERecordSettingsParam{
+				IPV4Only: cloudflare.F(r.Settings.Ipv4Only),
+				IPV6Only: cloudflare.F(r.Settings.Ipv6Only),
+			}),
+			Tags: cloudflare.F(toRecordTags(r.Tags)),
+			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
+			Type: cloudflare.F(dns.CNAMERecordType(r.Type)),
+		}
+	}
+	if r := record.Spec.TXTRecord; r != nil {
+		return dns.TXTRecordParam{
+			Comment: cloudflare.F(r.Comment),
+			Content: cloudflare.F(r.Content),
+			Name:    cloudflare.F(r.Name),
+			Proxied: cloudflare.F(r.Proxied),
+			Settings: cloudflare.F(dns.TXTRecordSettingsParam{
+				IPV4Only: cloudflare.F(r.Settings.Ipv4Only),
+				IPV6Only: cloudflare.F(r.Settings.Ipv6Only),
+			}),
+			Tags: cloudflare.F(toRecordTags(r.Tags)),
+			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
+			Type: cloudflare.F(dns.TXTRecordType(r.Type)),
 		}
 	}
 
