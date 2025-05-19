@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/dns"
@@ -25,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,6 +82,8 @@ var _ = Describe("DnsRecord Controller", func() {
 								Ipv4Only: true,
 								Ipv6Only: true,
 							},
+							Tags: []cfv1alpha1.RecordTags{"test-tag"},
+							Ttl:  69,
 						},
 					},
 				},
@@ -116,16 +120,37 @@ var _ = Describe("DnsRecord Controller", func() {
 							IPV4Only: cloudflare.F(true),
 							IPV6Only: cloudflare.F(true),
 						}),
+						Tags: cloudflare.F([]dns.RecordTagsParam{"test-tag"}),
+						TTL:  cloudflare.F(dns.TTL(69)),
+						Type: cloudflare.F(dns.ARecordTypeA),
 					},
 				})).
 				Return(&dns.RecordResponse{
-					ID: "test-id",
+					ID:                "test-id",
+					Comment:           "test-comment",
+					CommentModifiedOn: time.Now(),
+					Content:           "test-content",
+					CreatedOn:         time.Now(),
+					ModifiedOn:        time.Now(),
+					Name:              "test-a-record",
+					Priority:          69,
+					Proxiable:         true,
+					Proxied:           true,
+					TagsModifiedOn:    time.Now(),
+					Type:              dns.RecordResponseTypeA,
 				}, nil)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dnsrecord)).To(Succeed())
+			Expect(dnsrecord.Status.Id).To(Equal(ptr.To("test-id")))
+			Expect(dnsrecord.Status.Comment).To(Equal(ptr.To("test-comment")))
+			Expect(dnsrecord.Status.Content).To(Equal(ptr.To("test-content")))
+			Expect(dnsrecord.Status.Name).To(Equal(ptr.To("test-a-record")))
+			Expect(dnsrecord.Status.Type).To(Equal(ptr.To("A")))
 		})
 	})
 })
