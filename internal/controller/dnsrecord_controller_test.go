@@ -164,8 +164,7 @@ var _ = Describe("DnsRecord Controller", func() {
 					Proxied:           true,
 					TagsModifiedOn:    time.Now(),
 					Type:              dns.RecordResponseTypeA,
-				}, nil).
-				AnyTimes()
+				}, nil)
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,

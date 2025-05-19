@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -64,6 +65,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if id := record.Status.Id; id == nil {
+		log.Info("Creating DnsRecord")
 		res, err := r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
 			Record: r.toCloudflare(record),
@@ -85,6 +87,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{Requeue: true}, nil
 		}
 	} else if !record.DeletionTimestamp.IsZero() {
+		log.Info("Deleting DnsRecord", "id", id)
 		res, err := r.Cloudflare.DeleteDnsRecord(ctx, *id, dns.RecordDeleteParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
 		})
@@ -105,6 +108,9 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	if r.diff(record) {
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -114,6 +120,18 @@ func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&cfv1alpha1.DnsRecord{}).
 		Named("dnsrecord").
 		Complete(r)
+}
+
+func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
+	status, spec := record.Status, record.Spec.ARecord
+	conditions := []bool{
+		ptr.Equal(status.Comment, &spec.Comment),
+		ptr.Equal(status.Content, &spec.Content),
+		ptr.Equal(status.Name, &spec.Name),
+		ptr.Equal(status.Type, &spec.Type),
+	}
+
+	return slices.Contains(conditions, false)
 }
 
 func (r *DnsRecordReconciler) refresh(ctx context.Context, id string, record *cfv1alpha1.DnsRecord) error {
