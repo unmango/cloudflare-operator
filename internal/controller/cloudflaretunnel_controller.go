@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	cloudflareTunnelFinalizer = "cloudflaretunnel.unmango.dev/finalizer"
+	cloudflareTunnelFinalizer = "cloudflaretunnel.cloudflare.unmango.dev/finalizer"
 )
 
 const (
