@@ -419,8 +419,8 @@ type DnsRecordSpec struct {
 
 // DnsRecordStatus defines the observed state of DnsRecord.
 type DnsRecordStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +optional
+	Id *string `json:"id,omitempty"`
 }
 
 // +kubebuilder:object:root=true
