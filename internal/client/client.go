@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/dns"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
 )
 
 //go:generate go tool mockgen -destination ../testing/client.go -package testing . Client
 
 type Client interface {
+	CreateDnsRecord(ctx context.Context, params dns.RecordNewParams) (*dns.RecordResponse, error)
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
 	DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error)
 	EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error)
@@ -24,6 +26,11 @@ type client struct {
 
 func New() Client {
 	return &client{cloudflare.NewClient()}
+}
+
+// CreateDnsRecord implements Client.
+func (c *client) CreateDnsRecord(ctx context.Context, params dns.RecordNewParams) (*dns.RecordResponse, error) {
+	return c.DNS.Records.New(ctx, params)
 }
 
 // CreateTunnel implements Client.

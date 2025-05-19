@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	dns "github.com/cloudflare/cloudflare-go/v4/dns"
 	zero_trust "github.com/cloudflare/cloudflare-go/v4/zero_trust"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -39,6 +40,21 @@ func NewMockClient(ctrl *gomock.Controller) *MockClient {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
+}
+
+// CreateDnsRecord mocks base method.
+func (m *MockClient) CreateDnsRecord(ctx context.Context, params dns.RecordNewParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDnsRecord", ctx, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDnsRecord indicates an expected call of CreateDnsRecord.
+func (mr *MockClientMockRecorder) CreateDnsRecord(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDnsRecord", reflect.TypeOf((*MockClient)(nil).CreateDnsRecord), ctx, params)
 }
 
 // CreateTunnel mocks base method.
