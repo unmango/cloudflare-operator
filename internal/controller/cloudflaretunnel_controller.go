@@ -73,14 +73,42 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
-		log.V(2).Info("Deleting tunnel from the cloudflare API")
-		if err := r.deleteTunnel(ctx, tunnel.Status.Id, tunnel); err != nil {
-			log.Error(err, "Failed to delete cloudflare tunnel")
-			return ctrl.Result{Requeue: true}, nil
-		} else {
-			log.Info("Successfully deleted cloudflare tunnel")
+		if tunnel.Spec.Cloudflared != nil {
+			log.Info("Listing cloudflareds")
+			cloudflareds, err := r.listCloudflareds(ctx, tunnel)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Found cloudflareds", "items", cloudflareds.Items)
+			if len(cloudflareds.Items) > 0 {
+				if err := r.deleteCloudflareds(ctx, tunnel, cloudflareds); err != nil {
+					return ctrl.Result{}, err
+				} else {
+					log.Info("Successfully deleted owned Cloudflareds")
+					return ctrl.Result{Requeue: true}, nil
+				}
+			}
+		}
+
+		if tunnel.Status.Id == nil {
+			log.Info("No tunnel id, nothing to do")
 			return ctrl.Result{}, nil
 		}
+
+		log.V(2).Info("Deleting tunnel from the cloudflare API")
+		if err := r.deleteTunnel(ctx, *tunnel.Status.Id, tunnel); err != nil {
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = controllerutil.RemoveFinalizer(tunnel, cloudflareTunnelFinalizer)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Successfully deleted cloudflare tunnel")
+		return ctrl.Result{}, nil
 	}
 
 	if len(tunnel.Status.Conditions) == 0 {
@@ -138,20 +166,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if cf := tunnel.Spec.Cloudflared; cf != nil {
-		selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
-		if err != nil {
-			log.Error(err, "Failed to convert LabelSelector to selector")
-			return ctrl.Result{}, nil
-		}
-
 		log.V(2).Info("Listing selected Cloudflared resources")
-		cloudflareds := &cfv1alpha1.CloudflaredList{}
-		if err := r.List(ctx, cloudflareds, &client.ListOptions{
-			Namespace:     req.Namespace,
-			LabelSelector: selector,
-		}); err != nil {
-			log.Error(err, "Failed to list Cloudflareds")
-			return ctrl.Result{}, nil
+		cloudflareds, err := r.listCloudflareds(ctx, tunnel)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 
 		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
@@ -190,6 +208,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if cf.Template != nil && count == 0 {
+			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
+			if err != nil {
+				log.Error(err, "Failed to convert LabelSelector to selector")
+				return ctrl.Result{}, nil
+			}
+
 			if !selector.Matches(labels.Set(cf.Template.Labels)) {
 				log.Info("Given label selector does not match Cloudflared template labels",
 					"selector", selector,
@@ -202,6 +226,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      tunnel.Name,
 					Namespace: tunnel.Namespace,
+					Labels:    cf.Template.Labels,
 				},
 				Spec: cf.Template.Spec,
 			}
@@ -321,12 +346,25 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 	return nil
 }
 
-func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id *string, tunnel *cfv1alpha1.CloudflareTunnel) error {
-	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
-		return nil
+func (r *CloudflareTunnelReconciler) listCloudflareds(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (*cfv1alpha1.CloudflaredList, error) {
+	selector, err := metav1.LabelSelectorAsSelector(tunnel.Spec.Cloudflared.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("converting label selector into label: %w", err)
 	}
 
-	if cf := tunnel.Spec.Cloudflared; cf != nil {
+	cloudflareds := &cfv1alpha1.CloudflaredList{}
+	if err := r.List(ctx, cloudflareds, &client.ListOptions{
+		Namespace:     tunnel.Namespace,
+		LabelSelector: selector,
+	}); err != nil {
+		return nil, fmt.Errorf("listing cloudflareds: %w", err)
+	} else {
+		return cloudflareds, nil
+	}
+}
+
+func (r *CloudflareTunnelReconciler) deleteCloudflareds(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, cloudflareds *cfv1alpha1.CloudflaredList) error {
+	if len(cloudflareds.Items) > 0 {
 		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
@@ -337,63 +375,41 @@ func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id *strin
 		}); err != nil {
 			return err
 		}
-
-		selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
-		if err != nil {
-			return fmt.Errorf("converting label selector into label: %w", err)
-		}
-
-		cloudflareds := &cfv1alpha1.CloudflaredList{}
-		if err := r.List(ctx, cloudflareds, &client.ListOptions{
-			Namespace:     tunnel.Namespace,
-			LabelSelector: selector,
-		}); err != nil {
-			return fmt.Errorf("listing cloudflareds: %w", err)
-		}
-
-		for _, c := range cloudflareds.Items {
-			hasOwnerRef, err := controllerutil.HasOwnerReference(c.OwnerReferences, tunnel, r.Scheme)
-			if err != nil {
-				return fmt.Errorf("checking owner ref: %w", err)
-			}
-			if !hasOwnerRef {
-				continue
-			}
-
-			if err = r.Delete(ctx, &c); err != nil {
-				return fmt.Errorf("deleing owned cloudflared: %w", err)
-			}
-		}
 	}
 
-	if id != nil {
-		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
-				Type:    typeDegradedCloudflareTunnel,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Reconciling",
-				Message: "Deleting tunnel from Cloudflare API",
-			})
-		}); err != nil {
+	for _, c := range cloudflareds.Items {
+		hasOwnerRef, err := controllerutil.HasOwnerReference(c.OwnerReferences, tunnel, r.Scheme)
+		if err != nil {
 			return err
 		}
-
-		_, err := r.Cloudflare.DeleteTunnel(ctx, *id, zero_trust.TunnelCloudflaredDeleteParams{
-			// TODO: This should probably come from the status, not the spec
-			AccountID: cloudflare.F(tunnel.Spec.AccountId),
-		})
-		if err != nil {
-			return cfclient.IgnoreNotFound(err)
+		if !hasOwnerRef {
+			return nil
+		}
+		if err = r.Delete(ctx, &c); err != nil {
+			return err
 		}
 	}
 
-	if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-		_ = controllerutil.RemoveFinalizer(tunnel, cloudflareTunnelFinalizer)
+	return nil
+}
+
+func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id string, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflareTunnel,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reconciling",
+			Message: "Deleting tunnel from Cloudflare API",
+		})
 	}); err != nil {
 		return err
 	}
 
-	return nil
+	_, err := r.Cloudflare.DeleteTunnel(ctx, id, zero_trust.TunnelCloudflaredDeleteParams{
+		AccountID: cloudflare.F(tunnel.Status.AccountTag),
+	})
+
+	return cfclient.IgnoreNotFound(err)
 }
 
 func (r *CloudflareTunnelReconciler) mapConfigSrc(src cfv1alpha1.CloudflareTunnelConfigSource) zero_trust.TunnelCloudflaredNewParamsConfigSrc {
