@@ -342,7 +342,15 @@ spec:
           status:
             description: DnsRecordStatus defines the observed state of DnsRecord.
             properties:
+              comment:
+                type: string
+              content:
+                type: string
               id:
+                type: string
+              name:
+                type: string
+              type:
                 type: string
             type: object
         type: object
