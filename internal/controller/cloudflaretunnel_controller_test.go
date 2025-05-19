@@ -194,6 +194,45 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(ownerReference.BlockOwnerDeletion).To(Equal(ptr.To(true)), "BlockOwnerDeletion is set")
 			})
 
+			It("should refresh the tunnel status", func(ctx context.Context) {
+				getResult := &zero_trust.TunnelCloudflaredGetResponse{
+					ID:              "test-id",
+					AccountTag:      accountId,
+					CreatedAt:       time.Now(),
+					ConnsActiveAt:   time.Now(),
+					ConnsInactiveAt: time.Now(),
+					Name:            "a new name or something",
+					RemoteConfig:    true,
+					Status:          zero_trust.TunnelCloudflaredGetResponseStatusInactive,
+					TunType:         zero_trust.TunnelCloudflaredGetResponseTunTypeCfdTunnel,
+				}
+
+				cfmock.EXPECT().
+					GetTunnel(ctx, "test-id", zero_trust.TunnelCloudflaredGetParams{
+						AccountID: cloudflare.F(accountId),
+					}).
+					Return(getResult, nil)
+
+				By("Reconciling the created resource")
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+
+				status := cloudflaretunnel.Status
+				Expect(status.Name).To(Equal(getResult.Name))
+				Expect(status.AccountTag).To(Equal(getResult.AccountTag))
+				Expect(status.Id).To(Equal(ptr.To(getResult.ID)))
+				Expect(status.RemoteConfig).To(Equal(getResult.RemoteConfig))
+				Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+				Expect(status.CreatedAt.Time).To(BeTemporally("~", getResult.CreatedAt, time.Second))
+				Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", getResult.ConnsActiveAt, time.Second))
+				Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", getResult.ConnsInactiveAt, time.Second))
+				Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
+			})
+
 			It("should delete the cloudflared", func(ctx context.Context) {
 				By("Deleting the CloudflareTunnel")
 				Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
