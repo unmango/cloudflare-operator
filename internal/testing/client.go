@@ -176,3 +176,18 @@ func (mr *MockClientMockRecorder) UpdateConfiguration(ctx, tunnelId, params any)
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateConfiguration", reflect.TypeOf((*MockClient)(nil).UpdateConfiguration), ctx, tunnelId, params)
 }
+
+// UpdateDnsRecord mocks base method.
+func (m *MockClient) UpdateDnsRecord(ctx context.Context, recordId string, params dns.RecordUpdateParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDnsRecord indicates an expected call of UpdateDnsRecord.
+func (mr *MockClientMockRecorder) UpdateDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnsRecord", reflect.TypeOf((*MockClient)(nil).UpdateDnsRecord), ctx, recordId, params)
+}
