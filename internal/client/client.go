@@ -13,6 +13,7 @@ import (
 type Client interface {
 	CreateDnsRecord(ctx context.Context, params dns.RecordNewParams) (*dns.RecordResponse, error)
 	CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error)
+	DeleteDnsRecord(ctx context.Context, recordId string, params dns.RecordDeleteParams) (*dns.RecordDeleteResponse, error)
 	DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error)
 	EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error)
 	GetDnsRecord(ctx context.Context, recordId string, params dns.RecordGetParams) (*dns.RecordResponse, error)
@@ -37,6 +38,11 @@ func (c *client) CreateDnsRecord(ctx context.Context, params dns.RecordNewParams
 // CreateTunnel implements Client.
 func (c *client) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.New(ctx, params)
+}
+
+// DeleteDnsRecord implements Client.
+func (c *client) DeleteDnsRecord(ctx context.Context, recordId string, params dns.RecordDeleteParams) (*dns.RecordDeleteResponse, error) {
+	return c.DNS.Records.Delete(ctx, recordId, params)
 }
 
 // DeleteTunnel implements Client.

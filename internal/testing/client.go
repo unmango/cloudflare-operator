@@ -72,6 +72,21 @@ func (mr *MockClientMockRecorder) CreateTunnel(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTunnel", reflect.TypeOf((*MockClient)(nil).CreateTunnel), ctx, params)
 }
 
+// DeleteDnsRecord mocks base method.
+func (m *MockClient) DeleteDnsRecord(ctx context.Context, recordId string, params dns.RecordDeleteParams) (*dns.RecordDeleteResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordDeleteResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteDnsRecord indicates an expected call of DeleteDnsRecord.
+func (mr *MockClientMockRecorder) DeleteDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDnsRecord", reflect.TypeOf((*MockClient)(nil).DeleteDnsRecord), ctx, recordId, params)
+}
+
 // DeleteTunnel mocks base method.
 func (m *MockClient) DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error) {
 	m.ctrl.T.Helper()
