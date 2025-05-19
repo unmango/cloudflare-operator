@@ -22,34 +22,62 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/dns"
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	cfclient "github.com/unmango/cloudflare-operator/internal/client"
+)
+
+const (
+	dnsRecordFinalizer = "dnsrecord.cloudflare.unmango.dev/finalizer"
 )
 
 // DnsRecordReconciler reconciles a DnsRecord object
 type DnsRecordReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	Cloudflare cfclient.Client
 }
 
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the DnsRecord object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/reconcile
 func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	record := &cfv1alpha1.DnsRecord{}
+	if err := r.Get(ctx, req.NamespacedName, record); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if !controllerutil.ContainsFinalizer(record, dnsRecordFinalizer) {
+		if err := patch(ctx, r, record, func(obj *cfv1alpha1.DnsRecord) {
+			_ = controllerutil.AddFinalizer(record, dnsRecordFinalizer)
+		}); err != nil {
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if record.Status.Id == nil {
+		res, err := r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
+			ZoneID: cloudflare.F(record.Spec.ZoneId),
+			Record: r.toCloudflare(record),
+		})
+		if err != nil {
+			log.Error(err, "Failed to create DNS record")
+			return ctrl.Result{}, nil
+		}
+
+		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
+			obj.Status.Id = &res.ID
+		}); err != nil {
+			return ctrl.Result{}, nil
+		}
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -57,7 +85,20 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // SetupWithManager sets up the controller with the Manager.
 func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&cloudflarev1alpha1.DnsRecord{}).
+		For(&cfv1alpha1.DnsRecord{}).
 		Named("dnsrecord").
 		Complete(r)
+}
+
+func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.RecordUnionParam {
+	if r := record.Spec.Record.AAAARecord; r != nil {
+		return dns.AAAARecordParam{}
+	}
+	if r := record.Spec.Record.ARecord; r != nil {
+		return dns.ARecordParam{
+			Name: cloudflare.F(r.Name),
+		}
+	}
+
+	return nil
 }
