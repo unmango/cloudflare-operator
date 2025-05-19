@@ -135,6 +135,7 @@ var _ = Describe("DnsRecord Controller", func() {
 					Type:              dns.RecordResponseTypeA,
 				}, nil)
 
+			By("Reconciling the resource")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -147,6 +148,7 @@ var _ = Describe("DnsRecord Controller", func() {
 			Expect(dnsrecord.Status.Name).To(Equal(ptr.To("test-a-record")))
 			Expect(dnsrecord.Status.Type).To(Equal(ptr.To("A")))
 
+			By("Reconciling the created resource")
 			cfmock.EXPECT().
 				GetDnsRecord(gomock.Eq(ctx), "test-id", gomock.Eq(dns.RecordGetParams{
 					ZoneID: cloudflare.F(zoneId),
@@ -164,6 +166,61 @@ var _ = Describe("DnsRecord Controller", func() {
 					Proxied:           true,
 					TagsModifiedOn:    time.Now(),
 					Type:              dns.RecordResponseTypeA,
+				}, nil).
+				Times(2) // Refresh, then update
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Updating the resource to a TXT record")
+			dnsrecord.Spec.Record = cfv1alpha1.Record{
+				TXTRecord: &cfv1alpha1.TXTRecord{
+					Comment: "test-comment-2",
+					Content: "test-content-2",
+					Name:    "test-txt-record",
+					Proxied: true,
+					Settings: cfv1alpha1.RecordSettings{
+						Ipv4Only: true,
+						Ipv6Only: true,
+					},
+					Tags: []cfv1alpha1.RecordTags{"test-tag-2"},
+					Ttl:  420,
+				},
+			}
+			Expect(k8sClient.Update(ctx, dnsrecord)).To(Succeed())
+
+			cfmock.EXPECT().
+				UpdateDnsRecord(ctx, "test-id", dns.RecordUpdateParams{
+					ZoneID: cloudflare.F(zoneId),
+					Record: dns.TXTRecordParam{
+						Comment: cloudflare.F("test-comment-2"),
+						Content: cloudflare.F("test-content-2"),
+						Name:    cloudflare.F("test-txt-record"),
+						Proxied: cloudflare.F(true),
+						Settings: cloudflare.F(dns.TXTRecordSettingsParam{
+							IPV4Only: cloudflare.F(true),
+							IPV6Only: cloudflare.F(true),
+						}),
+						Tags: cloudflare.F([]dns.RecordTagsParam{"test-tag-2"}),
+						TTL:  cloudflare.F(dns.TTL(420)),
+						Type: cloudflare.F(dns.TXTRecordTypeTXT),
+					},
+				}).
+				Return(&dns.RecordResponse{
+					ID:                "new-id",
+					Comment:           "new-comment",
+					CommentModifiedOn: time.Now(),
+					Content:           "new-content",
+					CreatedOn:         time.Now(),
+					ModifiedOn:        time.Now(),
+					Name:              "test-txt-record",
+					Priority:          69,
+					Proxiable:         true,
+					Proxied:           true,
+					TagsModifiedOn:    time.Now(),
+					Type:              dns.RecordResponseTypeTXT,
 				}, nil)
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -171,12 +228,20 @@ var _ = Describe("DnsRecord Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dnsrecord)).To(Succeed())
+			Expect(dnsrecord.Status.Id).To(Equal(ptr.To("new-id")))
+			Expect(dnsrecord.Status.Comment).To(Equal(ptr.To("new-comment")))
+			Expect(dnsrecord.Status.Content).To(Equal(ptr.To("new-content")))
+			Expect(dnsrecord.Status.Name).To(Equal(ptr.To("test-txt-record")))
+			Expect(dnsrecord.Status.Type).To(Equal(ptr.To("TXT")))
+
+			By("Deleting the resource")
 			cfmock.EXPECT().
-				DeleteDnsRecord(ctx, "test-id", gomock.Eq(dns.RecordDeleteParams{
+				DeleteDnsRecord(ctx, "new-id", gomock.Eq(dns.RecordDeleteParams{
 					ZoneID: cloudflare.F(zoneId),
 				})).
 				Return(&dns.RecordDeleteResponse{
-					ID: "test-id",
+					ID: "new-id",
 				}, nil)
 
 			Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
