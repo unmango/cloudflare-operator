@@ -72,7 +72,14 @@ var _ = Describe("DnsRecord Controller", func() {
 					ZoneId: zoneId,
 					Record: cfv1alpha1.Record{
 						ARecord: &cfv1alpha1.ARecord{
-							Name: "test-a-record",
+							Comment: "test-comment",
+							Content: "test-content",
+							Name:    "test-a-record",
+							Proxied: true,
+							Settings: cfv1alpha1.RecordSettings{
+								Ipv4Only: true,
+								Ipv6Only: true,
+							},
 						},
 					},
 				},
@@ -101,7 +108,14 @@ var _ = Describe("DnsRecord Controller", func() {
 				CreateDnsRecord(gomock.Eq(ctx), gomock.Eq(dns.RecordNewParams{
 					ZoneID: cloudflare.F(zoneId),
 					Record: dns.ARecordParam{
-						Name: cloudflare.F("test-a-record"),
+						Comment: cloudflare.F("test-comment"),
+						Content: cloudflare.F("test-content"),
+						Name:    cloudflare.F("test-a-record"),
+						Proxied: cloudflare.F(true),
+						Settings: cloudflare.F(dns.ARecordSettingsParam{
+							IPV4Only: cloudflare.F(true),
+							IPV6Only: cloudflare.F(true),
+						}),
 					},
 				})).
 				Return(&dns.RecordResponse{
