@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -74,6 +75,10 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
 			obj.Status.Id = &res.ID
+			obj.Status.Comment = &res.Comment
+			obj.Status.Content = &res.Content
+			obj.Status.Name = &res.Name
+			obj.Status.Type = ptr.To(string(res.Type))
 		}); err != nil {
 			return ctrl.Result{}, nil
 		}
@@ -92,13 +97,43 @@ func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (DnsRecordReconciler) toCloudflare(record *cfv1alpha1.DnsRecord) dns.RecordUnionParam {
 	if r := record.Spec.Record.AAAARecord; r != nil {
-		return dns.AAAARecordParam{}
+		return dns.AAAARecordParam{
+			Comment: cloudflare.F(r.Comment),
+			Content: cloudflare.F(r.Content),
+			Name:    cloudflare.F(r.Name),
+			Proxied: cloudflare.F(r.Proxied),
+			Settings: cloudflare.F(dns.AAAARecordSettingsParam{
+				IPV4Only: cloudflare.F(r.Settings.Ipv4Only),
+				IPV6Only: cloudflare.F(r.Settings.Ipv6Only),
+			}),
+			Tags: cloudflare.F(toRecordTags(r.Tags)),
+			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
+			Type: cloudflare.F(dns.AAAARecordType(r.Type)),
+		}
 	}
 	if r := record.Spec.Record.ARecord; r != nil {
 		return dns.ARecordParam{
-			Name: cloudflare.F(r.Name),
+			Comment: cloudflare.F(r.Comment),
+			Content: cloudflare.F(r.Content),
+			Name:    cloudflare.F(r.Name),
+			Proxied: cloudflare.F(r.Proxied),
+			Settings: cloudflare.F(dns.ARecordSettingsParam{
+				IPV4Only: cloudflare.F(r.Settings.Ipv4Only),
+				IPV6Only: cloudflare.F(r.Settings.Ipv6Only),
+			}),
+			Tags: cloudflare.F(toRecordTags(r.Tags)),
+			TTL:  cloudflare.F(dns.TTL(r.Ttl)),
+			Type: cloudflare.F(dns.ARecordType(r.Type)),
 		}
 	}
 
 	return nil
+}
+
+func toRecordTags[T ~string](tags []T) (out []dns.RecordTags) {
+	for _, t := range tags {
+		out = append(out, dns.RecordTags(t))
+	}
+
+	return out
 }
