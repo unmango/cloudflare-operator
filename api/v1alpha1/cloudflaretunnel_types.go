@@ -311,6 +311,34 @@ type CloudflareTunnelSpec struct {
 	TunnelSecret *CloudflareTunnelSecret `json:"tunnelSecret,omitempty"`
 }
 
+type CloudflareTunnelConfigStatus struct {
+	// +optional
+	AccountId string `json:"accountId,omitempty"`
+
+	// The tunnel configuration and ingress rules.
+	//
+	// +optional
+	Config CloudflareTunnelConfig `json:"config,omitempty"`
+
+	// +optional
+	CreatedAt metav1.Time `json:"createdAt,omitempty"`
+
+	// Indicates if this is a locally or remotely configured tunnel. If `local`, manage
+	// the tunnel using a YAML file on the origin machine. If `cloudflare`, manage the
+	// tunnel on the Zero Trust dashboard.
+	//
+	// +optional
+	Source CloudflareTunnelConfigSource `json:"source,omitempty"`
+
+	// +optional
+	TunnelId string `json:"tunnelId,omitempty"`
+
+	// The version of the Tunnel Configuration.
+	//
+	// +optional
+	Version int64 `json:"configVersion,omitempty"`
+}
+
 // CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
 type CloudflareTunnelStatus struct {
 	// Cloudflare account ID
@@ -324,6 +352,11 @@ type CloudflareTunnelStatus struct {
 	// +patchMergeKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,1,rep,name=conditions"`
+
+	// The status of the tunnel configuration.
+	//
+	// +optional
+	Config CloudflareTunnelConfigStatus `json:"config,omitempty"`
 
 	// Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
 	// If null, the tunnel is inactive.
