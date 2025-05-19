@@ -102,6 +102,21 @@ func (mr *MockClientMockRecorder) EditTunnel(ctx, tunnelId, params any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditTunnel", reflect.TypeOf((*MockClient)(nil).EditTunnel), ctx, tunnelId, params)
 }
 
+// GetDnsRecord mocks base method.
+func (m *MockClient) GetDnsRecord(ctx context.Context, recordId string, params dns.RecordGetParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDnsRecord indicates an expected call of GetDnsRecord.
+func (mr *MockClientMockRecorder) GetDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDnsRecord", reflect.TypeOf((*MockClient)(nil).GetDnsRecord), ctx, recordId, params)
+}
+
 // GetTunnel mocks base method.
 func (m *MockClient) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error) {
 	m.ctrl.T.Helper()
