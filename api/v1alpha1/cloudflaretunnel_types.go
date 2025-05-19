@@ -356,7 +356,7 @@ type CloudflareTunnelStatus struct {
 	// The status of the tunnel configuration.
 	//
 	// +optional
-	Config CloudflareTunnelConfigStatus `json:"config,omitempty"`
+	Config *CloudflareTunnelConfigStatus `json:"config,omitempty"`
 
 	// Timestamp of when the tunnel established at least one connection to Cloudflare's edge.
 	// If null, the tunnel is inactive.

@@ -500,7 +500,11 @@ func (in *CloudflareTunnelStatus) DeepCopyInto(out *CloudflareTunnelStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.Config.DeepCopyInto(&out.Config)
+	if in.Config != nil {
+		in, out := &in.Config, &out.Config
+		*out = new(CloudflareTunnelConfigStatus)
+		(*in).DeepCopyInto(*out)
+	}
 	in.ConnectionsActiveAt.DeepCopyInto(&out.ConnectionsActiveAt)
 	in.ConnectionsInactiveAt.DeepCopyInto(&out.ConnectionsInactiveAt)
 	in.CreatedAt.DeepCopyInto(&out.CreatedAt)
