@@ -95,16 +95,11 @@ var _ = Describe("DnsRecord Controller", func() {
 		})
 
 		AfterEach(func() {
-			Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
-		})
-
-		AfterEach(func() {
 			resource := &cfv1alpha1.DnsRecord{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance DnsRecord")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				By("Cleanup the specific resource instance DnsRecord")
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
 		})
 
 		It("should successfully reconcile the resource", func() {
@@ -151,6 +146,46 @@ var _ = Describe("DnsRecord Controller", func() {
 			Expect(dnsrecord.Status.Content).To(Equal(ptr.To("test-content")))
 			Expect(dnsrecord.Status.Name).To(Equal(ptr.To("test-a-record")))
 			Expect(dnsrecord.Status.Type).To(Equal(ptr.To("A")))
+
+			cfmock.EXPECT().
+				GetDnsRecord(gomock.Eq(ctx), "test-id", gomock.Eq(dns.RecordGetParams{
+					ZoneID: cloudflare.F(zoneId),
+				})).
+				Return(&dns.RecordResponse{
+					ID:                "test-id",
+					Comment:           "test-comment",
+					CommentModifiedOn: time.Now(),
+					Content:           "test-content",
+					CreatedOn:         time.Now(),
+					ModifiedOn:        time.Now(),
+					Name:              "test-a-record",
+					Priority:          69,
+					Proxiable:         true,
+					Proxied:           true,
+					TagsModifiedOn:    time.Now(),
+					Type:              dns.RecordResponseTypeA,
+				}, nil).
+				AnyTimes()
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			cfmock.EXPECT().
+				DeleteDnsRecord(ctx, "test-id", gomock.Eq(dns.RecordDeleteParams{
+					ZoneID: cloudflare.F(zoneId),
+				})).
+				Return(&dns.RecordDeleteResponse{
+					ID: "test-id",
+				}, nil)
+
+			Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
