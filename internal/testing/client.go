@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	dns "github.com/cloudflare/cloudflare-go/v4/dns"
 	zero_trust "github.com/cloudflare/cloudflare-go/v4/zero_trust"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,6 +42,21 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
+// CreateDnsRecord mocks base method.
+func (m *MockClient) CreateDnsRecord(ctx context.Context, params dns.RecordNewParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDnsRecord", ctx, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDnsRecord indicates an expected call of CreateDnsRecord.
+func (mr *MockClientMockRecorder) CreateDnsRecord(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDnsRecord", reflect.TypeOf((*MockClient)(nil).CreateDnsRecord), ctx, params)
+}
+
 // CreateTunnel mocks base method.
 func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
 	m.ctrl.T.Helper()
@@ -54,6 +70,21 @@ func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelC
 func (mr *MockClientMockRecorder) CreateTunnel(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTunnel", reflect.TypeOf((*MockClient)(nil).CreateTunnel), ctx, params)
+}
+
+// DeleteDnsRecord mocks base method.
+func (m *MockClient) DeleteDnsRecord(ctx context.Context, recordId string, params dns.RecordDeleteParams) (*dns.RecordDeleteResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordDeleteResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteDnsRecord indicates an expected call of DeleteDnsRecord.
+func (mr *MockClientMockRecorder) DeleteDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDnsRecord", reflect.TypeOf((*MockClient)(nil).DeleteDnsRecord), ctx, recordId, params)
 }
 
 // DeleteTunnel mocks base method.
@@ -84,6 +115,21 @@ func (m *MockClient) EditTunnel(ctx context.Context, tunnelId string, params zer
 func (mr *MockClientMockRecorder) EditTunnel(ctx, tunnelId, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditTunnel", reflect.TypeOf((*MockClient)(nil).EditTunnel), ctx, tunnelId, params)
+}
+
+// GetDnsRecord mocks base method.
+func (m *MockClient) GetDnsRecord(ctx context.Context, recordId string, params dns.RecordGetParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDnsRecord indicates an expected call of GetDnsRecord.
+func (mr *MockClientMockRecorder) GetDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDnsRecord", reflect.TypeOf((*MockClient)(nil).GetDnsRecord), ctx, recordId, params)
 }
 
 // GetTunnel mocks base method.
@@ -129,4 +175,19 @@ func (m *MockClient) UpdateConfiguration(ctx context.Context, tunnelId string, p
 func (mr *MockClientMockRecorder) UpdateConfiguration(ctx, tunnelId, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateConfiguration", reflect.TypeOf((*MockClient)(nil).UpdateConfiguration), ctx, tunnelId, params)
+}
+
+// UpdateDnsRecord mocks base method.
+func (m *MockClient) UpdateDnsRecord(ctx context.Context, recordId string, params dns.RecordUpdateParams) (*dns.RecordResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDnsRecord", ctx, recordId, params)
+	ret0, _ := ret[0].(*dns.RecordResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDnsRecord indicates an expected call of UpdateDnsRecord.
+func (mr *MockClientMockRecorder) UpdateDnsRecord(ctx, recordId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnsRecord", reflect.TypeOf((*MockClient)(nil).UpdateDnsRecord), ctx, recordId, params)
 }

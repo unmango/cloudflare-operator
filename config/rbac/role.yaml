@@ -29,6 +29,7 @@ rules:
   resources:
   - cloudflareds
   - cloudflaretunnels
+  - dnsrecords
   verbs:
   - create
   - delete
@@ -42,6 +43,7 @@ rules:
   resources:
   - cloudflareds/finalizers
   - cloudflaretunnels/finalizers
+  - dnsrecords/finalizers
   verbs:
   - update
 - apiGroups:
@@ -49,6 +51,7 @@ rules:
   resources:
   - cloudflareds/status
   - cloudflaretunnels/status
+  - dnsrecords/status
   verbs:
   - get
   - patch

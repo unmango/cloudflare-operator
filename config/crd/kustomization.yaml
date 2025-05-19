@@ -4,6 +4,7 @@
 resources:
 - bases/cloudflare.unmango.dev_cloudflareds.yaml
 - bases/cloudflare.unmango.dev_cloudflaretunnels.yaml
+- bases/cloudflare.unmango.dev_dnsrecords.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
