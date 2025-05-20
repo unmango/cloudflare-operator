@@ -364,21 +364,6 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 	return nil
 }
 
-func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string, tunnel *cfv1alpha1.CloudflareTunnel) error {
-	if config := tunnel.Spec.Config; config != nil {
-		c := cfclient.CloudflareTunnelConfig(*config)
-		_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
-			AccountID: cloudflare.F(tunnel.Spec.AccountId),
-			Config:    cloudflare.F(c.UpdateParams()),
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (r *CloudflareTunnelReconciler) listCloudflareds(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (*cfv1alpha1.CloudflaredList, error) {
 	selector, err := metav1.LabelSelectorAsSelector(tunnel.Spec.Cloudflared.Selector)
 	if err != nil {
