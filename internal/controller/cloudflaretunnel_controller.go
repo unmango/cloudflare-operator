@@ -183,13 +183,19 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if tunnel.Status.Name != tunnel.Spec.Name {
-		_, err := r.Cloudflare.EditTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredEditParams{
+		res, err := r.Cloudflare.EditTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredEditParams{
 			AccountID: cloudflare.F(tunnel.Spec.AccountId),
 			Name:      cloudflare.F(tunnel.Spec.Name),
 		})
 		if err != nil {
 			log.Error(err, "Failed to update tunnel in Cloudflare API")
 			return ctrl.Result{}, nil
+		}
+
+		if err = patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			obj.Status.Name = res.Name
+		}); err != nil {
+			return ctrl.Result{}, err
 		}
 
 		log.Info("Successfully updated tunnel in Cloudflare API")
@@ -301,6 +307,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Message: "Finished reconciling",
 		})
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflareTunnel,
+			Status:  metav1.ConditionFalse,
+			Reason:  "Reconciling",
+			Message: "Finished reconciling",
+		})
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionFalse,
 			Reason:  "Reconciling",
@@ -388,7 +400,19 @@ func (r *CloudflareTunnelReconciler) deleteCloudflareds(ctx context.Context, tun
 	if len(cloudflareds.Items) > 0 {
 		if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeAvailableCloudflareTunnel,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: "Deleting owned Cloudflared instances",
+			})
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: "Deleting owned Cloudflared instances",
+			})
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeProgressingCloudflareTunnel,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Reconciling",
 				Message: "Deleting owned Cloudflared instances",
