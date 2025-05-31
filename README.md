@@ -1,30 +1,125 @@
 <!-- markdownlint-disable MD033 -->
 
-<h1 align="center">🚧 Warning! 🚧</h1>
+# Cloudflare Operator
 
-Hi, thank you for coming to my repo!
-You probably meant to go to one of these projects instead:
-
-| Project | Description |
-|:--------|:------------|
-|[adyanth/cloudflare-operator](https://github.com/adyanth/cloudflare-operator)|A Kubernetes Operator to create and manage Cloudflare Tunnels and DNS records for (HTTP/TCP/UDP*) Service Resources|
-|[STRRL/cloudflare-tunnel-ingress-controller](https://github.com/STRRL/cloudflare-tunnel-ingress-controller/)|The Kuberntes Ingress Controller based on Cloudflare Tunnel.|
-
-Both projects are much more mature and can probably do what you're looking for!
-
-# Cloudflare Controller
-
-A kubernetes controller for all things Cloudflare!
+A kubernetes operator for all things Cloudflare!
 
 ## Description
 
-// TODO(user): An in-depth paragraph about your project and overview of use
+Manage your [Cloudflare](https://cloudflare.com) infrastructure using the [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
+
+*First, take a look at the [disclaimer](#disclaimer) about related projects.*
+
+### Features
+
+- Ingress controller for [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+- [cloudflared](https://github.com/cloudflare/cloudflared) deployment
+- Managed [DNS records](https://developers.cloudflare.com/api/resources/dns/subresources/records/)
+
+## Installation
+
+A few options are available for installation:
+
+- [Manifest](#manifest)
+- [Kustomize](#kustomize)
+- [Helm](#helm)
+
+The controller pod needs to be configured with a `CLOUDFLARE_API_TOKEN` in order to perform any actions that involve sending requests to the cloudflare API.
+
+The operator can be run without providing this token but will only be able to manage resources within the cluster.
+Resources that support running wihout a token include:
+
+- `Cloudflared`
+
+### Manifest
+
+Use `kubectl apply` to apply the installation manifest:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/unmango/cloudflare-operator/main/dist/install.yaml
+```
+
+This will install from the `main` branch. Replace `main` in the link above to use a specific tag or branch.
+
+### Kustomize
+
+```shell
+kubectl apply --server-side --kustomize='https://github.com/unmango/cloudflare-operator.git/config/default?ref=main&submodules=false'
+```
+
+Replace `ref=main` with the branch or tag to use, more info [in the kustomize docs](https://github.com/kubernetes-sigs/kustomize/blob/master/examples/remoteBuild.md).
+
+**Note** the `submodules=false` in the above URL, this prevents kustomize from cloning `./upstream` which is a *very* hefty reference to <https://github.com/cloudflare/api-schemas.git>.
+
+### Helm
+
+The helm chart is not currently hosted on any repositories.
+To use it, you'll need to clone this repository and install from there.
+
+```shell
+git clone https://github.com/unmango/cloudflare-operator
+```
+
+Once cloned you can use:
+
+```shell
+helm install my-release ./dist/chart --create-namespace --namespace cloudflare-operator-system
+```
+
+## Resources
+
+- [Cloudflared](./config/crd/bases/cloudflare.unmango.dev_cloudflareds.yaml)
+- [CloudflareTunnel](./config/crd/bases/cloudflare.unmango.dev_cloudflaretunnels.yaml)
+- [DnsRecord](./config/crd/bases/cloudflare.unmango.dev_dnsrecords.yaml)
+
+### Cloudflared
+
+With no `spec`, the cloudflared resource will create a DaemonSet running the `--hello-world` tunnel.
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: Cloudflared
+metadata:
+  name: cloudflared-sample
+```
+
+### CloudflareTunnel
+
+A minimal manifest will create a remote-managed tunnel with the same name as the resource.
+
+**Note** the tunnel will only be created in the Cloudflare API,
+No other resources (i.e. `cloudflared`) will be created to run the tunnel unless explicitly specified.
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareTunnel
+metadata:
+  name: cloudflaretunnel-sample
+spec:
+  accountId: <cloudflare account-id>
+  configSource: cloudflare
+```
+
+### DnsRecord
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: DnsRecord
+metadata:
+  name: dnsrecord-sample
+spec:
+  zoneId: $CLOUDFLARE_ZONE_ID
+  record:
+    aRecord:
+      name: cloudflare-operator-sample
+      content: 1.1.1.1
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-- go version v1.23.0+
+- go version v1.24.2+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -36,10 +131,6 @@ A kubernetes controller for all things Cloudflare!
 ```sh
 make docker-build docker-push IMG=<some-registry>/cloudflare-operator:tag
 ```
-
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
 
 **Install the CRDs into the cluster:**
 
@@ -85,50 +176,6 @@ make uninstall
 make undeploy
 ```
 
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-    ```sh
-    make build-installer IMG=<some-registry>/cloudflare-operator:tag
-    ```
-
-    **NOTE:** The makefile target mentioned above generates an 'install.yaml'
-    file in the dist directory. This file contains all the resources built
-    with Kustomize, which are necessary to install this project without its
-    dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/cloudflare-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-    ```sh
-    kubebuilder edit --plugins=helm/v1-alpha
-    ```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
 ## Contributing
 
 // TODO(user): Add detailed information on how you would like others to contribute to this project
@@ -137,12 +184,34 @@ is manually re-applied afterwards.
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
-## Rationale
+## Disclaimer
 
-There are two great projects bringing cloudflare to kubernetes, what is this project trying to add?
+<h1 align="center">🚧 Warning! 🚧</h1>
 
-I love what the above projects can do and I wanted to take my favorite parts and put them in one place.
-Ultimately, I'm trying to get more experience writing kubernetes applications and this seemed like a great way to do it.
+Hi, thank you for coming to my repo!
+You probably meant to go to one of these projects instead:
+
+| Project | Description |
+|:--------|:------------|
+|[adyanth/cloudflare-operator](https://github.com/adyanth/cloudflare-operator)|A Kubernetes Operator to create and manage Cloudflare Tunnels and DNS records for (HTTP/TCP/UDP*) Service Resources|
+|[STRRL/cloudflare-tunnel-ingress-controller](https://github.com/STRRL/cloudflare-tunnel-ingress-controller/)|The Kuberntes Ingress Controller based on Cloudflare Tunnel.|
+
+Both projects are much more mature and can probably do what you're looking for!
+
+### Rationale
+
+*There are two great projects bringing cloudflare to kubernetes, what is this project trying to add?*
+
+My primary motivation is to gain experience writing kubernetes operators.
+Additionally, I love parts of both projects above and I wanted to take my favorite bits and put them in one place.
+
+*Will anything be upstreamed?*
+
+Cloudflare has developed a strong foundational platform which our projects have all been able to build on top of.
+This allows for a clean separation of concerns where Cloudflare provides the core functionality and the operators focus on Kubernetes integration.
+Currently, each project takes a very different approach to the resource architecture on Kubernetes which reduces the overlap in functionality.
+
+Where applicable, I will happily contribute any changes that bring shared benefit!
 
 ## License
 
