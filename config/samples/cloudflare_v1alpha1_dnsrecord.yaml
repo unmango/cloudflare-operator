@@ -6,4 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: dnsrecord-sample
 spec:
-  # TODO(user): Add fields here
+  zoneId: $CLOUDFLARE_ZONE_ID
+  record:
+    aRecord:
+      name: cloudflare-operator-sample
+      content: 1.1.1.1
