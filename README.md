@@ -6,29 +6,9 @@ A kubernetes operator for all things Cloudflare!
 
 ## Description
 
-*First, take a look at the [disclaimer](#disclaimer).*
-
 Manage your [Cloudflare](https://cloudflare.com) infrastructure using the [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
 
-- [Cloudflare Operator](#cloudflare-operator)
-  - [Description](#description)
-    - [Features](#features)
-  - [Installation](#installation)
-    - [Manifest](#manifest)
-    - [Kustomize](#kustomize)
-    - [Helm](#helm)
-  - [Resources](#resources)
-    - [Cloudflared](#cloudflared)
-    - [CloudflareTunnel](#cloudflaretunnel)
-    - [DnsRecord](#dnsrecord)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [To Deploy on the cluster](#to-deploy-on-the-cluster)
-    - [To Uninstall](#to-uninstall)
-  - [Contributing](#contributing)
-  - [Disclaimer](#disclaimer)
-    - [Rationale](#rationale)
-  - [License](#license)
+*First, take a look at the [disclaimer](#disclaimer) about related projects.*
 
 ### Features
 
