@@ -194,6 +194,57 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(ownerReference.BlockOwnerDeletion).To(Equal(ptr.To(true)), "BlockOwnerDeletion is set")
 			})
 
+			It("should refresh the tunnel status", func(ctx context.Context) {
+				getResult := &zero_trust.TunnelCloudflaredGetResponse{
+					ID:              "test-id",
+					AccountTag:      accountId,
+					CreatedAt:       time.Now(),
+					ConnsActiveAt:   time.Now(),
+					ConnsInactiveAt: time.Now(),
+					Name:            resourceName,
+					RemoteConfig:    true,
+					Status:          zero_trust.TunnelCloudflaredGetResponseStatusInactive,
+					TunType:         zero_trust.TunnelCloudflaredGetResponseTunTypeCfdTunnel,
+				}
+
+				cfmock.EXPECT().
+					GetTunnel(ctx, "test-id", zero_trust.TunnelCloudflaredGetParams{
+						AccountID: cloudflare.F(accountId),
+					}).
+					Return(getResult, nil)
+
+				By("Reconciling the created resource")
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+
+				status := cloudflaretunnel.Status
+				Expect(status.Name).To(Equal(getResult.Name))
+				Expect(status.AccountTag).To(Equal(getResult.AccountTag))
+				Expect(status.Id).To(Equal(ptr.To(getResult.ID)))
+				Expect(status.RemoteConfig).To(Equal(getResult.RemoteConfig))
+				Expect(status.Status).To(Equal(cfv1alpha1.InactiveCloudflareTunnelHealth))
+				Expect(status.CreatedAt.Time).To(BeTemporally("~", getResult.CreatedAt, time.Second))
+				Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", getResult.ConnsActiveAt, time.Second))
+				Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", getResult.ConnsInactiveAt, time.Second))
+				Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
+				Expect(status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeAvailableCloudflareTunnel),
+					HaveField("Status", metav1.ConditionTrue),
+				)))
+				Expect(status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeProgressingCloudflareTunnel),
+					HaveField("Status", metav1.ConditionFalse),
+				)))
+				Expect(status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeDegradedCloudflareTunnel),
+					HaveField("Status", metav1.ConditionFalse),
+				)))
+			})
+
 			It("should delete the cloudflared", func(ctx context.Context) {
 				By("Deleting the CloudflareTunnel")
 				Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
@@ -211,6 +262,19 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				// The cloudflared's need to be gone before we attempt to remove the tunnel
 				Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
 				Expect(result.Requeue).To(BeTrueBecause("Re-queue to clean up the tunnel"))
+
+				Expect(cloudflaretunnel.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeAvailableCloudflareTunnel),
+					HaveField("Status", metav1.ConditionFalse),
+				)))
+				Expect(cloudflaretunnel.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeProgressingCloudflareTunnel),
+					HaveField("Status", metav1.ConditionTrue),
+				)))
+				Expect(cloudflaretunnel.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", typeDegradedCloudflareTunnel),
+					HaveField("Status", metav1.ConditionTrue),
+				)))
 			})
 
 			It("should delete the tunnel", func(ctx context.Context) {
@@ -471,28 +535,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Expect(err).NotTo(HaveOccurred())
 				})
 
-				It("should mark the CloudflareTunnel resource as available", func() {
-					By("Reconciling the created resource")
-					controllerReconciler := &CloudflareTunnelReconciler{
-						Client:     k8sClient,
-						Scheme:     k8sClient.Scheme(),
-						Cloudflare: cfmock,
-					}
-
-					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-						NamespacedName: typeNamespacedName,
-					})
-					Expect(err).NotTo(HaveOccurred())
-
-					resource := &cfv1alpha1.CloudflareTunnel{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-
-					Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
-						HaveField("Type", typeProgressingCloudflareTunnel),
-						HaveField("Status", metav1.ConditionTrue),
-					)))
-				})
-
 				It("should update the status from the observed tunnel", func() {
 					controllerReconciler := &CloudflareTunnelReconciler{
 						Client:     k8sClient,
@@ -626,28 +668,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(cloudflared.Spec.Config.TunnelId).To(Equal(ptr.To(tunnelId)))
 						Expect(cloudflared.Spec.Config.AccountId).To(Equal(ptr.To(accountTag)))
 					})
-
-					It("should update the tunnel status", func() {
-						By("Reconciling the updated resource")
-						controllerReconciler := &CloudflareTunnelReconciler{
-							Client:     k8sClient,
-							Scheme:     k8sClient.Scheme(),
-							Cloudflare: cfmock,
-						}
-
-						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-							NamespacedName: typeNamespacedName,
-						})
-						Expect(err).NotTo(HaveOccurred())
-
-						resource := &cfv1alpha1.CloudflareTunnel{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-						Expect(resource.Status.Instances).To(Equal(int32(1)))
-						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
-							HaveField("Type", typeProgressingCloudflareTunnel),
-							HaveField("Status", metav1.ConditionTrue),
-						)))
-					})
 				})
 
 				Context("and the cloudflared template is configured", func() {
@@ -701,27 +721,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Expect(owner.Kind).To(Equal("CloudflareTunnel"))
 						Expect(owner.Controller).To(Equal(ptr.To(true)))
 						Expect(owner.BlockOwnerDeletion).To(Equal(ptr.To(true)))
-					})
-
-					It("should update the tunnel status", func() {
-						By("Reconciling the updated resource")
-						controllerReconciler := &CloudflareTunnelReconciler{
-							Client:     k8sClient,
-							Scheme:     k8sClient.Scheme(),
-							Cloudflare: cfmock,
-						}
-
-						_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-							NamespacedName: typeNamespacedName,
-						})
-						Expect(err).NotTo(HaveOccurred())
-
-						resource := &cfv1alpha1.CloudflareTunnel{}
-						Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
-						Expect(resource.Status.Conditions).To(ContainElements(SatisfyAll(
-							HaveField("Type", typeProgressingCloudflareTunnel),
-							HaveField("Status", metav1.ConditionTrue),
-						)))
 					})
 
 					Context("and the selector does not match", func() {
