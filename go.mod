@@ -19,7 +19,7 @@ tool (
 
 require (
 	github.com/a8m/envsubst v1.4.3
-	github.com/cloudflare/cloudflare-go/v4 v4.3.0
+	github.com/cloudflare/cloudflare-go/v4 v4.4.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/unmango/go v0.3.0
