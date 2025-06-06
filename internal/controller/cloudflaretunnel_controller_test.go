@@ -151,8 +151,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Expect(status.ConnectionsActiveAt.Time).To(BeTemporally("~", createResult.ConnsActiveAt, time.Second))
 				Expect(status.ConnectionsInactiveAt.Time).To(BeTemporally("~", createResult.ConnsInactiveAt, time.Second))
 				Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
-
-				Expect(result.Requeue).To(BeTrueBecause("Re-queue to create children"))
+				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 			})
 
 			It("should create the cloudflared", func(ctx context.Context) {
@@ -210,7 +209,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				// The cloudflared's need to be gone before we attempt to remove the tunnel
 				Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
-				Expect(result.Requeue).To(BeTrueBecause("Re-queue to clean up the tunnel"))
+				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 			})
 
 			It("should delete the tunnel", func(ctx context.Context) {

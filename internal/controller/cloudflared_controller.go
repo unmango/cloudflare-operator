@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
@@ -137,7 +138,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		} else {
 			log.V(2).Info("Requeueing to create new owned application")
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	}
 
@@ -154,7 +155,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement",
 				"kind", app.GetObjectKind(),
 			)
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	}
 

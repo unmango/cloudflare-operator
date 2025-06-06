@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/labels"
@@ -86,7 +87,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					return ctrl.Result{}, err
 				} else {
 					log.Info("Successfully deleted owned Cloudflareds")
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 				}
 			}
 		}
@@ -98,7 +99,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		log.V(2).Info("Deleting tunnel from the cloudflare API")
 		if err := r.deleteTunnel(ctx, *tunnel.Status.Id, tunnel); err != nil {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
@@ -154,7 +155,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		log.Info("Created cloudflare tunnel")
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	} else {
 		tunnelId = *id
 	}
@@ -245,7 +246,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 			if err := r.Create(ctx, cloudflared); err != nil {
 				log.Error(err, "Failed to create Cloudflared")
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 		}
 	}

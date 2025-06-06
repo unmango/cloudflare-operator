@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -245,7 +246,7 @@ var _ = Describe("Cloudflared Controller", func() {
 					})
 
 					It("should requeue reconciliation", func() {
-						Expect(result.Requeue).To(BeTrue())
+						Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 					})
 				})
 			})
@@ -637,7 +638,7 @@ var _ = Describe("Cloudflared Controller", func() {
 						})
 
 						It("should requeue reconciliation", func() {
-							Expect(result.Requeue).To(BeTrue())
+							Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 						})
 					})
 				})
@@ -949,7 +950,7 @@ var _ = Describe("Cloudflared Controller", func() {
 						})
 
 						It("should requeue reconciliation", func() {
-							Expect(result.Requeue).To(BeTrue())
+							Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 						})
 					})
 

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,7 +85,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}); err != nil {
 			return ctrl.Result{}, nil
 		} else {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	} else if !record.DeletionTimestamp.IsZero() {
 		log.Info("Deleting DnsRecord", "id", id)
