@@ -359,7 +359,7 @@ require (
 	sigs.k8s.io/controller-tools v0.18.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kind v0.29.0 // indirect
-	sigs.k8s.io/kubebuilder/v4 v4.5.2 // indirect
+	sigs.k8s.io/kubebuilder/v4 v4.6.0 // indirect
 	sigs.k8s.io/kustomize/api v0.19.0 // indirect
 	sigs.k8s.io/kustomize/cmd/config v0.19.0 // indirect
 	sigs.k8s.io/kustomize/kustomize/v5 v5.6.0 // indirect
