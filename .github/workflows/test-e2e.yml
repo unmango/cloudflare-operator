@@ -32,6 +32,8 @@ jobs:
 
       - name: Build and load Docker image
         uses: docker/build-push-action@v6
+        # This hasn't been speeding things up like I hoped it would
+        if: false
         with:
           load: true
           cache-from: type=gha
