@@ -88,6 +88,11 @@ kind-cluster: hack/kind-config.yaml ## Create a local kind cluster with the conf
 delete-cluster: ## Delete a local kind cluster created from hack/kind-config.yaml
 	$(KIND) delete cluster --name ${PROJECT}
 
+bin/filtered-openapi.yaml: hack/filter-openapi.yq
+	$(YQ) --from-file $< ${CURDIR}/upstream/api-schemas/openapi.yaml >$@
+only-models.gen.go: bin/filtered-openapi.yaml cfg.yaml
+	go tool oapi-codegen -config cfg.yaml $<
+
 ##@ Build
 
 .PHONY: build
@@ -173,6 +178,7 @@ KUBEBUILDER ?= go tool kubebuilder
 CONTROLLER_GEN ?= go tool controller-gen
 ENVTEST ?= go tool setup-envtest
 GOLANGCI_LINT ?= go tool golangci-lint
+YQ ?= go tool yq
 
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
