@@ -1,0 +1,2 @@
+(.components.schemas) as $i
+ireduce({}; setpath($i | path; $i))
