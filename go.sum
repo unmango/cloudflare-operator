@@ -307,6 +307,8 @@ github.com/google/gofuzz v1.2.0 h1:xRy4A+RhZaiKjJ1bPfwQ8sedCA+YS2YcCHW6ec7JMi0=
 github.com/google/gofuzz v1.2.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
 github.com/google/pprof v0.0.0-20250602020802-c6617b811d0e h1:FJta/0WsADCe1r9vQjdHbd3KuiLPu7Y9WlyLGwMUNyE=
 github.com/google/pprof v0.0.0-20250602020802-c6617b811d0e/go.mod h1:5hDyRhoBCxViHszMt12TnOpEI4VVi+U8Gm9iphldiMA=
+github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a h1://KbezygeMJZCSHH+HgUZiTeSoiuFspbMg1ge+eFj18=
+github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a/go.mod h1:5hDyRhoBCxViHszMt12TnOpEI4VVi+U8Gm9iphldiMA=
 github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 h1:El6M4kTTCOh6aBiKaUGG7oYTSPP8MxqL4YI3kZKwcP4=
 github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510/go.mod h1:pupxD2MaaD3pAXIBCelhxNneeOaAeabZDe5s4K6zSpQ=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
@@ -671,6 +673,7 @@ github.com/unmango/aferox/github v0.0.1 h1:RbW0a7N7mDk5TkhxcEtDt9voaVYRoWKmfNql/
 github.com/unmango/aferox/github v0.0.1/go.mod h1:SZzx1l0WkKOO6+7Mc6UpJ4nuMYEiZiiaTOsejpwzndY=
 github.com/unmango/devctl v0.1.8 h1:V1XNCUrmb49kyTSPucYdRJMpbfLlxVN0iF94Nn3kc2A=
 github.com/unmango/devctl v0.1.8/go.mod h1:zV9+S++COp6oqmAT6GzSEH6EBPZ3rbqdleTGOd53QJc=
+github.com/unmango/devctl v0.2.1/go.mod h1:m4PkV12n7mpgr/3RhXkKhXkpwC2L4UTyeDZtEt3WNZA=
 github.com/unmango/go v0.4.1 h1:EAIO7La54FQzzhN8nmPGiPTqrXfk8vp/+1UBsX6L4EY=
 github.com/unmango/go v0.4.1/go.mod h1:IVjltbHfp9M1WZU8iH/0AVM+ZRmGMeQdfaqNEI14hEo=
 github.com/unmango/go v0.5.0 h1:CiDedNOH7BNVHaJdiceq2Dcc0P7DnRmgIJ4SDLEEWok=
