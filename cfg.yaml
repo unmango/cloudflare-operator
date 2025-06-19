@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
 package: onlymodels
 output: only-models.gen.go
-output-options:
-  include-tags:
-    - DNS Records for a Zone
-  exclude-tags:
-    - Schema Validation
-  include-operation-ids:
-    - dns-records-for-a-zone-list-dns-records
+# output-options:
+#   include-tags:
+#     - DNS Records for a Zone
+#   exclude-tags:
+#     - Schema Validation
+#   include-operation-ids:
+#     - dns-records-for-a-zone-list-dns-records
 generate:
   models: true
