@@ -1,8 +1,6 @@
 module github.com/unmango/cloudflare-operator
 
-go 1.24.3
-
-toolchain go1.24.4
+go 1.24.4
 
 godebug default=go1.24
 
@@ -156,7 +154,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v72 v72.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/pprof v0.0.0-20250602020802-c6617b811d0e // indirect
+	github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gordonklaus/ineffassign v0.1.0 // indirect
@@ -293,7 +291,7 @@ require (
 	github.com/ultraware/funlen v0.2.0 // indirect
 	github.com/ultraware/whitespace v0.2.0 // indirect
 	github.com/unmango/aferox/github v0.0.1 // indirect
-	github.com/unmango/devctl v0.1.8 // indirect
+	github.com/unmango/devctl v0.2.1 // indirect
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.3.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
