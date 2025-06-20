@@ -106,7 +106,7 @@ var _ = Describe("DnsRecord Controller", func() {
 			cfmock.EXPECT().
 				CreateDnsRecord(gomock.Eq(ctx), gomock.Eq(dns.RecordNewParams{
 					ZoneID: cloudflare.F(zoneId),
-					Record: dns.ARecordParam{
+					Body: dns.ARecordParam{
 						Comment: cloudflare.F("test-comment"),
 						Content: cloudflare.F("test-content"),
 						Name:    cloudflare.F("test-a-record"),
@@ -194,7 +194,7 @@ var _ = Describe("DnsRecord Controller", func() {
 			cfmock.EXPECT().
 				UpdateDnsRecord(ctx, "test-id", dns.RecordUpdateParams{
 					ZoneID: cloudflare.F(zoneId),
-					Record: dns.TXTRecordParam{
+					Body: dns.TXTRecordParam{
 						Comment: cloudflare.F("test-comment-2"),
 						Content: cloudflare.F("test-content-2"),
 						Name:    cloudflare.F("test-txt-record"),
