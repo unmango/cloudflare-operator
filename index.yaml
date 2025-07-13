@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  cloudflare-operator:
+  - apiVersion: v2
+    appVersion: 0.0.4
+    created: "2025-07-13T16:33:42.158510337Z"
+    description: A Helm chart to distribute the project cloudflare-operator
+    digest: 1c865192f84e1ceb0a33d9857c46a2bfa68bd1ab049ceba4bdb0eb00106a3817
+    name: cloudflare-operator
+    type: application
+    urls:
+    - https://github.com/unmango/cloudflare-operator/releases/download/cloudflare-operator-0.0.1/cloudflare-operator-0.0.1.tgz
+    version: 0.0.1
+generated: "2025-07-13T16:33:42.158519694Z"
