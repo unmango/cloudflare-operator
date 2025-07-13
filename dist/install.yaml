@@ -18100,7 +18100,7 @@ spec:
         envFrom:
         - secretRef:
             name: cloudflare-operator-cloudflare-credentials-46f8b28mk5
-        image: ghcr.io/unmango/cloudflare-operator:v0.0.3
+        image: ghcr.io/unmango/cloudflare-operator:v0.0.4
         livenessProbe:
           httpGet:
             path: /healthz
