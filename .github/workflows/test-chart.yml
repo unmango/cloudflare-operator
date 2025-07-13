@@ -10,6 +10,9 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    env:
+      # renovate: datasource=github-tags depName=helm/helm
+      HELM_VERSION: v3.18.4
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -40,7 +43,7 @@ jobs:
         run: kind load docker-image cloudflare-operator:v0.0.1
 
       - name: Install Helm
-        run: go install helm.sh/helm/v3/cmd/helm
+        run: go install helm.sh/helm/v3/cmd/helm@${{ env.HELM_VERSION }}
 
       - name: Verify Helm installation
         run: helm version
