@@ -7,6 +7,7 @@ bin/
 obj/
 Dockerfile.cross
 node_modules
+.cr-release-packages/
 
 *.test
 *.out
