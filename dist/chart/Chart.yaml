@@ -3,5 +3,4 @@ name: cloudflare-operator
 description: A Helm chart to distribute the project cloudflare-operator
 type: application
 version: 0.0.1
-appVersion: "0.0.3"
-icon: "https://example.com/icon.png"
+appVersion: "0.0.4"

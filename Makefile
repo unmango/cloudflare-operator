@@ -1,7 +1,7 @@
 PROJECT := cloudflare-operator
 REPO    := unmango/${PROJECT}
 
-IMG ?= ghcr.io/${REPO}:v0.0.3
+IMG ?= ghcr.io/${REPO}:v0.0.4
 
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin

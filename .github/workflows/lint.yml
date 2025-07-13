@@ -32,7 +32,7 @@ jobs:
     name: Verify Worktree Clean
     runs-on: ubuntu-latest
     env:
-      IMG: ghcr.io/unmango/cloudflare-operator:v0.0.3
+      IMG: ghcr.io/unmango/cloudflare-operator:v0.0.4
     strategy:
       matrix:
         target:
