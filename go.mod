@@ -24,7 +24,7 @@ require (
 	github.com/onsi/gomega v1.37.0
 	github.com/unmango/go v0.5.1
 	go.uber.org/mock v0.5.2
-	golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc
+	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.2
 	k8s.io/apimachinery v0.34.0-alpha.1
