@@ -800,6 +800,7 @@ sigs.k8s.io/kind v0.29.0 h1:3TpCsyh908IkXXpcSnsMjWdwdWjIl7o9IMZImZCWFnI=
 sigs.k8s.io/kind v0.29.0/go.mod h1:ldWQisw2NYyM6k64o/tkZng/1qQW7OlzcN5a8geJX3o=
 sigs.k8s.io/kubebuilder/v4 v4.6.0 h1:SBc37jghs3L2UaEL91A1t5K5dANrEviUDuNic9hMQSw=
 sigs.k8s.io/kubebuilder/v4 v4.6.0/go.mod h1:zlXrnLiJPDPpK4hKCUrlgzzLOusfA8Sd8tpYGIrvD00=
+sigs.k8s.io/kubebuilder/v4 v4.7.1/go.mod h1:lOUlbL+p12PPhTDjSuPj6nurMi9q277CIbmlx397d/E=
 sigs.k8s.io/kustomize/api v0.20.0 h1:xPLqcobHI0bThyRUteO+nCV8G4d1Rlo5HafO57VRcas=
 sigs.k8s.io/kustomize/api v0.20.0/go.mod h1:F6CfaV27oevRCMJgehLqyX81dlUnRX/Fc13Uo7+OSo4=
 sigs.k8s.io/kustomize/cmd/config v0.20.0 h1:wE9wdZmCUgXjiSAKCwkZnlQUg4/tSX8tWKTTwO+tfoY=
