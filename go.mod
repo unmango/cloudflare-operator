@@ -20,7 +20,7 @@ require (
 	github.com/a8m/envsubst v1.4.3
 	github.com/cloudflare/cloudflare-go/v4 v4.6.0
 	github.com/onsi/ginkgo/v2 v2.23.4
-	github.com/onsi/gomega v1.37.0
+	github.com/onsi/gomega v1.38.0
 	github.com/unmango/go v0.5.1
 	go.uber.org/mock v0.5.2
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
