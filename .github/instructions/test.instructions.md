@@ -53,7 +53,7 @@ applyTo: "**/*_test.go,test/**/*.go"
 
 ## Test Utilities
 
-- Use shared test utilities from `internal/testing/`
+- Use shared test utilities when available
 - Create reusable test helpers for common operations
 - Mock client operations consistently
 - Handle test timeouts appropriately

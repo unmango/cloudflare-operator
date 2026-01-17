@@ -18,7 +18,7 @@ applyTo: "**/*.go"
 - Always handle errors explicitly
 - Wrap errors with context using `fmt.Errorf` with `%w` verb
 - Return errors rather than panicking
-- Use custom error types from `internal/client/errors.go` where appropriate
+- Use project-defined custom error types where appropriate
 - Log errors with appropriate severity levels
 
 ## Imports
