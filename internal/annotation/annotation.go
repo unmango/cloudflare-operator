@@ -2,10 +2,8 @@
 package annotation
 
 import (
-	"errors"
-
 	"github.com/unmango/cloudflare-operator/internal/config"
-	"github.com/unmango/go/maybe"
+	"github.com/unmango/go/either/maybe"
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -16,10 +14,10 @@ type (
 )
 
 func (v Value) UnmarshalYAML(obj any) error {
-	if a, err := v(); err != nil {
-		return errors.Join(maybe.ErrNone, err)
+	if a := v(); a == nil {
+		return maybe.ErrNone
 	} else {
-		return yaml.Unmarshal([]byte(a), obj)
+		return yaml.Unmarshal([]byte(*a), obj)
 	}
 }
 
@@ -29,9 +27,9 @@ func (p Prefix) Annotation(name string) Annotation {
 
 func (p Prefix) Get(obj client.Object, name string) Value {
 	if value, ok := p.Lookup(obj, name); ok {
-		return Value(maybe.Ok(value))
+		return Value(maybe.Some(value))
 	} else {
-		return Value(maybe.None[string])
+		return Value(maybe.None[string]())
 	}
 }
 
