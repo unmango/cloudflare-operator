@@ -15,9 +15,6 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -29,15 +26,6 @@ jobs:
 
       - name: Verify kind installation
         run: kind version
-
-      - name: Build and load Docker image
-        uses: docker/build-push-action@v6
-        # This hasn't been speeding things up like I hoped it would
-        if: false
-        with:
-          load: true
-          cache-from: type=gha
-          tags: ghcr.io/${{ github.repository }}
 
       - name: Running Test e2e
         run: make test-e2e

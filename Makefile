@@ -63,7 +63,7 @@ test: manifests generate fmt vet ## Run tests.
 # - CERT_MANAGER_INSTALL_SKIP=true
 .PHONY: test-e2e
 test-e2e: export KIND_CLUSTER := ${PROJECT}
-test-e2e: manifests generate fmt vet kind-cluster ## Run the e2e tests. Expected an isolated environment using Kind.
+test-e2e: manifests generate fmt vet docker-build kind-cluster kind-load ## Run the e2e tests. Expected an isolated environment using Kind.
 	go test ./test/e2e/ -v -ginkgo.v
 
 .PHONY: lint
@@ -83,6 +83,10 @@ kind-cluster: hack/kind-config.yaml ## Create a local kind cluster with the conf
 	@$(KIND) get clusters | grep -q '${PROJECT}' || { \
 		$(KIND) create cluster --config $< --name ${PROJECT}; \
 	}
+
+.PHONY: kind-load
+kind-load: ## Load the manager image into the kind cluster.
+	$(KIND) load docker-image ${IMG} --name ${PROJECT}
 
 .PHONY: delete-cluster
 delete-cluster: ## Delete a local kind cluster created from hack/kind-config.yaml
