@@ -24,3 +24,4 @@ go.work
 *.swo
 *~
 .DS_Store
+.claude/
