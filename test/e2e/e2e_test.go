@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a8m/envsubst"
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
-	"github.com/a8m/envsubst"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
