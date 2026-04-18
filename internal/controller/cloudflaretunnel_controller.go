@@ -93,7 +93,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if tunnel.Status.Id == nil {
-			log.Info("No tunnel id, nothing to do")
+			log.Info("No tunnel id in status, removing finalizer")
+			if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
 			return ctrl.Result{}, nil
 		}
 

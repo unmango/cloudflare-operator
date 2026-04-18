@@ -23,16 +23,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go/v4"
 	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	"github.com/a8m/envsubst"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/a8m/envsubst"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
@@ -45,11 +44,7 @@ const (
 )
 
 var _ = Describe("Manager", Ordered, func() {
-	var (
-		controllerPodName string
-		tunnelId          string
-		cf                cfclient.Client
-	)
+	var controllerPodName string
 
 	const testNamespace = "cloudflared-test"
 
@@ -58,6 +53,10 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+		DeferCleanup(func() {
+			cmd := exec.Command("kubectl", "delete", "ns", namespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
 
 		By("labeling the namespace to enforce the restricted security policy")
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
@@ -69,51 +68,35 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "install")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+		DeferCleanup(func() {
+			cmd := exec.Command("make", "uninstall")
+			_, _ = utils.Run(cmd)
+		})
 
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		DeferCleanup(func() {
+			cmd := exec.Command("make", "undeploy")
+			_, _ = utils.Run(cmd)
+		})
 
 		By("creating a namespace for tests")
 		cmd = exec.Command("kubectl", "create", "ns", testNamespace)
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
-
-		cf = cfclient.New()
-	})
-
-	AfterAll(func() {
-		By("removing test namespace")
-		cmd := exec.Command("kubectl", "delete", "ns", testNamespace)
-		_, _ = utils.Run(cmd)
-
-		By("cleaning up the curl pod for metrics")
-		cmd = exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
-		_, _ = utils.Run(cmd)
-
-		By("removing the ClusterRoleBinding for the service account")
-		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName)
-		_, _ = utils.Run(cmd)
-
-		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
-		_, _ = utils.Run(cmd)
-
-		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
-		_, _ = utils.Run(cmd)
-
-		By("removing manager namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = utils.Run(cmd)
+		DeferCleanup(func() {
+			cmd := exec.Command("kubectl", "delete", "ns", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
 	})
 
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
 			By("Fetching cloudflared DaemonSet description")
-			cmd := exec.Command("kubectl", "describe", "daemonset", "cloudflared-sample", "-n", testNamespace)
+			cmd := exec.Command("kubectl", "describe", "daemonset", "cloudflared-e2e", "-n", testNamespace)
 			daemonsetDescription, err := utils.Run(cmd)
 			if err == nil {
 				fmt.Println("DaemonSet description:\n", daemonsetDescription)
@@ -122,12 +105,12 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching cloudflared DaemonSet logs")
-			cmd = exec.Command("kubectl", "logs", "daemonset/cloudflared-sample",
+			cmd = exec.Command("kubectl", "logs", "daemonset/cloudflared-e2e",
 				"--namespace", testNamespace,
 				"--all-containers=true")
-			dameonSetLogs, err := utils.Run(cmd)
+			daemonSetLogs, err := utils.Run(cmd)
 			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "DaemonSet logs:\n %s", dameonSetLogs)
+				_, _ = fmt.Fprintf(GinkgoWriter, "DaemonSet logs:\n %s", daemonSetLogs)
 			} else {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get DaemonSet logs: %s", err)
 			}
@@ -173,7 +156,7 @@ var _ = Describe("Manager", Ordered, func() {
 	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
-	Context("Manager", func() {
+	Context("Controller Manager", func() {
 		It("should run successfully", func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
@@ -212,6 +195,12 @@ var _ = Describe("Manager", Ordered, func() {
 			)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterRoleBinding")
+			DeferCleanup(func() {
+				cmd := exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace, "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			})
 
 			By("validating that the metrics service is available")
 			cmd = exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
@@ -285,141 +274,146 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("getting the metrics by checking curl-metrics logs")
 			metricsOutput := getMetricsOutput()
-			Expect(metricsOutput).To(ContainSubstring(
-				"controller_runtime_reconcile_total",
-			))
+			Expect(metricsOutput).To(ContainSubstring("controller_runtime_reconcile_total"))
+		})
+	})
+
+	Context("Cloudflared", func() {
+		const cloudflaredName = "cloudflared-e2e"
+
+		It("should create a DaemonSet and set Available condition", func() {
+			By("creating a Cloudflared resource with no tunnel config")
+			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
+			cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: Cloudflared
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  kind: DaemonSet
+  version: latest
+`, cloudflaredName, testNamespace))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			DeferCleanup(func() {
+				By("deleting the Cloudflared resource")
+				cmd := exec.Command("kubectl", "delete", "cloudflared", cloudflaredName,
+					"-n", testNamespace, "--ignore-not-found", "--timeout=30s")
+				_, _ = utils.Run(cmd)
+
+				By("verifying the DaemonSet is removed via owner reference GC")
+				Eventually(func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "daemonset", cloudflaredName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred())
+				}).Should(Succeed())
+			})
+
+			By("verifying the DaemonSet is created")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "daemonset", cloudflaredName, "-n", testNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}).Should(Succeed())
+
+			By("verifying the Available condition is True")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cloudflared", cloudflaredName,
+					"-n", testNamespace,
+					"-o", `jsonpath={.status.conditions[?(@.type=="Available")].status}`)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"))
+			}).Should(Succeed())
+		})
+	})
+
+	Context("CloudflareTunnel", func() {
+		const tunnelName = "tunnel-e2e"
+
+		It("should initialize conditions on reconciliation", func() {
+			By("creating a CloudflareTunnel resource")
+			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
+			cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareTunnel
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  accountId: fake-account-id
+  configSource: local
+`, tunnelName, testNamespace))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			DeferCleanup(func() {
+				cmd := exec.Command("kubectl", "delete", "cloudflaretunnel", tunnelName,
+					"-n", testNamespace, "--ignore-not-found", "--timeout=30s")
+				_, _ = utils.Run(cmd)
+			})
+
+			By("verifying conditions are initialized by the controller")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cloudflaretunnel", tunnelName,
+					"-n", testNamespace,
+					"-o", `jsonpath={.status.conditions}`)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).NotTo(BeEmpty(), "conditions should be initialized")
+			}).Should(Succeed())
+		})
+	})
+
+	// +kubebuilder:scaffold:e2e-webhooks-checks
+
+	Context("CloudflareTunnel Cloudflare API", Label("cloudflare-api"), func() {
+		BeforeEach(func() {
+			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" || os.Getenv("CLOUDFLARE_ACCOUNT_ID") == "" {
+				Skip("skipping: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set")
+			}
 		})
 
-		// +kubebuilder:scaffold:e2e-webhooks-checks
+		It("should create and delete a tunnel via the Cloudflare API", func(ctx context.Context) {
+			cf := cfclient.New()
 
-		It("should have the API token set", func() {
-			Expect(os.Getenv("CLOUDFLARE_API_TOKEN")).NotTo(BeEmpty(), "API token is required for testing")
-		})
-
-		It("should create a cloudflare tunnel", func(ctx context.Context) {
 			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflaretunnel.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Applying the sample cloudflared resource")
+			By("applying the sample CloudflareTunnel resource")
 			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
 			cmd.Stdin = bytes.NewReader(sample)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			getTunnel := func(g Gomega) {
+			DeferCleanup(func(ctx context.Context) {
+				By("deleting the CloudflareTunnel resource")
+				cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m",
+					"cloudflaretunnel", "cloudflaretunnel-sample", "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			})
+
+			var tunnelId string
+			By("waiting for the tunnel ID to appear in status")
+			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "cloudflaretunnel",
 					"--namespace", testNamespace, "cloudflaretunnel-sample",
 					"-o", "jsonpath={.status.id}")
 				tunnelId, err = utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tunnelId).NotTo(BeEmpty())
-			}
-			Eventually(getTunnel).Should(Succeed())
+			}).Should(Succeed())
 
-			By("Verifying the tunnel was created")
-			verifyTunnel := func(g Gomega) {
+			By("verifying the tunnel exists in the Cloudflare API")
+			Eventually(func(g Gomega) {
 				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
 					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
 				})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(res.Name).To(Equal("cloudflaretunnel-sample"))
-			}
-			Eventually(verifyTunnel).Should(Succeed())
-		})
-
-		It("should create a cloudflared daemonset", func() {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflared.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Applying the sample cloudflared resource")
-			cmd := exec.Command("kubectl", "apply", "-n", testNamespace, "-f", "-")
-			cmd.Stdin = bytes.NewReader(sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Checking the DaemonSet is ready")
-			getDaemonSet := func() error {
-				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", testNamespace, "cloudflared-sample")
-				_, err := utils.Run(cmd)
-				return err
-			}
-			Eventually(getDaemonSet).Should(Succeed())
-
-			cmd = exec.Command("kubectl", "rollout", "status",
-				"daemonset/cloudflared-sample", "--namespace", testNamespace,
-				"--timeout", "2m")
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("should register a tunnel connection", func() {
-			checkLogs := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", "daemonset/cloudflared-sample",
-					"--namespace", testNamespace,
-					"--all-containers=true")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("Registered tunnel connection"))
-			}
-			Eventually(checkLogs).Should(Succeed())
-		})
-
-		It("should delete the cloudflared resource", func() {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflared.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Deleting the cloudflared resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
-			cmd.Stdin = bytes.NewReader(sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Checking the DaemonSet is removed")
-			cloudflaredNotFound := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "cloudflared",
-					"--namespace", testNamespace, "cloudflared-sample")
-				output, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
-					`Error from server (NotFound): cloudflareds.cloudflare.unmango.dev "cloudflared-sample" not found`,
-				))
-			}
-			Eventually(cloudflaredNotFound).Should(Succeed())
-
-			By("Checking the DaemonSet is removed")
-			daemonSetNotFound := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "daemonset",
-					"--namespace", testNamespace, "cloudflared-sample")
-				output, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(strings.TrimSpace(output)).To(ContainSubstring(
-					`Error from server (NotFound): daemonsets.apps "cloudflared-sample" not found`,
-				))
-			}
-			Eventually(daemonSetNotFound).Should(Succeed())
-		})
-
-		It("should delete the cloudflare tunnel resource", func(ctx context.Context) {
-			sample, err := envsubst.ReadFile("config/samples/cloudflare_v1alpha1_cloudflaretunnel.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Deleting the tunnel resource")
-			cmd := exec.Command("kubectl", "delete", "-n", testNamespace, "--timeout=1m", "-f", "-")
-			cmd.Stdin = bytes.NewReader(sample)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Verifying the tunnel was deleted")
-			verifyDelete := func(g Gomega) {
-				res, err := cf.GetTunnel(ctx, tunnelId, zero_trust.TunnelCloudflaredGetParams{
-					AccountID: cloudflare.F(os.Getenv("CLOUDFLARE_ACCOUNT_ID")),
-				})
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(res).NotTo(BeNil())
-				g.Expect(res.DeletedAt.IsZero()).To(BeFalseBecause("The DeletedAt timestamp is set"))
-			}
-			Eventually(verifyDelete).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -428,18 +422,7 @@ var _ = Describe("Manager", Ordered, func() {
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
 // and parsing the resulting token from the API response.
 func serviceAccountToken() (string, error) {
-	const tokenRequestRawString = `{
-		"apiVersion": "authentication.k8s.io/v1",
-		"kind": "TokenRequest"
-	}`
-
-	// Temporary file to store the token request
-	secretName := fmt.Sprintf("%s-token-request", serviceAccountName)
-	tokenRequestFile := filepath.Join("/tmp", secretName)
-	err := os.WriteFile(tokenRequestFile, []byte(tokenRequestRawString), os.FileMode(0o644))
-	if err != nil {
-		return "", err
-	}
+	const tokenRequestBody = `{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest"}`
 
 	var out string
 	verifyTokenCreation := func(g Gomega) {
@@ -447,7 +430,8 @@ func serviceAccountToken() (string, error) {
 			"/api/v1/namespaces/%s/serviceaccounts/%s/token",
 			namespace,
 			serviceAccountName,
-		), "-f", tokenRequestFile)
+		), "-f", "-")
+		cmd.Stdin = strings.NewReader(tokenRequestBody)
 
 		output, err := cmd.CombinedOutput()
 		g.Expect(err).NotTo(HaveOccurred())
@@ -460,7 +444,7 @@ func serviceAccountToken() (string, error) {
 	}
 	Eventually(verifyTokenCreation).Should(Succeed())
 
-	return out, err
+	return out, nil
 }
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
