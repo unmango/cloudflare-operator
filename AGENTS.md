@@ -39,6 +39,10 @@ go test ./internal/controller/... -v
 
 # E2E (requires Kind cluster and operator deployed)
 go test ./test/e2e/... -v
+
+# E2E without Cloudflare credentials (cloud-gated tests are skipped automatically)
+make docker-build IMG=<image>   # must be done before running e2e
+go test ./test/e2e/... -v -- --label-filter='!cloudflare-api'
 ```
 
 ## Architecture
@@ -76,10 +80,19 @@ make generate    # regenerate DeepCopy methods and mocks
 
 Both must be re-run before the changes take effect in tests or deployment.
 
+## Gotchas
+
+- **E2E image pre-step**: `make test-e2e` does not build the image; run `make docker-build IMG=<image>` first.
+- **Cloudflare API tests**: labeled `cloudflare-api` and skip automatically when credentials are absent.
+- **Cloudflared hello-world mode**: omit `spec.config` entirely to create a DaemonSet that runs `--hello-world` with no API calls — useful for tests and local dev.
+- **`createTunnel` error handling**: if the Cloudflare API call fails, the reconciler logs the error and drops it silently (`ctrl.Result{}, nil`). The `Available` condition stays `Unknown`; `Degraded` is **not** set. Don't assert `Degraded=True` after a failed create.
+- **Webhooks are inactive**: cert-manager is not required; the webhook config is commented out in `config/default/kustomization.yaml`.
+
 ## Environment Variables
 
 | Variable | Purpose |
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | Required for real Cloudflare API operations |
+| `CLOUDFLARE_ACCOUNT_ID` | Required for real Cloudflare API operations |
 | `IMG` | Container image (default: `ghcr.io/unmango/cloudflare-operator:v0.0.4`) |
 | `KUBEBUILDER_ASSETS` | Set automatically by envtest during `make test` |
