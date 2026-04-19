@@ -1,8 +1,0 @@
-resources:
-- ../default
-
-secretGenerator:
-- name: cloudflare-credentials
-  envs:
-  - cloudflare-credentials.env
-  behavior: replace
