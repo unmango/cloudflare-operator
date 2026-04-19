@@ -24,3 +24,6 @@ go.work
 *.swo
 *~
 .DS_Store
+
+# Kubeconfig might contain secrets
+*.kubeconfig
