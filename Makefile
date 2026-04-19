@@ -2,7 +2,7 @@ GO        ?= nix develop -c go
 GOMOD2NIX ?= nix develop -c gomod2nix
 GINKGO    ?= nix develop -c ginkgo
 
-GO_SRC ?= $(shell find . -name '*.go' -not -path './tmp/*')
+GO_SRC ?= $(shell find . -name '*.go')
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
