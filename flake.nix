@@ -51,7 +51,7 @@
               ginkgo
               gnumake
               kind
-	      kubebuilder
+              kubebuilder
               nixfmt
             ];
 
