@@ -14,6 +14,9 @@ node_modules
 out.*
 *.env
 .envrc
+*.kubeconfig
+result
+.claude/
 
 go.work
 !vendor/**/zz_generated.*
@@ -25,5 +28,3 @@ go.work
 *~
 .DS_Store
 
-# Kubeconfig might contain secrets
-*.kubeconfig

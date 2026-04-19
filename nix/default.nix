@@ -1,19 +1,16 @@
 {
   buildGoApplication,
-  cleanSource,
-  ginkgo,
+  lib,
   version,
 }:
 buildGoApplication {
-  pname = "";
+  pname = "cloudflare-operator";
   inherit version;
 
-  src = cleanSource ../.;
+  src = lib.cleanSource ../.;
   modules = ../gomod2nix.toml;
 
-  nativeCheckInputs = [ ginkgo ];
-
   checkPhase = ''
-    ginkgo run ./...
+    go test ./...
   '';
 }
