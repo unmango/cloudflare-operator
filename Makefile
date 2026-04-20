@@ -140,6 +140,19 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ Image
+
+hack/stream-image: flake.nix nix/image.nix nix/default.nix
+	nix build .#image --out-link hack/stream-image
+
+.PHONY: image-tar
+image-tar: hack/stream-image | $(LOCALBIN) ## Stream image to bin/image.tar.
+	./hack/stream-image > bin/image.tar
+
+.PHONY: kind-load
+kind-load: hack/stream-image ## Load image into the kind cluster.
+	./hack/stream-image | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER)
+
 ##@ Nix
 
 .PHONY: update

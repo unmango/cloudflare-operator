@@ -5,6 +5,7 @@
 *.dylib
 bin/
 obj/
+hack/stream-image
 Dockerfile.cross
 node_modules
 .cr-release-packages/
