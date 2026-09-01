@@ -6,7 +6,6 @@
 bin/
 obj/
 hack/stream-image
-Dockerfile.cross
 node_modules
 .cr-release-packages/
 
@@ -14,7 +13,6 @@ node_modules
 *.out
 out.*
 *.env
-.envrc
 *.kubeconfig
 result
 .claude/
