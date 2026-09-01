@@ -57,10 +57,6 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					Spec: cloudflarev1alpha1.CloudflareTunnelSpec{
 						AccountId: "0123456789abcdef0123456789abcdef",
 						Name:      resourceName,
-						// ConfigSource has a kubebuilder default, but the field is a
-						// non-pointer string without omitempty, so a Go client always
-						// sends "" and the default never applies.
-						ConfigSource: cloudflarev1alpha1.LocalCloudflareTunnelConfigSource,
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
