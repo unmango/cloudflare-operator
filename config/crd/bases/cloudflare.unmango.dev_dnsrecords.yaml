@@ -275,7 +275,7 @@ spec:
                         description: Record type.
                         type: string
                     type: object
-                  txtRecrod:
+                  txtRecord:
                     properties:
                       comment:
                         description: Comments or notes about the DNS record. This

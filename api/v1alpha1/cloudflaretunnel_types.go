@@ -298,7 +298,7 @@ type CloudflareTunnelSpec struct {
 	// tunnel on the Zero Trust dashboard.
 	//
 	// +kubebuilder:default:=local
-	ConfigSource CloudflareTunnelConfigSource `json:"configSource"`
+	ConfigSource CloudflareTunnelConfigSource `json:"configSource,omitempty"`
 
 	// A user-friendly name for a tunnel.
 	//

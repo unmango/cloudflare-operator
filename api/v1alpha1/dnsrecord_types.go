@@ -401,7 +401,7 @@ type Record struct {
 	CNAMERecord *CNAMERecord `json:"cnameRecord,omitempty"`
 
 	// +optional
-	TXTRecord *TXTRecord `json:"txtRecrod,omitempty"`
+	TXTRecord *TXTRecord `json:"txtRecord,omitempty"`
 }
 
 // DnsRecordSpec defines the desired state of DnsRecord.
