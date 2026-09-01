@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 /*
 Copyright 2026 unmango.
@@ -21,7 +20,6 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"testing"
 
@@ -31,65 +29,32 @@ import (
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
 
-var (
-	// managerImage is the image nix/image.nix produces, which `make kind-load`
-	// streams into the Kind cluster.
-	managerImage = "cloudflare-operator:latest"
-	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
-	shouldCleanupCertManager = false
-)
+// managerImage is the tag nix/image.nix gives the operator image.
+const managerImage = "cloudflare-operator:latest"
 
-// TestE2E runs the e2e test suite to validate the solution in an isolated environment.
-// The default setup requires Kind and CertManager.
-//
-// To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting tmp e2e test suite\n")
 	RunSpecs(t, "e2e suite")
 }
 
 var _ = BeforeSuite(func() {
 	By("building the manager image with nix and loading it into Kind")
 	_, err := utils.Run(exec.Command("make", "kind-load"))
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+	Expect(err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 
-	setupCertManager()
+	By("installing CRDs")
+	_, err = utils.Run(exec.Command("make", "install"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+	By("deploying the controller-manager")
+	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage)))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 })
 
 var _ = AfterSuite(func() {
-	teardownCertManager()
+	By("undeploying the controller-manager")
+	_, _ = utils.Run(exec.Command("make", "undeploy"))
+
+	By("uninstalling CRDs")
+	_, _ = utils.Run(exec.Command("make", "uninstall"))
 })
-
-// setupCertManager installs CertManager if needed for webhook tests.
-// Skips installation if CERT_MANAGER_INSTALL_SKIP=true or if already present.
-func setupCertManager() {
-	if os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true" {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping CertManager installation (CERT_MANAGER_INSTALL_SKIP=true)\n")
-		return
-	}
-
-	By("checking if CertManager is already installed")
-	if utils.IsCertManagerCRDsInstalled() {
-		_, _ = fmt.Fprintf(GinkgoWriter, "CertManager is already installed. Skipping installation.\n")
-		return
-	}
-
-	// Mark for cleanup before installation to handle interruptions and partial installs.
-	shouldCleanupCertManager = true
-
-	By("installing CertManager")
-	Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
-}
-
-// teardownCertManager uninstalls CertManager if it was installed by setupCertManager.
-// This ensures we only remove what we installed.
-func teardownCertManager() {
-	if !shouldCleanupCertManager {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping CertManager cleanup (not installed by this suite)\n")
-		return
-	}
-
-	By("uninstalling CertManager")
-	utils.UninstallCertManager()
-}
