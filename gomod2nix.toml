@@ -29,6 +29,10 @@ schema = 3
     version = 'v2.3.0'
     hash = 'sha256-7hRlwSR+fos1kx4VZmJ/7snR7zHh8ZFKX+qqqqGcQpY='
 
+  [mod.'github.com/cloudflare/cloudflare-go/v7']
+    version = 'v7.9.0'
+    hash = 'sha256-6NwetVAFBjMZP4yqXeLLe+nODqmtJuu641h2bH9gVbw='
+
   [mod.'github.com/davecgh/go-spew']
     version = 'v1.1.2-0.20180830191138-d8f796af33cc'
     hash = 'sha256-fV9oI51xjHdOmEx6+dlq7Ku2Ag+m/bmbzPo6A4Y74qc='
@@ -81,6 +85,10 @@ schema = 3
     version = 'v3.0.0'
     hash = 'sha256-vCCw4MXVBm33VNLXcOBccVDD1CSnzDvDdWB6w5FN1cA='
 
+  [mod.'github.com/goccy/go-yaml']
+    version = 'v1.19.2'
+    hash = 'sha256-pkqkwtziwXoWlTOxJsPFdMc7Mj0mSC3Ll/xUmYAYcYE='
+
   [mod.'github.com/google/cel-go']
     version = 'v0.26.0'
     hash = 'sha256-SIM9SqhrnfTwAsYZbfWrbF33qa87vej9lUhffjicHj0='
@@ -94,8 +102,8 @@ schema = 3
     hash = 'sha256-JbxZFBFGCh/Rj5XZ1vG94V2x7c18L8XKB0N9ZD5F2rM='
 
   [mod.'github.com/google/pprof']
-    version = 'v0.0.0-20260115054156-294ebfa9ad83'
-    hash = 'sha256-fhalKl/thSt1gdsHZmFyNGF1Gwxb0YLXV0pBv65EZjE='
+    version = 'v0.0.0-20260402051712-545e8a4df936'
+    hash = 'sha256-DBaCmfVLei1HComa+xJN76IpPFTUaDfUEhc1U9gmW8g='
 
   [mod.'github.com/google/uuid']
     version = 'v1.6.0'
@@ -134,8 +142,8 @@ schema = 3
     hash = 'sha256-79URDDFenmGc9JZu+5AXHToMrtTREHb3BC84b/gym9Q='
 
   [mod.'github.com/onsi/ginkgo/v2']
-    version = 'v2.28.1'
-    hash = 'sha256-ndaovLQb6s4cztI8MXXJajJDY1kMsuz5zEbVjlfKgAE='
+    version = 'v2.29.0'
+    hash = 'sha256-MLTachXRpWLD9614nLSR8xHw3iC0dxphcJ3gm6F2Reg='
 
   [mod.'github.com/onsi/gomega']
     version = 'v1.43.0'
@@ -172,6 +180,22 @@ schema = 3
   [mod.'github.com/stoewer/go-strcase']
     version = 'v1.3.0'
     hash = 'sha256-X0ilcefeqVQ44B9WT6euCMcigs7oLFypOQaGI33kGr8='
+
+  [mod.'github.com/tidwall/gjson']
+    version = 'v1.18.0'
+    hash = 'sha256-CO6hqDu8Y58Po6A01e5iTpwiUBQ5khUZsw7czaJHw0I='
+
+  [mod.'github.com/tidwall/match']
+    version = 'v1.1.1'
+    hash = 'sha256-M2klhPId3Q3T3VGkSbOkYl/2nLHnsG+yMbXkPkyrRdg='
+
+  [mod.'github.com/tidwall/pretty']
+    version = 'v1.2.1'
+    hash = 'sha256-S0uTDDGD8qr415Ut7QinyXljCp0TkL4zOIrlJ+9OMl8='
+
+  [mod.'github.com/tidwall/sjson']
+    version = 'v1.2.5'
+    hash = 'sha256-OYGNolkmL7E1Qs2qrQ3IVpQp5gkcHNU/AB/z2O+Myps='
 
   [mod.'github.com/x448/float16']
     version = 'v0.8.4'
@@ -212,6 +236,10 @@ schema = 3
   [mod.'go.opentelemetry.io/proto/otlp']
     version = 'v1.9.0'
     hash = 'sha256-qO+oKCbSRzyNv0jBpQTiHRaI50bLrWRyyvf6lYWvjPc='
+
+  [mod.'go.uber.org/mock']
+    version = 'v0.6.0'
+    hash = 'sha256-m11cxIbrvOowa6xj11AztzfFk86DwR6SNO1lStcKzvo='
 
   [mod.'go.uber.org/multierr']
     version = 'v1.11.0'

@@ -21,6 +21,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/cloudflare/cloudflare-go/v7/shared"
+	cftesting "github.com/unmango/cloudflare-operator/internal/testing"
+	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -74,9 +78,16 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+			cloudflare := cftesting.NewMockClient(gomock.NewController(GinkgoT()))
+			cloudflare.EXPECT().
+				CreateTunnel(gomock.Any(), gomock.Any()).
+				Return(&shared.CloudflareTunnel{ID: "tunnel-id"}, nil).
+				AnyTimes()
+
 			controllerReconciler := &CloudflareTunnelReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Cloudflare: cloudflare,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
