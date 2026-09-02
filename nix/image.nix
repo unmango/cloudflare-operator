@@ -14,7 +14,7 @@ dockerTools.streamLayeredImage {
   ];
 
   config = {
-    Entrypoint = [ "/bin/cmd" ];
+    Entrypoint = [ "/bin/manager" ];
     User = "65532:65532";
   };
 }

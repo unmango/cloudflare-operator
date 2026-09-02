@@ -192,6 +192,19 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				It("should not record a tunnel id", func() {
 					Expect(observed().Status.Id).To(BeNil())
 				})
+
+				// The finalizer goes on before the create is attempted, so a
+				// tunnel that never reached Cloudflare still has to be able to
+				// leave the cluster.
+				It("should release the finalizer when deleted", func() {
+					Expect(observed().Finalizers).To(ConsistOf(cloudflareTunnelFinalizer))
+					Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
+
+					reconcileOnce()
+
+					err := k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
+					Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("Resource was deleted"))
+				})
 			})
 		})
 
