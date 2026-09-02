@@ -19,7 +19,6 @@ limitations under the License.
 package e2e
 
 import (
-	"fmt"
 	"os/exec"
 	"testing"
 
@@ -28,9 +27,6 @@ import (
 
 	"github.com/unmango/cloudflare-operator/test/utils"
 )
-
-// managerImage is the tag nix/image.nix gives the operator image.
-const managerImage = "cloudflare-operator:latest"
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -47,7 +43,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 	By("deploying the controller-manager")
-	_, err = utils.Run(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage)))
+	_, err = utils.Run(exec.Command("make", "deploy"))
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 })
 

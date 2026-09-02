@@ -11,9 +11,6 @@ KUSTOMIZE  ?= kustomize
 
 GO_SRC ?= $(shell find . -name '*.go')
 
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
-
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
@@ -94,7 +91,6 @@ run: manifests generate vet ## Run a controller from your host.
 .PHONY: build-installer
 build-installer: manifests generate ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Image
@@ -137,7 +133,6 @@ uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube
 
 .PHONY: deploy
 deploy: manifests ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply --server-side --force-conflicts -f -
 
 .PHONY: undeploy

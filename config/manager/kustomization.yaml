@@ -1,2 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 resources:
 - manager.yaml
+# nix/image.nix builds exactly this name and tag, and it is the only image the
+# project produces. Pinning it here keeps `make deploy` a pure read instead of
+# rewriting this file on every run.
+images:
+- name: controller
+  newName: cloudflare-operator
+  newTag: latest
