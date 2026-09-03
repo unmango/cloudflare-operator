@@ -1,135 +1,99 @@
-# tmp
-// TODO(user): Add simple overview of use/purpose
+# cloudflare-operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator for Cloudflare.
 
-## Getting Started
+It manages Cloudflare tunnels, the `cloudflared` daemons that run them, and DNS records, as Kubernetes resources.
+An Ingress controller creates a tunnel for any Ingress in the `cloudflare` class.
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+> This project is `v1alpha1` and the API may change.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## Resources
 
-```sh
-make docker-build docker-push IMG=<some-registry>/tmp:tag
-```
+All resources live in the `cloudflare.unmango.dev/v1alpha1` API group.
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+| Kind | What it does |
+| --- | --- |
+| `CloudflareTunnel` | Creates and reconciles a tunnel through the Cloudflare API, and can create the `Cloudflared` that runs it |
+| `Cloudflared` | Runs the `cloudflared` daemon for a tunnel as a DaemonSet or a Deployment |
+| `DnsRecord` | Manages a single DNS record in a zone |
 
-**Install the CRDs into the cluster:**
+The Ingress controller watches core `Ingress` objects and creates a `CloudflareTunnel` for any whose `ingressClassName` is `cloudflare`.
+It reads its configuration from `ingress.cloudflare.unmango.dev/` annotations.
+
+## Installing
+
+Install the CRDs and deploy the manager:
 
 ```sh
 make install
+make deploy IMG=<registry>/cloudflare-operator:<tag>
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+The manager reads its Cloudflare API token from the `CLOUDFLARE_API_TOKEN` environment variable.
+`config/manager/manager.yaml` does not set it, so supply it yourself, for example from a Secret:
 
 ```sh
-make deploy IMG=<some-registry>/tmp:tag
+kubectl create secret generic cloudflare-credentials \
+  --namespace cloudflare-operator-system \
+  --from-literal=CLOUDFLARE_API_TOKEN=<token>
+
+kubectl set env deployment/cloudflare-operator-controller-manager \
+  --namespace cloudflare-operator-system \
+  --from=secret/cloudflare-credentials
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
-
-```sh
-kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
+Remove everything again:
 
 ```sh
 make undeploy
+make uninstall
 ```
 
-## Project Distribution
+## Example
 
-Following the options to release and provide this solution to the users.
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareTunnel
+metadata:
+  name: example
+spec:
+  accountId: <cloudflare-account-id>
+  configSource: cloudflare
+---
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: Cloudflared
+metadata:
+  name: example
+spec:
+  config:
+    tunnelRef:
+      name: example
+```
 
-### By providing a bundle with all YAML files
+More examples are in [`config/samples`](config/samples).
 
-1. Build the installer for the image built and published in the registry:
+## Development
+
+The repository is Nix first.
+The dev shell supplies Go, `controller-gen`, `kustomize`, `golangci-lint`, `kubebuilder`, `kind` and the envtest binaries, so nothing is downloaded at build or test time.
 
 ```sh
-make build-installer IMG=<some-registry>/tmp:tag
+direnv allow     # or prefix commands with `nix develop -c`
+make test        # unit and envtest suites
+make lint
+make build       # nix build .#
+make check       # nix flake check
 ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
+The container image is built by Nix rather than a Dockerfile:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/tmp/<tag or branch>/dist/install.yaml
+nix build .#image   # produces a script that streams the image to stdout
+make kind-load      # stream it straight into a kind cluster
 ```
 
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+See [AGENTS.md](AGENTS.md) for the architecture and the reasoning behind the less obvious choices.
 
 ## License
 
-Copyright 2026 unmango.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache 2.0. See [LICENSE](LICENSE).
