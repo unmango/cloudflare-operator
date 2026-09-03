@@ -1,0 +1,13 @@
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: DnsRecord
+metadata:
+  labels:
+    app.kubernetes.io/name: cloudflare-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dnsrecord-sample
+spec:
+  zoneId: $CLOUDFLARE_ZONE_ID
+  record:
+    aRecord:
+      name: cloudflare-operator-sample
+      content: 1.1.1.1
