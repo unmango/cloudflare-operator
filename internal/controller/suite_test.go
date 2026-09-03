@@ -26,6 +26,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -120,4 +122,30 @@ func getFirstFoundEnvTestBinaryDir() string {
 		}
 	}
 	return ""
+}
+
+// testNamespace is where every controller spec creates its fixtures.
+const testNamespace = "default"
+
+// deleteIfExists removes obj and waits for it to disappear.
+//
+// envtest runs no controllers and no garbage collector, so finalizers added
+// during reconciliation are never removed and owner references never cascade.
+// Both have to be undone by hand or the object outlives its spec and collides
+// with the next one.
+func deleteIfExists(ctx context.Context, key types.NamespacedName, obj client.Object) {
+	GinkgoHelper()
+
+	if err := k8sClient.Get(ctx, key, obj); err != nil {
+		return
+	}
+	if len(obj.GetFinalizers()) > 0 {
+		obj.SetFinalizers(nil)
+		Expect(client.IgnoreNotFound(k8sClient.Update(ctx, obj))).To(Succeed())
+	}
+
+	Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
+	Eventually(func() bool {
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, obj))
+	}).Should(BeTrue())
 }

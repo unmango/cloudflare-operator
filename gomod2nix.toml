@@ -142,8 +142,8 @@ schema = 3
     hash = 'sha256-79URDDFenmGc9JZu+5AXHToMrtTREHb3BC84b/gym9Q='
 
   [mod.'github.com/onsi/ginkgo/v2']
-    version = 'v2.29.0'
-    hash = 'sha256-MLTachXRpWLD9614nLSR8xHw3iC0dxphcJ3gm6F2Reg='
+    version = 'v2.28.1'
+    hash = 'sha256-ndaovLQb6s4cztI8MXXJajJDY1kMsuz5zEbVjlfKgAE='
 
   [mod.'github.com/onsi/gomega']
     version = 'v1.43.0'
