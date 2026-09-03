@@ -94,8 +94,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if tunnel.Status.Id == nil {
-			log.Info("No tunnel id, nothing to do")
-			return ctrl.Result{}, nil
+			// The tunnel was never created on the Cloudflare side, so there is
+			// nothing to clean up. Release the finalizer or the object is stuck.
+			log.Info("No tunnel id, releasing the finalizer")
+			return ctrl.Result{}, patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
+			})
 		}
 
 		log.V(2).Info("Deleting tunnel from the cloudflare API")

@@ -59,11 +59,14 @@ spec:
           type: RuntimeDefault
       containers:
       - command:
-        - /manager
+        - /bin/manager
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
         image: controller:latest
+        # The e2e suite loads the image into Kind rather than pushing it, so the
+        # :latest tag must not send kubelet looking for a registry.
+        imagePullPolicy: IfNotPresent
         name: manager
         ports: []
         securityContext:

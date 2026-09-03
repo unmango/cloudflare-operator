@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,8 +28,10 @@ import (
 	"github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -162,6 +165,55 @@ var _ = Describe("DnsRecord Controller", func() {
 
 			It("should add a finalizer", func() {
 				Expect(observed().Finalizers).To(ConsistOf(dnsRecordFinalizer))
+			})
+		})
+
+		Context("and the record is being deleted", func() {
+			// Without a working Cloudflare API the create never lands, so the
+			// status carries no id. The finalizer still has to come off or the
+			// resource can never leave the cluster.
+			It("should release the finalizer when the create never succeeded", func() {
+				cfmock.EXPECT().
+					CreateDnsRecord(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("no api token")).
+					AnyTimes()
+
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+				reconcileOnce()
+				Expect(observed().Finalizers).To(ConsistOf(dnsRecordFinalizer))
+				Expect(observed().Status.Id).To(BeNil())
+
+				Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
+				reconcileOnce()
+
+				Eventually(func() bool {
+					return apierrors.IsNotFound(
+						k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.DnsRecord{}),
+					)
+				}).Should(BeTrue())
+			})
+
+			It("should release the finalizer once the record is gone upstream", func() {
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+				Expect(controllerutil.AddFinalizer(dnsrecord, dnsRecordFinalizer)).To(BeTrue())
+				Expect(k8sClient.Update(ctx, dnsrecord)).To(Succeed())
+				dnsrecord.Status.Id = ptr.To(recordId)
+				Expect(k8sClient.Status().Update(ctx, dnsrecord)).To(Succeed())
+
+				cfmock.EXPECT().
+					DeleteDnsRecord(gomock.Eq(ctx), gomock.Eq(recordId), gomock.Eq(dns.RecordDeleteParams{
+						ZoneID: cloudflare.F(zoneId),
+					})).
+					Return(&dns.RecordDeleteResponse{ID: recordId}, nil)
+
+				Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
+				reconcileOnce()
+
+				Eventually(func() bool {
+					return apierrors.IsNotFound(
+						k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.DnsRecord{}),
+					)
+				}).Should(BeTrue())
 			})
 		})
 
