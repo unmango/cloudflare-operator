@@ -62,21 +62,28 @@ lint-config: ## Verify golangci-lint linter configuration
 
 KIND_CLUSTER ?= cloudflare-operator-e2e
 
+# The e2e suite installs CRDs and a Deployment into whatever cluster the ambient
+# kubeconfig points at. Write the Kind credentials to a file of their own and
+# export KUBECONFIG for the suite so it cannot reach a real cluster.
+E2E_KUBECONFIG ?= $(CURDIR)/bin/$(KIND_CLUSTER).kubeconfig
+
 .PHONY: setup-test-e2e
-setup-test-e2e: ## Create the Kind cluster used for e2e tests if it does not exist.
+setup-test-e2e: | bin ## Create the Kind cluster used for e2e tests if it does not exist.
 	@case "$$($(KIND) get clusters)" in \
 		*"$(KIND_CLUSTER)"*) echo "Kind cluster '$(KIND_CLUSTER)' already exists." ;; \
 		*) $(KIND) create cluster --name $(KIND_CLUSTER) --config hack/kind-config.yaml ;; \
 	esac
+	$(KIND) export kubeconfig --name $(KIND_CLUSTER) --kubeconfig $(E2E_KUBECONFIG)
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate vet ## Run the e2e tests against a Kind cluster.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) $(GO) test -tags=e2e ./test/e2e/ -v -ginkgo.v
+	KUBECONFIG=$(E2E_KUBECONFIG) KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) $(GO) test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests.
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+	@rm -f $(E2E_KUBECONFIG)
 
 ##@ Build
 

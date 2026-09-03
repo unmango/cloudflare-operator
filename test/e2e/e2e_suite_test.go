@@ -19,7 +19,10 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -34,8 +37,16 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	By("verifying the kubeconfig points at the Kind cluster")
+	cluster := os.Getenv("KIND_CLUSTER")
+	Expect(cluster).NotTo(BeEmpty(), "KIND_CLUSTER must be set; run the suite through `make test-e2e`")
+	out, err := utils.Run(exec.Command("kubectl", "config", "current-context"))
+	Expect(err).NotTo(HaveOccurred(), "Failed to read the current kubectl context")
+	Expect(strings.TrimSpace(out)).To(Equal(fmt.Sprintf("kind-%s", cluster)),
+		"The suite deploys the operator into the current context; refusing to touch a cluster that is not Kind")
+
 	By("building the manager image with nix and loading it into Kind")
-	_, err := utils.Run(exec.Command("make", "kind-load"))
+	_, err = utils.Run(exec.Command("make", "kind-load"))
 	Expect(err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 
 	By("installing CRDs")
