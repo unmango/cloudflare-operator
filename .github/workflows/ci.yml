@@ -23,10 +23,9 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
 
-      # Evaluates the flake and verifies treefmt.
+      # Builds the operator, runs the envtest suites via its checkPhase, and
+      # verifies treefmt.
       - run: nix flake check
-
-      - run: nix build .#
 
   lint:
     runs-on: ubuntu-latest

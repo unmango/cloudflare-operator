@@ -26,45 +26,57 @@
     inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = with inputs; [ treefmt-nix.flakeModule ];
+      imports = [ inputs.treefmt-nix.flakeModule ];
 
       perSystem =
         { pkgs, system, ... }:
         let
           version = "0.0.4";
-          operator = pkgs.callPackage ./nix { inherit version; };
+          envtest-assets = pkgs.callPackage ./nix/envtest.nix { };
+          operator = pkgs.callPackage ./nix { inherit envtest-assets version; };
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
-            overlays = with inputs; [ gomod2nix.overlays.default ];
+            overlays = [ inputs.gomod2nix.overlays.default ];
           };
 
-          packages.default = operator;
-          packages.image = pkgs.callPackage ./nix/image.nix { inherit operator; };
+          packages = {
+            default = operator;
+            image = pkgs.callPackage ./nix/image.nix { inherit operator; };
+            inherit envtest-assets;
+          };
+
+          # `nix flake check` evaluates `packages` without building them, so the
+          # operator is exposed as a check to make CI compile it and run the
+          # suites in its checkPhase.
+          checks.operator = operator;
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
               cloudflared
-              direnv
-              go
-              gomod2nix
-              gopls
               ginkgo
               gnumake
+              go
+              golangci-lint
+              gomod2nix
+              gopls
               kind
               kubebuilder
+              kubectl
+              kubernetes-controller-tools
+              kustomize
+              mockgen
               nixfmt
             ];
 
-            GO = "${pkgs.go}/bin/go";
-            GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
-            GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
+            KUBEBUILDER_ASSETS = "${envtest-assets}";
           };
 
           treefmt.programs = {
-            nixfmt.enable = true;
             gofmt.enable = true;
+            nixfmt.enable = true;
+            shfmt.enable = true;
           };
         };
     };

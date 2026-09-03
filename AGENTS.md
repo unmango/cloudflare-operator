@@ -1,5 +1,30 @@
 # cloudflare-operator - AI Agent Guide
 
+A kubernetes operator for Cloudflare, scaffolded with kubebuilder and built with nix.
+
+## Commands
+
+All tooling comes from the nix dev shell.
+Run `direnv allow` once, or prefix commands with `nix develop -c` when the shell is not loaded.
+
+| Command | What it does |
+| --- | --- |
+| `make test` | Regenerate, vet, then run the unit and envtest suites |
+| `make lint` / `make lint-fix` | golangci-lint |
+| `make manifests generate` | controller-gen CRDs, RBAC, DeepCopy, plus `go generate` |
+| `make build` | `nix build .#` |
+| `make check` | `nix flake check`, which also builds the operator and runs its tests |
+| `make fmt` | `nix fmt` (treefmt: gofmt, nixfmt, shfmt) |
+| `make tidy` | `go mod tidy` and regenerate `gomod2nix.toml` |
+| `make test-e2e` | Create a kind cluster and run the `e2e`-tagged suite |
+| `make image-tar` / `make kind-load` | Stream the nix-built image |
+
+`KUBEBUILDER_ASSETS` is set by the dev shell to a nixpkgs-built `etcd` and `kube-apiserver`, so `setup-envtest` is not used and envtest needs no network.
+
+The container image is built by `nix/image.nix`; there is no Dockerfile.
+
+After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, otherwise the nix build will fail.
+
 ## Project Structure
 
 **Single-group layout (default):**
