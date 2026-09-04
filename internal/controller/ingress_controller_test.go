@@ -25,6 +25,7 @@ import (
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/ingress/annotation"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -81,6 +82,49 @@ var _ = Describe("Ingress Controller", func() {
 
 			tunnel := &cfv1alpha1.CloudflareTunnel{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+		})
+
+		Context("and tunnelSecret is a serialized secret", func() {
+			BeforeEach(func() {
+				ingress.Annotations[annotation.Definitions.TunnelSecret.String()] =
+					"valueFrom:\n  secretKeyRef:\n    name: tunnel\n    key: secret\n"
+			})
+
+			It("should unmarshal the secret", func() {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+				Expect(tunnel.Spec.TunnelSecret).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.ValueFrom).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.ValueFrom.SecretKeyRef).To(Equal(
+					&corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "tunnel"},
+						Key:                  "secret",
+					},
+				))
+			})
+		})
+
+		Context("and tunnelSecret is a bare value", func() {
+			BeforeEach(func() {
+				ingress.Annotations[annotation.Definitions.TunnelSecret.String()] = "shhh"
+			})
+
+			It("should use the annotation as the secret value", func() {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+				Expect(tunnel.Spec.TunnelSecret).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.Value).To(HaveValue(Equal("shhh")))
+			})
 		})
 
 		Context("and ingressClassName does not match", func() {

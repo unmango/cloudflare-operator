@@ -94,18 +94,24 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 		logf.FromContext(ctx).Info("Missing account id")
 		return ctrl.Result{}, nil
 	}
-	_ = annotations.Cloudflared.UnmarshalYAML(tunnel.Spec.Cloudflared)
+	cloudflared := &cfv1alpha1.CloudflareTunnelCloudflared{}
+	if err := annotations.Cloudflared.UnmarshalYAML(cloudflared); err == nil {
+		tunnel.Spec.Cloudflared = cloudflared
+	}
 	if cs, ok := annotations.ConfigSource(); ok {
 		tunnel.Spec.ConfigSource = cfv1alpha1.CloudflareTunnelConfigSource(cs)
 	}
 	if name, ok := annotations.Name(); ok {
 		tunnel.Spec.Name = name
 	}
-	if err := annotations.TunnelSecret.UnmarshalYAML(tunnel.Spec.TunnelSecret); err != nil {
-		if secret, ok := annotations.TunnelSecret(); ok {
-			tunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
-				Value: &secret,
-			}
+	// The annotation holds either a serialized CloudflareTunnelSecret or a bare
+	// secret value.
+	secret := &cfv1alpha1.CloudflareTunnelSecret{}
+	if err := annotations.TunnelSecret.UnmarshalYAML(secret); err == nil {
+		tunnel.Spec.TunnelSecret = secret
+	} else if value, ok := annotations.TunnelSecret(); ok {
+		tunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+			Value: &value,
 		}
 	}
 	if err := r.Create(ctx, tunnel); err != nil {

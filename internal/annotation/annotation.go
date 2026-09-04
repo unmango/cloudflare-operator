@@ -3,8 +3,8 @@ package annotation
 import (
 	"errors"
 
-	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 // ErrNotFound reports that an annotation was absent from the object.
@@ -15,8 +15,10 @@ type Prefix string
 // Value resolves an annotation that may be absent.
 type Value func() (string, bool)
 
-// UnmarshalYAML decodes the annotation into obj. It reports ErrNotFound when
-// the annotation is absent.
+// UnmarshalYAML decodes the annotation into obj, which must be a non-nil
+// pointer. Field names come from the json tags so annotations spell fields the
+// same way a manifest does. It reports ErrNotFound when the annotation is
+// absent.
 func (v Value) UnmarshalYAML(obj any) error {
 	value, ok := v()
 	if !ok {
