@@ -26,7 +26,7 @@ make helm-lint   # lint the chart and render it with the default values
 ```
 
 `make test` runs `ginkgo run -r --skip-package=test`, which excludes `test/e2e`.
-To focus one spec, use ginkgo directly: `ginkgo run --focus='reconciles a tunnel' ./internal/controller`.
+To focus one spec, use ginkgo directly: `ginkgo run --focus='CloudflareTunnel Controller' ./internal/controller`.
 `KUBEBUILDER_ASSETS` is already exported by the dev shell, so plain `go test ./internal/controller/...` works too.
 
 After changing `*_types.go` or any kubebuilder marker, run `make manifests generate` to regenerate CRDs, RBAC and DeepCopy methods.
