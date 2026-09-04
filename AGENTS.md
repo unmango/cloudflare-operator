@@ -25,12 +25,17 @@ make helm        # regenerate dist/chart from that
 make helm-lint   # lint the chart and render it with the default values
 ```
 
+`make test` runs `ginkgo run -r --skip-package=test`, which excludes `test/e2e`.
+To focus one spec, use ginkgo directly: `ginkgo run --focus='CloudflareTunnel Controller' ./internal/controller`.
+`KUBEBUILDER_ASSETS` is already exported by the dev shell, so plain `go test ./internal/controller/...` works too.
+
 After changing `*_types.go` or any kubebuilder marker, run `make manifests generate` to regenerate CRDs, RBAC and DeepCopy methods.
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
 `dist/chart` is generated too, with three exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, and `templates/ingress-class/`.
-Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result; CI fails on the difference otherwise.
+Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
+CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
 
 Scaffold new resources with `kubebuilder create api` rather than writing the files by hand.
@@ -117,6 +122,9 @@ Use the `deleteIfExists` helper in `suite_test.go` for cleanup; it strips finali
 The e2e suite is behind the `e2e` build tag and needs a kind cluster.
 It covers only what envtest cannot: that the image starts in a real cluster and that the API server accepts the published CRDs.
 Keep reconciliation coverage in the envtest suites.
+
+`make test-e2e` writes the kind credentials to `bin/$(KIND_CLUSTER).kubeconfig` and exports `KUBECONFIG` for the suite alone, so it cannot install CRDs into whatever cluster the ambient kubeconfig points at.
+`make install` and `make deploy` pipe kustomize straight into `kubectl apply --server-side`: the CRD bundle is over a megabyte, and a client-side apply would exceed the 256KiB annotation limit on the two larger CRDs.
 
 ## References
 
