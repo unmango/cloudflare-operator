@@ -7,6 +7,10 @@ domain: unmango.dev
 layout:
 - go.kubebuilder.io/v4
 - helm.kubebuilder.io/v2-alpha
+plugins:
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: cloudflare-operator
 repo: github.com/unmango/cloudflare-operator
 resources:

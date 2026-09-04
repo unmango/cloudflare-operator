@@ -1,0 +1,14 @@
+apiVersion: v2
+name: cloudflare-operator
+description: A Helm chart to distribute cloudflare-operator
+type: application
+
+version: 0.1.0
+appVersion: "0.0.4"
+
+keywords:
+  - kubernetes
+  - operator
+
+annotations:
+  kubebuilder.io/generated-by: kubebuilder

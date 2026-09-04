@@ -41,29 +41,37 @@ It reads its configuration from `ingress.cloudflare.unmango.dev/` annotations.
 
 ## Installing
 
-Install the CRDs and deploy the manager:
-
-```sh
-make install
-make deploy IMG=<registry>/cloudflare-operator:<tag>
-```
-
 The manager reads its Cloudflare API token from the `CLOUDFLARE_API_TOKEN` environment variable.
-`config/manager/manager.yaml` does not set it, so supply it yourself, for example from a Secret:
+The chart references a Secret holding that token but never creates one, so create it first:
 
 ```sh
+kubectl create namespace cloudflare-operator-system
+
 kubectl create secret generic cloudflare-credentials \
   --namespace cloudflare-operator-system \
   --from-literal=CLOUDFLARE_API_TOKEN=<token>
 
-kubectl set env deployment/cloudflare-operator-controller-manager \
+helm install cloudflare-operator ./dist/chart \
   --namespace cloudflare-operator-system \
-  --from=secret/cloudflare-credentials
+  --set cloudflare.auth.apiTokenRef.name=cloudflare-credentials
 ```
 
-Remove everything again:
+Leaving `cloudflare.auth.apiTokenRef` unset installs a manager with no credentials.
+It still runs and still reconciles `Cloudflared`, which needs no API access, but every Cloudflare API call fails.
+
+The chart also installs an `IngressClass` named `cloudflare`; set `ingressClass.enabled=false` to skip it.
+The CRDs carry `helm.sh/resource-policy: keep`, so `helm uninstall` leaves them in the cluster.
 
 ```sh
+helm uninstall cloudflare-operator --namespace cloudflare-operator-system
+```
+
+To install from source without Helm, apply the kustomize output instead.
+This path does not wire up the token; set it yourself afterwards.
+
+```sh
+make install
+make deploy
 make undeploy
 make uninstall
 ```
@@ -94,7 +102,7 @@ More examples are in [`config/samples`](config/samples).
 ## Development
 
 The repository is Nix first.
-The dev shell supplies Go, `controller-gen`, `kustomize`, `golangci-lint`, `kubebuilder`, `kind` and the envtest binaries, so nothing is downloaded at build or test time.
+The dev shell supplies Go, `controller-gen`, `kustomize`, `golangci-lint`, `kubebuilder`, `helm`, `kind` and the envtest binaries, so nothing is downloaded at build or test time.
 
 ```sh
 direnv allow     # or prefix commands with `nix develop -c`
@@ -102,6 +110,7 @@ make test        # unit and envtest suites
 make lint
 make build       # nix build .#
 make check       # nix flake check
+make helm        # regenerate dist/chart
 ```
 
 The container image is built by Nix rather than a Dockerfile:

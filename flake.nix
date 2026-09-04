@@ -65,6 +65,7 @@
               kubebuilder
               kubectl
               kubernetes-controller-tools
+              kubernetes-helm
               kustomize
               mockgen
               nixfmt

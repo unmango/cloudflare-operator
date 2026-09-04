@@ -20,12 +20,17 @@ make fmt         # nix fmt (treefmt: gofmt, nixfmt, shfmt)
 make tidy        # go mod tidy and regenerate gomod2nix.toml
 make test-e2e    # create a kind cluster and run the e2e-tagged suite
 make kind-load   # stream the Nix-built image into the kind cluster
+make dist        # render config/default into dist/install.yaml
+make helm        # regenerate dist/chart from that
+make helm-lint   # lint the chart and render it with the default values
 ```
 
 After changing `*_types.go` or any kubebuilder marker, run `make manifests generate` to regenerate CRDs, RBAC and DeepCopy methods.
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
+`dist/chart` is generated too, with three exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, and `templates/ingress-class/`.
+Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result; CI fails on the difference otherwise.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
 
 Scaffold new resources with `kubebuilder create api` rather than writing the files by hand.
@@ -62,6 +67,22 @@ Generating models from the OpenAPI schemas with `oapi-codegen` gets closer but s
 A CRD spec is also not an API request body: it carries references to other resources, secret selectors and pod templates that have no OpenAPI counterpart.
 `cloudflare-go` is generated from those same schemas upstream, so the operator consumes it there instead.
 
+### The Helm chart is generated
+
+`make helm` runs `kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha`, which renders `dist/chart` from `dist/install.yaml`, itself the kustomize output.
+The plugin runs `make build-installer` on its own, so that target has to keep its name.
+`dist/install.yaml` is a 1.4 MB intermediate and is gitignored; `dist/chart` is committed, and CI regenerates it and fails on any difference.
+
+Three things about the plugin are worked around in the `helm` target.
+It rewrites every template it owns on each run, so hand edits survive only in files it does not generate.
+It offers no `env` or `envFrom` hook on the manager container, so `hack/chart/inject-env.sh` re-inserts the `CLOUDFLARE_API_TOKEN` stanza afterwards, anchored on the container's command block and failing loudly if that anchor moves.
+It also appends an `##@ Helm Deployment` section to the `Makefile` whose `install-helm` target pipes curl into bash, and scaffolds a Go-based `test-chart.yml` workflow; both are deleted on every run.
+
+The CRDs ship as templates under `crd.enabled` rather than in a `crds/` directory, because `crds/` is install-only and Helm would never upgrade them, which is the wrong trade for a `v1alpha1` API.
+`crd.keep` adds `helm.sh/resource-policy: keep`, so `helm uninstall` leaves them behind.
+Size is the constraint to watch: the rendered chart is 1.4 MB and the Helm release Secret measures 792 KB against the API server's ~1.5 MiB object limit, so roughly half the budget is spent.
+Re-measure with `kubectl -n <ns> get secret -l owner=helm -o jsonpath='{.items[0].data.release}' | wc -c` if the CRD surface grows.
+
 ### Package layout
 
 `internal/client` wraps the Cloudflare SDK in an interface so controllers can be tested against a mock.
@@ -74,8 +95,8 @@ A CRD spec is also not an API request body: it carries references to other resou
 ### Cloudflare credentials
 
 The SDK reads `CLOUDFLARE_API_TOKEN` from the environment, and the tunnel controller logs a warning when it is unset.
-`config/manager/manager.yaml` does not supply it.
-Wiring the token into the deployment, which the removed Helm chart used to do, is unfinished.
+The Helm chart wires it from a Secret the user already owns, through `cloudflare.auth.apiTokenRef`, and never creates a Secret of its own.
+`config/manager/manager.yaml` supplies nothing, so a kustomize install has no credentials until someone sets them; that path is for development.
 
 ### Reconciliation
 
