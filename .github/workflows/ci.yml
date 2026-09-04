@@ -35,7 +35,12 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
 
-      - run: nix develop -c make lint-config lint
+      - run: nix develop -c make lint-config lint helm-lint
+
+      # dist/chart is generated from config/ by the kubebuilder helm plugin and
+      # committed. If this fails, run `make helm` and commit the result.
+      - run: nix develop -c make helm
+      - run: git diff --exit-code -- dist/chart PROJECT Makefile
 
   test:
     runs-on: ubuntu-latest
@@ -64,3 +69,26 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
 
       - run: nix develop -c make test-e2e
+
+      # `make test-e2e` deletes its cluster on the way out, so the chart gets a
+      # fresh one. The dummy Secret is the point: an install that never resolves
+      # the secretKeyRef proves nothing about the token wiring.
+      - run: nix develop -c make setup-test-e2e kind-load
+      - run: |
+          nix develop -c bash -euo pipefail -c '
+            export KUBECONFIG="$PWD/bin/cloudflare-operator-e2e.kubeconfig"
+            kubectl create namespace cloudflare-operator-system
+            kubectl create secret generic cloudflare-credentials \
+              --namespace cloudflare-operator-system \
+              --from-literal=CLOUDFLARE_API_TOKEN=dummy
+            helm install cloudflare-operator dist/chart \
+              --namespace cloudflare-operator-system \
+              --set manager.image.repository=cloudflare-operator \
+              --set manager.image.tag=latest \
+              --set cloudflare.auth.apiTokenRef.name=cloudflare-credentials \
+              --wait --timeout 5m
+            helm status cloudflare-operator --namespace cloudflare-operator-system
+          '
+
+      - if: always()
+        run: nix develop -c make cleanup-test-e2e

@@ -5,6 +5,7 @@ GINKGO     ?= ginkgo
 GOMOD2NIX  ?= gomod2nix
 CONTROLLER_GEN ?= controller-gen
 GOLANGCI_LINT  ?= golangci-lint
+HELM       ?= helm
 KIND       ?= kind
 KUBECTL    ?= kubectl
 KUSTOMIZE  ?= kustomize
@@ -95,10 +96,51 @@ build: ## Build the operator with nix.
 run: manifests generate vet ## Run a controller from your host.
 	$(GO) run ./cmd/main.go
 
-.PHONY: build-installer
-build-installer: manifests generate ## Generate a consolidated YAML with CRDs and deployment.
+.PHONY: dist build-installer
+# The helm plugin shells out to `make build-installer` by name, so that name has
+# to stay even though `dist` reads better at the command line.
+dist build-installer: manifests generate ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+
+##@ Chart
+
+HELM_RELEASE   ?= cloudflare-operator
+HELM_NAMESPACE ?= cloudflare-operator-system
+CHART          ?= dist/chart
+
+.PHONY: helm
+# The plugin renders the chart from dist/install.yaml and runs build-installer
+# itself. It rewrites every template it owns on each run, so the only hand-owned
+# pieces are the files it leaves alone: values.yaml, Chart.yaml, and the
+# templates it did not generate.
+#
+# It also leaves three things behind that this repo does not want: a Go-based
+# test-chart workflow, an `##@ Helm Deployment` block appended to the end of this
+# file whose install-helm target pipes curl into bash, and a manager template
+# with no env hook, so the CLOUDFLARE_API_TOKEN stanza is re-inserted afterwards.
+helm: ## Regenerate the Helm chart in dist/chart.
+	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
+	rm -f .github/workflows/test-chart.yml
+	sed -i '/^##@ Helm Deployment$$/,$$d' Makefile
+	./hack/chart/inject-env.sh $(CHART)/templates/manager/manager.yaml
+
+.PHONY: helm-lint
+helm-lint: ## Lint the chart and render it with the default values.
+	$(HELM) lint $(CHART)
+	$(HELM) template $(HELM_RELEASE) $(CHART) > /dev/null
+
+.PHONY: helm-deploy
+# Defining this target also stops `kubebuilder edit` from appending its own helm
+# deployment section, which installs helm by piping curl into bash.
+helm-deploy: ## Install or upgrade the chart in the cluster specified in ~/.kube/config.
+	$(HELM) upgrade --install $(HELM_RELEASE) $(CHART) \
+		--namespace $(HELM_NAMESPACE) --create-namespace \
+		--history-max 3 --wait --timeout 5m
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall the Helm release.
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
 
 ##@ Image
 
@@ -164,3 +206,4 @@ go.sum: go.mod ${GO_SRC}
 
 gomod2nix.toml: go.sum ${GO_SRC}
 	$(GOMOD2NIX) generate
+
