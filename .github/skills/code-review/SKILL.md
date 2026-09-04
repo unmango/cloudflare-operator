@@ -11,8 +11,16 @@ Report findings as checks against a named file, not as prose.
 
 ## 1. Generated-file drift
 
-This is the only class of finding that fails CI deterministically.
-The `lint` job in `.github/workflows/ci.yml` runs `make helm` and then `git diff --exit-code -- dist/chart PROJECT Makefile`.
+Drift is the one thing CI gates with an explicit diff.
+The `lint` job in `.github/workflows/ci.yml` runs:
+
+```sh
+nix develop -c make helm
+git diff --exit-code -- dist/chart PROJECT Makefile
+```
+
+Regenerated CRDs reach `dist/chart` through kustomize, so stale `config/crd/bases` output surfaces as a diff in the chart.
+`make lint` and `make test` fail on their own terms and need no help from this section.
 
 Flag a diff that changes a source without its generated output:
 
@@ -31,9 +39,9 @@ The CLI injects code at those markers.
 `internal/controller/clientutil.go` defines `patch` and `patchSubResource`.
 
 - Spec and metadata mutations go through `patch`, status through `patchSubResource`. A raw `Update` or `Status().Update()` in controller code is a finding.
-- The update closure must mutate its own `obj` parameter, not the variable captured from the enclosing scope. Both helpers `DeepCopy` before calling the closure, so mutating the outer variable makes the merge patch compute an empty diff.
+- Both helpers snapshot the original with `DeepCopy`, call the closure, and patch with `MergeFrom(original)`. The mutation must land on the instance being patched. Writing to the closure's `obj` parameter guarantees that; a captured variable only works while it aliases the same object, so prefer the parameter and flag a closure that mutates anything else.
 - The deletion branch, guarded by `!obj.DeletionTimestamp.IsZero()`, comes before status work. The finalizer is released even when creation never succeeded, or the object is stuck.
-- Finalizer constants are `<kind>.cloudflare.unmango.dev/finalizer`.
+- Finalizer constants are `<kind>.cloudflare.unmango.dev/finalizer`, as in `dnsrecord_controller.go` and `cloudflaretunnel_controller.go`. `cloudflaredFinalizer` in `cloudflared_controller.go` is `cloudflared.unmango.dev/finalizer` and is unused, so do not cite it as precedent.
 - The requeue interval is `5 * time.Second` throughout. A different value needs a stated reason.
 - Cloudflare API errors are logged and swallowed with `return ctrl.Result{}, nil`, so a bad token does not hot-loop the workqueue. Kubernetes API errors and patch errors are returned.
 - Use `cfclient.IgnoreNotFound` and `cfclient.IgnoreConflict` from `internal/client/errors.go` for Cloudflare errors, and `client.IgnoreNotFound` for Kubernetes ones. Raw status-code checks in a controller are a finding.
@@ -79,6 +87,7 @@ Report these commands rather than running them.
 Every tool comes from the Nix dev shell, so prefix with `nix develop -c` when the shell is not loaded.
 
 ```sh
+# Wider than the CI gate: this also catches stale config/crd/bases directly.
 make manifests generate helm && git diff --exit-code -- config dist/chart PROJECT Makefile
 make lint-config lint helm-lint
 make test
