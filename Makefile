@@ -122,7 +122,7 @@ CHART          ?= dist/chart
 helm: ## Regenerate the Helm chart in dist/chart.
 	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
 	rm -f .github/workflows/test-chart.yml
-	sed -i '/^##@ Helm Deployment$$/,$$d' Makefile
+	sed -i.bak '/^##@ Helm Deployment$$/,$$d' Makefile && rm -f Makefile.bak
 	./hack/chart/inject-env.sh $(CHART)/templates/manager/manager.yaml
 
 .PHONY: helm-lint
