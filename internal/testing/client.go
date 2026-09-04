@@ -13,8 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	dns "github.com/cloudflare/cloudflare-go/v4/dns"
-	zero_trust "github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	dns "github.com/cloudflare/cloudflare-go/v7/dns"
+	shared "github.com/cloudflare/cloudflare-go/v7/shared"
+	zero_trust "github.com/cloudflare/cloudflare-go/v7/zero_trust"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -58,10 +59,10 @@ func (mr *MockClientMockRecorder) CreateDnsRecord(ctx, params any) *gomock.Call 
 }
 
 // CreateTunnel mocks base method.
-func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*zero_trust.TunnelCloudflaredNewResponse, error) {
+func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTunnel", ctx, params)
-	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredNewResponse)
+	ret0, _ := ret[0].(*shared.CloudflareTunnel)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -88,10 +89,10 @@ func (mr *MockClientMockRecorder) DeleteDnsRecord(ctx, recordId, params any) *go
 }
 
 // DeleteTunnel mocks base method.
-func (m *MockClient) DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*zero_trust.TunnelCloudflaredDeleteResponse, error) {
+func (m *MockClient) DeleteTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredDeleteParams) (*shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTunnel", ctx, tunnelId, params)
-	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredDeleteResponse)
+	ret0, _ := ret[0].(*shared.CloudflareTunnel)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -103,10 +104,10 @@ func (mr *MockClientMockRecorder) DeleteTunnel(ctx, tunnelId, params any) *gomoc
 }
 
 // EditTunnel mocks base method.
-func (m *MockClient) EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*zero_trust.TunnelCloudflaredEditResponse, error) {
+func (m *MockClient) EditTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredEditParams) (*shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EditTunnel", ctx, tunnelId, params)
-	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredEditResponse)
+	ret0, _ := ret[0].(*shared.CloudflareTunnel)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -133,10 +134,10 @@ func (mr *MockClientMockRecorder) GetDnsRecord(ctx, recordId, params any) *gomoc
 }
 
 // GetTunnel mocks base method.
-func (m *MockClient) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*zero_trust.TunnelCloudflaredGetResponse, error) {
+func (m *MockClient) GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTunnel", ctx, tunnelId, params)
-	ret0, _ := ret[0].(*zero_trust.TunnelCloudflaredGetResponse)
+	ret0, _ := ret[0].(*shared.CloudflareTunnel)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

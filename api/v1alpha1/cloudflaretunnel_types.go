@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // CloudflareTunnelConfigSource describes whether the tunnel is locally or remotely managed.
@@ -297,7 +298,7 @@ type CloudflareTunnelSpec struct {
 	// tunnel on the Zero Trust dashboard.
 	//
 	// +kubebuilder:default:=local
-	ConfigSource CloudflareTunnelConfigSource `json:"configSource"`
+	ConfigSource CloudflareTunnelConfigSource `json:"configSource,omitempty"`
 
 	// A user-friendly name for a tunnel.
 	//
@@ -407,5 +408,8 @@ type CloudflareTunnelList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&CloudflareTunnel{}, &CloudflareTunnelList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &CloudflareTunnel{}, &CloudflareTunnelList{})
+		return nil
+	})
 }

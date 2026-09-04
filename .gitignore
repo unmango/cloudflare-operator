@@ -5,7 +5,7 @@
 *.dylib
 bin/
 obj/
-Dockerfile.cross
+hack/stream-image
 node_modules
 .cr-release-packages/
 
@@ -13,7 +13,9 @@ node_modules
 *.out
 out.*
 *.env
-.envrc
+*.kubeconfig
+result
+.claude/
 
 go.work
 !vendor/**/zz_generated.*
@@ -24,3 +26,4 @@ go.work
 *.swo
 *~
 .DS_Store
+

@@ -28,15 +28,15 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
-	"github.com/unmango/cloudflare-operator/internal/ingress"
+	cfingress "github.com/unmango/cloudflare-operator/internal/ingress"
 	"github.com/unmango/cloudflare-operator/internal/ingress/annotation"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	defaultIngressClassName = ingress.DefaultClassName
-	ingressControllerName   = ingress.ControllerName
+	defaultIngressClassName = cfingress.DefaultClassName
+	ingressControllerName   = cfingress.ControllerName
 )
 
 // IngressReconciler reconciles a Ingress object
@@ -88,24 +88,30 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 	}
 
 	annotations := annotation.Parse(ingress)
-	if accountId, err := annotations.AccountId(); err == nil {
+	if accountId, ok := annotations.AccountId(); ok {
 		tunnel.Spec.AccountId = accountId
 	} else {
 		logf.FromContext(ctx).Info("Missing account id")
 		return ctrl.Result{}, nil
 	}
-	_ = annotations.Cloudflared.UnmarshalYAML(tunnel.Spec.Cloudflared)
-	if cs, err := annotations.ConfigSource(); err == nil {
+	cloudflared := &cfv1alpha1.CloudflareTunnelCloudflared{}
+	if err := annotations.Cloudflared.UnmarshalYAML(cloudflared); err == nil {
+		tunnel.Spec.Cloudflared = cloudflared
+	}
+	if cs, ok := annotations.ConfigSource(); ok {
 		tunnel.Spec.ConfigSource = cfv1alpha1.CloudflareTunnelConfigSource(cs)
 	}
-	if name, err := annotations.Name(); err == nil {
+	if name, ok := annotations.Name(); ok {
 		tunnel.Spec.Name = name
 	}
-	if err := annotations.TunnelSecret.UnmarshalYAML(tunnel.Spec.TunnelSecret); err != nil {
-		if secret, err := annotations.TunnelSecret(); err == nil {
-			tunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
-				Value: &secret,
-			}
+	// The annotation holds either a serialized CloudflareTunnelSecret or a bare
+	// secret value.
+	secret := &cfv1alpha1.CloudflareTunnelSecret{}
+	if err := annotations.TunnelSecret.UnmarshalYAML(secret); err == nil {
+		tunnel.Spec.TunnelSecret = secret
+	} else if value, ok := annotations.TunnelSecret(); ok {
+		tunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+			Value: &value,
 		}
 	}
 	if err := r.Create(ctx, tunnel); err != nil {

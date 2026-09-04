@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type RecordTags string
@@ -400,7 +401,7 @@ type Record struct {
 	CNAMERecord *CNAMERecord `json:"cnameRecord,omitempty"`
 
 	// +optional
-	TXTRecord *TXTRecord `json:"txtRecrod,omitempty"`
+	TXTRecord *TXTRecord `json:"txtRecord,omitempty"`
 }
 
 // DnsRecordSpec defines the desired state of DnsRecord.
@@ -457,5 +458,8 @@ type DnsRecordList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&DnsRecord{}, &DnsRecordList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &DnsRecord{}, &DnsRecordList{})
+		return nil
+	})
 }

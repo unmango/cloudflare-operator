@@ -30,8 +30,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/cloudflare/cloudflare-go/v4"
-	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/shared"
+	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -93,8 +94,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if tunnel.Status.Id == nil {
-			log.Info("No tunnel id, nothing to do")
-			return ctrl.Result{}, nil
+			// The tunnel was never created on the Cloudflare side, so there is
+			// nothing to clean up. Release the finalizer or the object is stuck.
+			log.Info("No tunnel id, releasing the finalizer")
+			return ctrl.Result{}, patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+				_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
+			})
 		}
 
 		log.V(2).Info("Deleting tunnel from the cloudflare API")
@@ -117,20 +122,20 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeAvailableCloudflareTunnel,
 				Status:  metav1.ConditionUnknown,
-				Reason:  "Reconciling",
-				Message: "Starting reconciliation",
+				Reason:  reasonReconciling,
+				Message: msgStartingReconciliation,
 			})
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
 				Status:  metav1.ConditionUnknown,
-				Reason:  "Reconciling",
-				Message: "Starting reconciliation",
+				Reason:  reasonReconciling,
+				Message: msgStartingReconciliation,
 			})
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeProgressingCloudflareTunnel,
 				Status:  metav1.ConditionUnknown,
-				Reason:  "Reconciling",
-				Message: "Starting reconciliation",
+				Reason:  reasonReconciling,
+				Message: msgStartingReconciliation,
 			})
 		}); err != nil {
 			return ctrl.Result{}, err
@@ -177,7 +182,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeProgressingCloudflareTunnel,
 				Status:  metav1.ConditionTrue,
-				Reason:  "Reconciling",
+				Reason:  reasonReconciling,
 				Message: "Selecting cloudflared resources",
 			})
 			obj.Status.Instances = int32(len(cloudflareds.Items))
@@ -274,13 +279,13 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Reconciling",
+			Reason:  reasonReconciling,
 			Message: "Successfully created cloudflare tunnel",
 		})
 		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.Id = &res.ID
-		obj.Status.RemoteConfig = res.RemoteConfig
+		obj.Status.RemoteConfig = res.ConfigSrc == shared.CloudflareTunnelConfigSrcCloudflare
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
@@ -328,7 +333,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Reconciling",
+			Reason:  reasonReconciling,
 			Message: "Tunnel status updated",
 		})
 		obj.Status.Name = tunnel.Spec.Name
@@ -337,7 +342,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
 		obj.Status.ConnectionsInactiveAt = metav1.NewTime(res.ConnsInactiveAt)
 		obj.Status.Id = &res.ID
-		obj.Status.RemoteConfig = res.RemoteConfig
+		obj.Status.RemoteConfig = res.ConfigSrc == shared.CloudflareTunnelConfigSrcCloudflare
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
 	}); err != nil {
@@ -370,7 +375,7 @@ func (r *CloudflareTunnelReconciler) deleteCloudflareds(ctx context.Context, tun
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
 				Status:  metav1.ConditionTrue,
-				Reason:  "Reconciling",
+				Reason:  reasonReconciling,
 				Message: "Deleting owned Cloudflared instances",
 			})
 		}); err != nil {
@@ -399,7 +404,7 @@ func (r *CloudflareTunnelReconciler) deleteTunnel(ctx context.Context, id string
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeDegradedCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Reconciling",
+			Reason:  reasonReconciling,
 			Message: "Deleting tunnel from Cloudflare API",
 		})
 	}); err != nil {

@@ -13,6 +13,7 @@ linters:
     - govet
     - ineffassign
     - lll
+    - modernize
     - misspell
     - nakedret
     - prealloc
@@ -22,12 +23,18 @@ linters:
     - unparam
     - unused
   settings:
+    govet:
+      # Reports its own failure to inline generic calls, which says
+      # nothing about the code under analysis.
+      disable:
+        - inline
     revive:
       rules:
         - name: comment-spacings
-    staticcheck:
-      dot-import-whitelist:
-        - github.com/onsi/ginkgo/v2
+        - name: import-shadowing
+    modernize:
+      disable:
+        - omitzero
   exclusions:
     generated: lax
     rules:

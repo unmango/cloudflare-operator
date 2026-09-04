@@ -1,18 +1,16 @@
-PROJECT := cloudflare-operator
-REPO    := unmango/${PROJECT}
+# Every tool below comes from the nix dev shell. Run `direnv allow` once, or
+# prefix invocations with `nix develop -c` when the shell is not loaded.
+GO         ?= go
+GINKGO     ?= ginkgo
+GOMOD2NIX  ?= gomod2nix
+CONTROLLER_GEN ?= controller-gen
+GOLANGCI_LINT  ?= golangci-lint
+KIND       ?= kind
+KUBECTL    ?= kubectl
+KUSTOMIZE  ?= kustomize
 
-IMG ?= ghcr.io/${REPO}:v0.0.4
+GO_SRC ?= $(shell find . -name '*.go')
 
-ifeq (,$(shell go env GOBIN))
-GOBIN=$(shell go env GOPATH)/bin
-else
-GOBIN=$(shell go env GOBIN)
-endif
-
-CONTAINER_TOOL ?= docker
-
-# Setting SHELL to bash allows bash commands to be executed by recipes.
-# Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
@@ -20,17 +18,6 @@ SHELL = /usr/bin/env bash -o pipefail
 all: build
 
 ##@ General
-
-# The help target prints out all targets with their descriptions organized
-# beneath their categories. The categories are represented by '##@' and the
-# target descriptions by '##'. The awk command is responsible for reading the
-# entire set of makefiles included in this invocation, looking for lines of the
-# file as xyz: ## something, and then pretty-format the target and help. Then,
-# if there's a line with ##@ something, that gets pretty-printed as a category.
-# More info on the usage of ANSI control characters for terminal formatting:
-# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
-# More info on the awk command:
-# http://linuxcommand.org/lc3_adv_awk.php
 
 .PHONY: help
 help: ## Display this help.
@@ -43,28 +30,21 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
-generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations, as well as Mocks.
+generate: ## Generate DeepCopy implementations and mocks.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	go generate ./...
+	$(GO) generate ./...
 
-.PHONY: fmt
-fmt: ## Run go fmt against code.
-	go fmt ./...
+.PHONY: fmt format
+fmt format: ## Run nix fmt against code.
+	nix fmt
 
 .PHONY: vet
 vet: ## Run go vet against code.
-	go vet ./...
+	$(GO) vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
-
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
-.PHONY: test-e2e
-test-e2e: export KIND_CLUSTER := ${PROJECT}
-test-e2e: manifests generate fmt vet kind-cluster ## Run the e2e tests. Expected an isolated environment using Kind.
-	go test ./test/e2e/ -v -ginkgo.v
+test: manifests generate vet ## Run unit and envtest suites.
+	$(GINKGO) run -r --skip-package=test
 
 .PHONY: lint
 lint: ## Run golangci-lint linter
@@ -78,63 +58,65 @@ lint-fix: ## Run golangci-lint linter and perform fixes
 lint-config: ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
-.PHONY: kind-cluster
-kind-cluster: hack/kind-config.yaml ## Create a local kind cluster with the config from hack/kind-config.yaml.
-	@$(KIND) get clusters | grep -q '${PROJECT}' || { \
-		$(KIND) create cluster --config $< --name ${PROJECT}; \
-	}
+##@ E2E
 
-.PHONY: delete-cluster
-delete-cluster: ## Delete a local kind cluster created from hack/kind-config.yaml
-	$(KIND) delete cluster --name ${PROJECT}
+KIND_CLUSTER ?= cloudflare-operator-e2e
+
+# The e2e suite installs CRDs and a Deployment into whatever cluster the ambient
+# kubeconfig points at. Write the Kind credentials to a file of their own and
+# export KUBECONFIG for the suite so it cannot reach a real cluster.
+E2E_KUBECONFIG ?= $(CURDIR)/bin/$(KIND_CLUSTER).kubeconfig
+
+.PHONY: setup-test-e2e
+setup-test-e2e: | bin ## Create the Kind cluster used for e2e tests if it does not exist.
+	@case "$$($(KIND) get clusters)" in \
+		*"$(KIND_CLUSTER)"*) echo "Kind cluster '$(KIND_CLUSTER)' already exists." ;; \
+		*) $(KIND) create cluster --name $(KIND_CLUSTER) --config hack/kind-config.yaml ;; \
+	esac
+	$(KIND) export kubeconfig --name $(KIND_CLUSTER) --kubeconfig $(E2E_KUBECONFIG)
+
+.PHONY: test-e2e
+test-e2e: setup-test-e2e manifests generate vet ## Run the e2e tests against a Kind cluster.
+	KUBECONFIG=$(E2E_KUBECONFIG) KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) $(GO) test -tags=e2e ./test/e2e/ -v -ginkgo.v
+	$(MAKE) cleanup-test-e2e
+
+.PHONY: cleanup-test-e2e
+cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests.
+	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+	@rm -f $(E2E_KUBECONFIG)
 
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+build: ## Build the operator with nix.
+	nix build .#
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
-
-.PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
-
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
-
-# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64
-.PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name cloudflare-operator-builder
-	$(CONTAINER_TOOL) buildx use cloudflare-operator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm cloudflare-operator-builder
-	rm Dockerfile.cross
+run: manifests generate vet ## Run a controller from your host.
+	$(GO) run ./cmd/main.go
 
 .PHONY: build-installer
 build-installer: manifests generate ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
-.PHONY: helm
-helm: manifests generate ## Update the helm chart.
-	$(KUBEBUILDER) edit --plugins=helm.kubebuilder.io/v1-alpha
+##@ Image
 
-.PHONY: dist
-dist: build-installer helm
+# The image is built by nix/image.nix, which produces a script that streams the
+# tarball to stdout rather than a tarball in the store.
+hack/stream-image: flake.nix nix/image.nix nix/default.nix
+	nix build .#image --out-link hack/stream-image
+
+bin:
+	mkdir -p bin
+
+.PHONY: image-tar
+image-tar: hack/stream-image | bin ## Stream the image to bin/image.tar.
+	./hack/stream-image > bin/image.tar
+
+.PHONY: kind-load
+kind-load: hack/stream-image ## Load the image into the kind cluster.
+	./hack/stream-image | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER)
 
 ##@ Deployment
 
@@ -142,38 +124,43 @@ ifndef ignore-not-found
   ignore-not-found = false
 endif
 
-# Server-side apply is used to work around the max annotations size issue.
-# https://book.kubebuilder.io/faq#the-error-too-long-must-have-at-most-262144-bytes-is-faced-when-i-run-make-install-to-apply-the-crd-manifests-how-to-solve-it-why-this-error-is-faced
-
 .PHONY: install
+# The CRD bundle is well over a megabyte, so it has to be piped straight into
+# kubectl. Holding it in a shell variable first exceeds the exec argument limit.
+#
+# It also has to go in server-side. A client-side apply records the whole object
+# in the last-applied-configuration annotation, and the two larger CRDs are past
+# the 256KiB the API server allows for annotations.
 install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply --server-side -f -
+	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply --server-side --force-conflicts -f -
 
 .PHONY: uninstall
-uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
 deploy: manifests ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	echo 'CLOUDFLARE_API_TOKEN=$(CLOUDFLARE_API_TOKEN)' > config/ci/cloudflare-credentials.env
-	$(KUSTOMIZE) build config/ci | $(KUBECTL) apply --server-side -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) apply --server-side --force-conflicts -f -
 
 .PHONY: undeploy
-undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/ci | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
-##@ Dependencies
+##@ Nix
 
-## Tool Binaries
-KUBECTL ?= kubectl
-KIND ?= go tool kind
-KUSTOMIZE ?= go tool kustomize
-KUBEBUILDER ?= go tool kubebuilder
-CONTROLLER_GEN ?= go tool controller-gen
-ENVTEST ?= go tool setup-envtest
-GOLANGCI_LINT ?= go tool golangci-lint
+.PHONY: update
+update: ## Update nix flake inputs.
+	nix flake update
 
-ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
+.PHONY: check
+check: ## Run nix flake checks.
+	nix flake check
 
-LOCALBIN ?= $(shell pwd)/bin
+.PHONY: tidy
+tidy: go.sum gomod2nix.toml ## Tidy go modules and regenerate the gomod2nix lock.
+
+go.sum: go.mod ${GO_SRC}
+	$(GO) mod tidy
+
+gomod2nix.toml: go.sum ${GO_SRC}
+	$(GOMOD2NIX) generate

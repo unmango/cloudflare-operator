@@ -22,14 +22,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go/v4"
-	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,7 +61,6 @@ type tunnel struct {
 type CloudflaredReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
-	Recorder   record.EventRecorder
 	Cloudflare cfclient.Client
 }
 
@@ -93,8 +91,8 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeAvailableCloudflared,
 				Status:  metav1.ConditionUnknown,
-				Reason:  "Reconciling",
-				Message: "Starting reconciliation",
+				Reason:  reasonReconciling,
+				Message: msgStartingReconciliation,
 			})
 		}); err != nil {
 			return ctrl.Result{}, err
@@ -130,7 +128,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeAvailableCloudflared,
 				Status:  metav1.ConditionFalse,
-				Reason:  "Reconciling",
+				Reason:  reasonReconciling,
 				Message: fmt.Sprintf("Owned %s resource not found", kind),
 			})
 			obj.Status.Kind = nil
@@ -232,7 +230,7 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableCloudflared,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Reconciling",
+			Reason:  reasonReconciling,
 			Message: fmt.Sprintf("%s created successfully", cloudflared.Spec.Kind),
 		})
 		obj.Status.Kind = &cloudflared.Spec.Kind
@@ -370,7 +368,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 	}
 
 	template.Spec.SecurityContext = &corev1.PodSecurityContext{
-		RunAsNonRoot: ptr.To(true),
+		RunAsNonRoot: new(true),
 		SeccompProfile: &corev1.SeccompProfile{
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		},
@@ -383,7 +381,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil {
 		if ref := config.ValueFrom.SecretKeyRef; ref != nil {
 			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
-				Name: "config",
+				Name: configVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: ref.Name,
@@ -397,7 +395,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 		}
 		if ref := config.ValueFrom.ConfigMapKeyRef; ref != nil {
 			template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
-				Name: "config",
+				Name: configVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
@@ -416,7 +414,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 	var volumeMounts []corev1.VolumeMount
 	if len(template.Spec.Volumes) > 0 {
 		volumeMounts = []corev1.VolumeMount{{
-			Name:      "config",
+			Name:      configVolumeName,
 			MountPath: "/etc/cloudflared",
 		}}
 	}
@@ -438,10 +436,10 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 
 	// create the base container
 	container := corev1.Container{
-		Name:  "cloudflared",
+		Name:  cloudflaredContainerName,
 		Image: "docker.io/cloudflare/cloudflared:" + version,
 		Command: []string{
-			"cloudflared", "tunnel", "--no-autoupdate",
+			cloudflaredContainerName, "tunnel", "--no-autoupdate",
 			"--metrics", fmt.Sprintf("0.0.0.0:%d", defaultMetricsPort),
 		},
 		Args: args,
@@ -461,9 +459,9 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 		VolumeMounts:    volumeMounts,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             ptr.To(true),
+			RunAsNonRoot:             new(true),
 			RunAsUser:                ptr.To[int64](1001),
-			AllowPrivilegeEscalation: ptr.To(false),
+			AllowPrivilegeEscalation: new(false),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -472,7 +470,7 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 
 	var containers []corev1.Container
 	for _, ctr := range template.Spec.Containers {
-		if ctr.Name == "cloudflared" {
+		if ctr.Name == cloudflaredContainerName {
 			tunnel.applyCustomizations(&container, &ctr)
 		} else {
 			containers = append(containers, ctr)

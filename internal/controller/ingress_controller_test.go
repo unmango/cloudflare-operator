@@ -21,11 +21,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/ingress/annotation"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -43,7 +43,7 @@ var _ = Describe("Ingress Controller", func() {
 			Scheme: k8sClient.Scheme(),
 		}
 		typeNamespacedName = types.NamespacedName{
-			Namespace: "default",
+			Namespace: testNamespace,
 			Name:      "resource-name",
 		}
 		ingress = &networkingv1.Ingress{
@@ -56,7 +56,7 @@ var _ = Describe("Ingress Controller", func() {
 				},
 			},
 			Spec: networkingv1.IngressSpec{
-				IngressClassName: ptr.To("cloudflare"),
+				IngressClassName: new("cloudflare"),
 				Rules: []networkingv1.IngressRule{{
 					Host: "example.com",
 				}},
@@ -69,12 +69,8 @@ var _ = Describe("Ingress Controller", func() {
 	})
 
 	AfterEach(func() {
-		Expect(k8sClient.Delete(ctx, ingress)).To(Succeed())
-
-		tunnel := &cfv1alpha1.CloudflareTunnel{}
-		if err := k8sClient.Get(ctx, typeNamespacedName, tunnel); err == nil {
-			Expect(k8sClient.Delete(ctx, tunnel)).To(Succeed())
-		}
+		deleteIfExists(ctx, typeNamespacedName, &networkingv1.Ingress{})
+		deleteIfExists(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
 	})
 
 	Context("When reconciling a resource", func() {
@@ -88,9 +84,52 @@ var _ = Describe("Ingress Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
 		})
 
+		Context("and tunnelSecret is a serialized secret", func() {
+			BeforeEach(func() {
+				ingress.Annotations[annotation.Definitions.TunnelSecret.String()] =
+					"valueFrom:\n  secretKeyRef:\n    name: tunnel\n    key: secret\n"
+			})
+
+			It("should unmarshal the secret", func() {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+				Expect(tunnel.Spec.TunnelSecret).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.ValueFrom).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.ValueFrom.SecretKeyRef).To(Equal(
+					&corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "tunnel"},
+						Key:                  "secret",
+					},
+				))
+			})
+		})
+
+		Context("and tunnelSecret is a bare value", func() {
+			BeforeEach(func() {
+				ingress.Annotations[annotation.Definitions.TunnelSecret.String()] = "shhh"
+			})
+
+			It("should use the annotation as the secret value", func() {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, tunnel)).To(Succeed())
+				Expect(tunnel.Spec.TunnelSecret).NotTo(BeNil())
+				Expect(tunnel.Spec.TunnelSecret.Value).To(HaveValue(Equal("shhh")))
+			})
+		})
+
 		Context("and ingressClassName does not match", func() {
 			BeforeEach(func() {
-				ingress.Spec.IngressClassName = ptr.To("blah")
+				ingress.Spec.IngressClassName = new("blah")
 			})
 
 			It("should not create a tunnel", func() {

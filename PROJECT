@@ -2,11 +2,11 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
+cliVersion: 4.13.1
 domain: unmango.dev
 layout:
 - go.kubebuilder.io/v4
-plugins:
-  helm.kubebuilder.io/v1-alpha: {}
+- helm.kubebuilder.io/v2-alpha
 projectName: cloudflare-operator
 repo: github.com/unmango/cloudflare-operator
 resources:
@@ -28,13 +28,6 @@ resources:
   kind: CloudflareTunnel
   path: github.com/unmango/cloudflare-operator/api/v1alpha1
   version: v1alpha1
-- controller: true
-  core: true
-  domain: k8s.io
-  group: networking
-  kind: Ingress
-  path: k8s.io/api/networking/v1
-  version: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -44,4 +37,11 @@ resources:
   kind: DnsRecord
   path: github.com/unmango/cloudflare-operator/api/v1alpha1
   version: v1alpha1
+- controller: true
+  core: true
+  domain: k8s.io
+  group: networking
+  kind: Ingress
+  path: k8s.io/api/networking/v1
+  version: v1
 version: "3"

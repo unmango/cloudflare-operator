@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/cloudflare/cloudflare-go/v4"
-	"github.com/cloudflare/cloudflare-go/v4/dns"
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/dns"
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 )
@@ -57,9 +57,35 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Deletion is handled before anything else. A record whose create never
+	// succeeded has no status id, and checking for one first would send it back
+	// through the create branch forever with the finalizer still attached.
+	if !record.DeletionTimestamp.IsZero() {
+		id := record.Status.Id
+		if id == nil {
+			log.Info("No record id, releasing the finalizer")
+			return ctrl.Result{}, releaseDnsRecord(ctx, r, record)
+		}
+
+		log.Info("Deleting DnsRecord", "id", id)
+		if _, err := r.Cloudflare.DeleteDnsRecord(ctx, *id, dns.RecordDeleteParams{
+			ZoneID: cloudflare.F(record.Spec.ZoneId),
+		}); err != nil {
+			if err := cfclient.IgnoreNotFound(err); err != nil {
+				log.Error(err, "Failed to delete DNS record")
+				return ctrl.Result{}, err
+			}
+
+			log.Info("DNS record is already gone from the Cloudflare API", "id", id)
+		}
+
+		log.Info("Successfully deleted DnsRecord", "id", id)
+		return ctrl.Result{}, releaseDnsRecord(ctx, r, record)
+	}
+
 	if !controllerutil.ContainsFinalizer(record, dnsRecordFinalizer) {
 		if err := patch(ctx, r, record, func(obj *cfv1alpha1.DnsRecord) {
-			_ = controllerutil.AddFinalizer(record, dnsRecordFinalizer)
+			_ = controllerutil.AddFinalizer(obj, dnsRecordFinalizer)
 		}); err != nil {
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
@@ -81,30 +107,12 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Comment = &res.Comment
 			obj.Status.Content = &res.Content
 			obj.Status.Name = &res.Name
-			obj.Status.Type = ptr.To(string(res.Type))
+			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
 			return ctrl.Result{}, nil
 		} else {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-	} else if !record.DeletionTimestamp.IsZero() {
-		log.Info("Deleting DnsRecord", "id", id)
-		res, err := r.Cloudflare.DeleteDnsRecord(ctx, *id, dns.RecordDeleteParams{
-			ZoneID: cloudflare.F(record.Spec.ZoneId),
-		})
-		if err != nil {
-			log.Error(err, "Failed to delete DNS record")
-			return ctrl.Result{}, cfclient.IgnoreNotFound(err)
-		}
-
-		if controllerutil.RemoveFinalizer(record, dnsRecordFinalizer) {
-			if err := r.Update(ctx, record); err != nil {
-				return ctrl.Result{}, nil
-			}
-		}
-
-		log.Info("Successfully deleted DnsRecord", "id", res.ID)
-		return ctrl.Result{}, nil
 	} else {
 		log.Info("Refreshing DnsRecord")
 		res, err := r.Cloudflare.GetDnsRecord(ctx, *id, dns.RecordGetParams{
@@ -120,7 +128,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Content = &res.Content
 			obj.Status.Id = &res.ID
 			obj.Status.Name = &res.Name
-			obj.Status.Type = ptr.To(string(res.Type))
+			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
 			return ctrl.Result{}, nil
 		}
@@ -142,13 +150,24 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Comment = &res.Comment
 			obj.Status.Content = &res.Content
 			obj.Status.Name = &res.Name
-			obj.Status.Type = ptr.To(string(res.Type))
+			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
 			return ctrl.Result{}, nil
 		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// releaseDnsRecord drops the finalizer so the API server can finish the delete.
+func releaseDnsRecord(ctx context.Context, c patcher, record *cfv1alpha1.DnsRecord) error {
+	if !controllerutil.ContainsFinalizer(record, dnsRecordFinalizer) {
+		return nil
+	}
+
+	return client.IgnoreNotFound(patch(ctx, c, record, func(obj *cfv1alpha1.DnsRecord) {
+		_ = controllerutil.RemoveFinalizer(obj, dnsRecordFinalizer)
+	}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -204,7 +223,7 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 		}
 	}
 
-	// Logical AND
+	// Reports whether any compared field differs from the observed status.
 	return slices.Contains(conditions, false)
 }
 

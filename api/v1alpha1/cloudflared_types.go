@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // CloudflaredDeploymentKind describes the kind of deployment to create.
@@ -158,5 +159,8 @@ type CloudflaredList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Cloudflared{}, &CloudflaredList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &Cloudflared{}, &CloudflaredList{})
+		return nil
+	})
 }

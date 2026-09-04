@@ -1,8 +1,8 @@
 package client
 
 import (
-	"github.com/cloudflare/cloudflare-go/v4"
-	"github.com/cloudflare/cloudflare-go/v4/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 )
 

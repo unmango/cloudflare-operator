@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v7"
 )
 
 func IgnoreConflict(err error) error {
@@ -32,8 +32,7 @@ func IsNotFound(err error) bool {
 }
 
 func IsStatusCode(err error, code int) bool {
-	var apiError *cloudflare.Error
-	if errors.As(err, &apiError) {
+	if apiError, ok := errors.AsType[*cloudflare.Error](err); ok {
 		return apiError.StatusCode == code
 	} else {
 		return false
