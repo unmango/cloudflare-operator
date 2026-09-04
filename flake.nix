@@ -31,7 +31,7 @@
       perSystem =
         { pkgs, system, ... }:
         let
-          version = "0.0.4";
+          version = "0.0.5";
           envtest-assets = pkgs.callPackage ./nix/envtest.nix { };
           operator = pkgs.callPackage ./nix { inherit envtest-assets version; };
         in
@@ -69,6 +69,7 @@
               kustomize
               mockgen
               nixfmt
+              skopeo
             ];
 
             KUBEBUILDER_ASSETS = "${envtest-assets}";

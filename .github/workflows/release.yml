@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: unstoppablemango
+
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+
+      # skopeo reads its own auth file, so it logs itself in rather than going
+      # through docker/login-action.
+      - run: nix develop -c skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GH_TOKEN"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # Both tags point at the same archive: the chart defaults manager.image.tag
+      # to Chart.appVersion, which carries no `v`, while everything that pins a
+      # source pins the git tag. skopeo sets the destination tag, so the second
+      # copy reuses bin/image.tar rather than rebuilding.
+      - run: nix develop -c make push-image IMAGE_TAG=${{ github.ref_name }}
+      - run: nix develop -c make push-image IMAGE_TAG=${GITHUB_REF_NAME#v}

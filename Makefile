@@ -9,6 +9,7 @@ HELM       ?= helm
 KIND       ?= kind
 KUBECTL    ?= kubectl
 KUSTOMIZE  ?= kustomize
+SKOPEO     ?= skopeo
 
 GO_SRC ?= $(shell find . -name '*.go')
 
@@ -159,6 +160,16 @@ image-tar: hack/stream-image | bin ## Stream the image to bin/image.tar.
 .PHONY: kind-load
 kind-load: hack/stream-image ## Load the image into the kind cluster.
 	./hack/stream-image | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER)
+
+# nix/image.nix always tags the archive `latest`; the tag that matters is the
+# destination one, which skopeo sets on the way out. That keeps the local name
+# config/manager and `make kind-load` expect free of the release version.
+PUSH_IMAGE ?= ghcr.io/unmango/cloudflare-operator
+IMAGE_TAG  ?= latest
+
+.PHONY: push-image
+push-image: image-tar ## Push the image to $(PUSH_IMAGE):$(IMAGE_TAG).
+	$(SKOPEO) copy docker-archive:bin/image.tar docker://$(PUSH_IMAGE):$(IMAGE_TAG)
 
 ##@ Deployment
 
