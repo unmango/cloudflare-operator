@@ -7,6 +7,25 @@ An Ingress controller creates a tunnel for any Ingress in the `cloudflare` class
 
 > This project is `v1alpha1` and the API may change.
 
+## Related projects
+
+You probably want one of these instead:
+
+| Project | Description |
+| --- | --- |
+| [adyanth/cloudflare-operator](https://github.com/adyanth/cloudflare-operator) | Creates and manages Cloudflare Tunnels and DNS records for HTTP/TCP/UDP Service resources |
+| [STRRL/cloudflare-tunnel-ingress-controller](https://github.com/STRRL/cloudflare-tunnel-ingress-controller) | A Kubernetes Ingress controller built on Cloudflare Tunnel |
+
+Both are more mature and cover most of what people come here looking for.
+
+This operator exists because I wanted the experience of writing one, and because I wanted my favourite parts of both projects in a single place.
+
+The three model the problem differently.
+adyanth's `Tunnel` and `ClusterTunnel` bundle the tunnel with the `cloudflared` Deployment that serves it, and a `TunnelBinding` attaches Services to a tunnel and creates their DNS records.
+STRRL's controller has no CRDs at all: it owns one tunnel for the cluster and derives its configuration from `Ingress` objects.
+Here every Cloudflare object gets its own resource.
+A `CloudflareTunnel`, the `Cloudflared` that runs it, and a `DnsRecord` are each reconciled on their own and refer to one another by name.
+
 ## Resources
 
 All resources live in the `cloudflare.unmango.dev/v1alpha1` API group.
