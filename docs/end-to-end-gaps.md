@@ -23,29 +23,34 @@ These are bugs in code that already ships.
 
 ### 1.1 Empty `spec.name` renames the tunnel to the empty string
 
-`createTunnel` falls back to `metadata.name` when `spec.Name` is empty (`internal/controller/cloudflaretunnel_controller.go:263`), but `updateTunnel` compares `tunnel.Spec.Name` against the remote name (`:309`) and calls `EditTunnel` with the empty spec value on every reconcile.
+`createTunnel` in `internal/controller/cloudflaretunnel_controller.go` falls back to `metadata.name` when `spec.Name` is empty, but `updateTunnel` compares `tunnel.Spec.Name` against the remote name and calls `EditTunnel` with the empty spec value on every reconcile.
 
 Fix: resolve the effective name once, in a helper both paths call, and compare that.
 Test: create a tunnel with no `spec.name`, reconcile twice, assert `EditTunnel` is never called.
 
 ### 1.2 `spec.tunnelSecret` is silently ignored
 
-`createTunnel` always sends `TunnelSecret: cloudflare.Null[string]()` (`:272`), so `CloudflareTunnelSecret` in the API and the `ingress.cloudflare.unmango.dev/tunnelSecret` annotation both do nothing.
+`createTunnel` always sends `TunnelSecret: cloudflare.Null[string]()`, so `CloudflareTunnelSecret` in the API and the `ingress.cloudflare.unmango.dev/tunnelSecret` annotation both do nothing.
 
 Fix: resolve `spec.tunnelSecret` (inline `value`, or `valueFrom` secret/configmap key) and pass it.
 Cloudflare expects a base64-encoded 32-byte secret; decide whether the operator validates or passes through, and document it on the field.
 Test: inline value reaches `CreateTunnel`; a secret ref is read from the referenced Secret; absent field still sends null.
 
+All three sources stay supported, because `value` and `configMapKeyRef` are already in the shipped `v1alpha1` schema and removing them is an API break, not a bug fix.
+Neither is a good place for a credential, and the field comment says so.
+The resolved value must never reach a condition message, an event or a log line: validation failures report the shape of the problem, never the secret.
+Narrowing the field to `secretKeyRef` alone belongs in an API review, alongside the other `v1alpha1` cleanups.
+
 ### 1.3 Tunnel config is pushed even for `configSource: local`
 
-`updateTunnel` calls `UpdateConfiguration` whenever `spec.config != nil` (`:320`), regardless of config source.
+`updateTunnel` calls `UpdateConfiguration` whenever `spec.config != nil`, regardless of config source.
 For a locally-managed tunnel that write is wrong, and the API may reject it.
 
 Fix: only push remote configuration when `spec.configSource` is `cloudflare`; surface a condition when `spec.config` is set on a local tunnel.
 
 ### 1.4 API errors are swallowed as successful reconciles
 
-Several paths log an error and return `ctrl.Result{}, nil` (`cloudflaretunnel_controller.go:158`, `:204`, `dnsrecord_controller.go:100`, `:120`), so a failed create never retries and never surfaces in status.
+Several paths across all four reconcilers log an error and return `ctrl.Result{}, nil`, so a failed create never retries and never surfaces in status.
 
 Fix: return the error (controller-runtime backs off) or requeue explicitly, and set the `Degraded` condition with the reason.
 Keep the deliberate swallows where the failure is terminal, and comment them.
@@ -61,16 +66,26 @@ Requires `make manifests generate` and `make helm`.
 
 ### 2.2 Reconcile a `DnsRecord` per routed hostname
 
-In the `CloudflareTunnel` reconciler, once `status.id` is set, create or update an owned `DnsRecord` per ingress entry that has DNS config: type CNAME, name the hostname, content `<status.id>.cfargotunnel.com`, `proxied: true`.
+In the `CloudflareTunnel` reconciler, once `status.id` is set, create or update an owned `DnsRecord` per ingress entry that has DNS config: type CNAME, name the hostname, content `<status.id>.cfargotunnel.com`.
+`proxied` comes from the resolved DNS config and only defaults to true where the field is omitted, so an entry that asks for a grey-cloud record gets one.
 Set the controller reference so deletion cascades, and name the records deterministically (`<tunnel>-<hostname-hash>`) so repeated reconciles converge.
 
 Catch-all ingress entries (no hostname, the required trailing `http_status:404` rule) must be skipped.
+
+Check that the hostname sits inside the configured `zoneId` before writing anything.
+A hostname from another zone is a manifest error, and catching it locally reports which record and which zone; the API rejects it with far less context, after the call.
+A credential that cannot write the zone fails at the API, and that failure belongs on the `DnsRecord` status.
 
 ### 2.3 Reflect DNS state on the tunnel
 
 Add `status.hostnames[]` or a count plus a condition, so `kubectl get cloudflaretunnel` shows whether routing is live.
 
+Read that from the owned records' own status, not from having created them.
+A `DnsRecord` exists well before it carries a record id, so counting children reports routing as live while the API call is still outstanding or failing.
+Desired and ready are separate numbers.
+
 Tests: envtest, asserting the owned `DnsRecord` objects rather than the Cloudflare API; the `DnsRecord` controller already covers the API call.
+Cover the transition too, not just the settled state: records desired, then records ready.
 Remember envtest runs no garbage collector, so use `deleteIfExists`.
 
 ## Phase 3: a working Ingress path
@@ -89,7 +104,7 @@ Append the terminal `http_status:404` catch-all, which Cloudflare requires as th
 
 ### 3.2 Reconcile updates, not just creation
 
-Replace the early return at `:69` with a converge step that recomputes the desired spec from the Ingress and patches the existing tunnel.
+Replace the early return taken when the tunnel already exists with a converge step that recomputes the desired spec from the Ingress and patches it.
 Ingress edits, added rules, and removed rules must all propagate.
 
 ### 3.3 Zone id for DNS
@@ -104,7 +119,7 @@ Report the tunnel hostname back on the Ingress so `kubectl get ingress` is infor
 
 ### 3.5 Watch what it owns
 
-`SetupWithManager` watches only `Ingress` (`:122`).
+`SetupWithManager` watches only `Ingress`.
 Add `Owns(&cfv1alpha1.CloudflareTunnel{})` so tunnel status changes re-trigger the Ingress reconcile.
 The same applies to the `CloudflareTunnel` reconciler, which should own `Cloudflared` and `DnsRecord`.
 
@@ -122,15 +137,19 @@ Needs a `GetConfiguration` method on `internal/client.Client`.
 
 ### 4.2 Per-resource credentials
 
-The API token comes only from the process environment (`cloudflaretunnel_controller.go:73`).
+The API token comes only from the process environment, read in the tunnel reconciler.
 A secret reference per `CloudflareTunnel` would let one operator serve several accounts.
 Design decision, not just plumbing: it changes how `internal/client.Client` is constructed, since the client is currently a single instance injected at startup.
 
 ### 4.3 Readiness that reflects reality
 
 `Cloudflared` sets `Available=True` as soon as the app object is created, not when pods are ready.
-The commented-out `appReady` helper (`cloudflared_controller.go:623`) is the intended fix.
-Wire it in and gate the condition on it.
+The commented-out `appReady` helper in `internal/controller/cloudflared_controller.go` is the intended fix.
+It already distinguishes the two workload kinds: `DesiredNumberScheduled == NumberReady` for a DaemonSet, the `Available` condition for a Deployment.
+
+Wire it in and gate the condition on it, which means dropping the unconditional `Available=True` that `createApp` sets on the way out.
+`Available` stays False until the owned app reports ready, and follows it back down when it stops being ready.
+Cover all three: not ready, ready, and ready to not ready.
 
 ### 4.4 e2e coverage for the full path
 
