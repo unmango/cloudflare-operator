@@ -3,7 +3,7 @@ module github.com/unmango/cloudflare-operator
 go 1.26.1
 
 require (
-	github.com/cloudflare/cloudflare-go/v7 v7.9.0
+	github.com/cloudflare/cloudflare-go/v7 v7.10.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.43.0
 	go.uber.org/mock v0.6.0
