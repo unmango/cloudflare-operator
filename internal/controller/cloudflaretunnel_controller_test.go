@@ -95,6 +95,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Client:     k8sClient,
 				Scheme:     k8sClient.Scheme(),
 				Cloudflare: cfmock,
+				Sources:    k8sClient,
 			}).Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).To(HaveOccurred())
 		}
@@ -285,7 +286,9 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					}
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileFails()
+					// A create that never reached Cloudflare requeues rather than
+					// erroring, so nothing else has to notice the Secret appearing.
+					reconcileOnce()
 				})
 
 				It("should mark the resource as degraded", func() {
@@ -343,7 +346,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					}
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileFails()
+					reconcileOnce()
 				})
 
 				It("should mark the resource as degraded", func() {
@@ -362,7 +365,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Return(nil, fmt.Errorf("new tunnel failed"))
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileFails()
+					reconcileOnce()
 				})
 
 				It("should not record a tunnel id", func() {

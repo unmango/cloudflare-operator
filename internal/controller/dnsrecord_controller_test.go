@@ -245,6 +245,30 @@ var _ = Describe("DnsRecord Controller", func() {
 
 				Expect(observed().Status.Id).To(Equal(ptr.To(recordId)))
 			})
+
+			It("should fail the reconcile when the read fails", func() {
+				cfmock.EXPECT().
+					GetDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(nil, errors.New("get record failed"))
+
+				reconcileFails()
+			})
+
+			It("should fail the reconcile when the update fails", func() {
+				// Content the spec does not agree with is what sends the
+				// controller into the update branch.
+				stale := recordResponse()
+				stale.Content = "stale-content"
+
+				cfmock.EXPECT().
+					GetDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(stale, nil)
+				cfmock.EXPECT().
+					UpdateDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(nil, errors.New("update record failed"))
+
+				reconcileFails()
+			})
 		})
 	})
 })
