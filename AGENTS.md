@@ -33,7 +33,7 @@ After changing `*_types.go` or any kubebuilder marker, run `make manifests gener
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
-`dist/chart` is generated too, with three exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, and `templates/ingress-class/`.
+`dist/chart` is generated too, with four exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, and `templates/rbac/tunnel-secret-reader.yaml`.
 Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
@@ -102,6 +102,11 @@ Re-measure with `kubectl -n <ns> get secret -l owner=helm -o jsonpath='{.items[0
 The SDK reads `CLOUDFLARE_API_TOKEN` from the environment, and the tunnel controller logs a warning when it is unset.
 The Helm chart wires it from a Secret the user already owns, through `cloudflare.auth.apiTokenRef`, and never creates a Secret of its own.
 `config/manager/manager.yaml` supplies nothing, so a kustomize install has no credentials until someone sets them; that path is for development.
+
+The manager role grants no access to core Secrets or ConfigMaps.
+`spec.tunnelSecret.valueFrom` is the one thing that reads them, and it does so through `CloudflareTunnelReconciler.Sources`, an uncached reader, so `get` alone is enough and no controller watches Secrets.
+The chart grants it through `rbac.tunnelSecrets.enabled`, off by default and narrowable to named resources with `rbac.tunnelSecrets.resourceNames`.
+Without it a tunnel that references a Secret or ConfigMap goes Degraded with `InvalidSpec` and never reaches the Cloudflare API; an inline value and an absent tunnel secret are unaffected.
 
 ### Reconciliation
 

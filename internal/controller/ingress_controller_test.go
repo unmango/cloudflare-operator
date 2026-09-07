@@ -103,7 +103,7 @@ var _ = Describe("Ingress Controller", func() {
 				Expect(tunnel.Spec.TunnelSecret.ValueFrom.SecretKeyRef).To(Equal(
 					&corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{Name: "tunnel"},
-						Key:                  "secret",
+						Key:                  testSecretKey,
 					},
 				))
 			})

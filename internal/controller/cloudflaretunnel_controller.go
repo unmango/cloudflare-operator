@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -42,6 +44,11 @@ const (
 	cloudflareTunnelFinalizer = "cloudflaretunnel.cloudflare.unmango.dev/finalizer"
 )
 
+// retryAfterFailedCreate is how long to wait before creating the tunnel again
+// after a failure, whether the Cloudflare API rejected it or the spec named a
+// source that could not be read.
+const retryAfterFailedCreate = time.Minute
+
 const (
 	typeAvailableCloudflareTunnel   = "Available"
 	typeDegradedCloudflareTunnel    = "Degraded"
@@ -53,6 +60,13 @@ type CloudflareTunnelReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Cloudflare cfclient.Client
+
+	// Sources reads the Secret or ConfigMap named by spec.tunnelSecret. It
+	// bypasses the manager cache so the operator needs only get on those
+	// resources, rather than the cluster-wide list and watch a cached read
+	// would require. Access is granted separately from the manager role, so
+	// reads through it fail with Forbidden on a default install.
+	Sources client.Reader
 }
 
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch;create;update;patch;delete
@@ -156,7 +170,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.V(2).Info("Creating cloudflare tunnel", "name", req.Name)
 		if err := r.createTunnel(ctx, tunnel); err != nil {
 			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
-			return ctrl.Result{}, nil
+			// Nothing else enqueues the tunnel: no controller watches the Secret
+			// or ConfigMap a tunnel secret can name, so without this the tunnel
+			// stays Degraded until its own spec changes.
+			return ctrl.Result{RequeueAfter: retryAfterFailedCreate}, nil
 		}
 
 		log.Info("Created cloudflare tunnel")
@@ -269,12 +286,56 @@ func effectiveName(tunnel *cfv1alpha1.CloudflareTunnel) string {
 	return tunnel.Name
 }
 
+// degrade records a user-fixable problem with the spec on the resource.
+func (r *CloudflareTunnelReconciler) degrade(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, message string) error {
+	return patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflareTunnel,
+			Status:  metav1.ConditionTrue,
+			Reason:  reasonInvalidSpec,
+			Message: message,
+		})
+	})
+}
+
+// tunnelSecret resolves spec.tunnelSecret. The second return reports whether a
+// secret was configured at all; without one Cloudflare generates its own.
+func (r *CloudflareTunnelReconciler) tunnelSecret(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (string, bool, error) {
+	value, err := resolveTunnelSecret(ctx, r.Sources, tunnel.Namespace, tunnel.Spec.TunnelSecret)
+	if errors.Is(err, errValueUnset) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	// Cloudflare rejects anything shorter, and the failure it reports is much
+	// less specific than this one.
+	if raw, err := base64.StdEncoding.DecodeString(value); err != nil {
+		return "", false, fmt.Errorf("tunnel secret is not valid base64: %w", err)
+	} else if len(raw) < 32 {
+		return "", false, fmt.Errorf("tunnel secret decodes to %d bytes, at least 32 are required", len(raw))
+	}
+
+	return value, true, nil
+}
+
 func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	value, ok, err := r.tunnelSecret(ctx, tunnel)
+	if err != nil {
+		return errors.Join(err, r.degrade(ctx, tunnel, fmt.Sprintf("Resolving tunnel secret: %s", err)))
+	}
+
+	secret := cloudflare.Null[string]()
+	if ok {
+		secret = cloudflare.F(value)
+	}
+
 	res, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
 		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
 		Name:         cloudflare.F(effectiveName(tunnel)),
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
-		TunnelSecret: cloudflare.Null[string](),
+		TunnelSecret: secret,
 	})
 	if err != nil {
 		return cfclient.IgnoreConflict(err)

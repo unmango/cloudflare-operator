@@ -9564,8 +9564,11 @@ spec:
                 type: string
               tunnelSecret:
                 description: |-
-                  Sets the password required to run a locally-managed tunnel. Must be at least 32 bytes and
-                  encoded as a bas64 string.
+                  Sets the password required to run a locally-managed tunnel. Must decode to at least
+                  32 bytes and be encoded as a base64 string. When unset, Cloudflare generates one.
+
+                  valueFrom requires the operator to be granted read access to the referenced Secret or
+                  ConfigMap, which is not part of its default permissions.
                 maxProperties: 1
                 minProperties: 1
                 properties:
@@ -9577,6 +9580,8 @@ spec:
                   valueFrom:
                     description: ValueFrom defines an existing source in the cluster
                       to pull the tunnel secret from.
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key from an existing

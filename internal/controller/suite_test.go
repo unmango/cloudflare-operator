@@ -127,6 +127,9 @@ func getFirstFoundEnvTestBinaryDir() string {
 // testNamespace is where every controller spec creates its fixtures.
 const testNamespace = "default"
 
+// testSecretKey is the key specs use inside a fixture Secret or ConfigMap.
+const testSecretKey = "secret"
+
 // deleteIfExists removes obj and waits for it to disappear.
 //
 // envtest runs no controllers and no garbage collector, so finalizers added
