@@ -126,7 +126,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.RemoveFinalizer(tunnel, cloudflareTunnelFinalizer)
+			_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -163,7 +163,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
 		log.V(2).Info("Adding finalizer to CloudflareTunnel")
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
+			_ = controllerutil.AddFinalizer(obj, cloudflareTunnelFinalizer)
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -464,7 +464,7 @@ func tunnelSelector(tunnel *cfv1alpha1.CloudflareTunnel) (labels.Selector, error
 
 	selector, err := metav1.LabelSelectorAsSelector(tunnel.Spec.Cloudflared.Selector)
 	if err != nil {
-		return nil, fmt.Errorf("converting label selector into label: %w", err)
+		return nil, fmt.Errorf("converting label selector into a selector: %w", err)
 	}
 
 	return selector, nil
