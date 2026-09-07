@@ -13,8 +13,8 @@ The operator does not connect those three pieces.
 The user supplies the tunnel id to the DNS record by hand, and the Ingress controller creates a tunnel shell that carries no routing.
 
 Gaps are grouped into four phases.
-Each phase is independently shippable and leaves the operator in a working state.
-Land one focused PR per item.
+Each leaves the operator in a working state, and each item is a focused PR.
+Phase 1 stands alone; the later phases build on each other, and the dependencies are listed under sequencing notes.
 
 ## Phase 1: correctness fixes
 
@@ -70,7 +70,7 @@ In the `CloudflareTunnel` reconciler, once `status.id` is set, create or update 
 `proxied` comes from the resolved DNS config and only defaults to true where the field is omitted, so an entry that asks for a grey-cloud record gets one.
 Set the controller reference so deletion cascades, and name the records deterministically (`<tunnel>-<hostname-hash>`) so repeated reconciles converge.
 
-Catch-all ingress entries (no hostname, the required trailing `http_status:404` rule) must be skipped.
+The terminal entry carries no hostname and must be skipped; there is nothing to point a record at.
 
 Check that the hostname sits inside the configured `zoneId` before writing anything.
 A hostname from another zone is a manifest error, and catching it locally reports which record and which zone; the API rejects it with far less context, after the call.
@@ -100,7 +100,9 @@ For each rule host and HTTP path, emit a `CloudflareTunnelConfigIngress` whose `
 Resolve the backend port: `backend.service.port.number` directly, `port.name` by reading the Service.
 Reject or condition-flag `backend.resource` backends, which have no counterpart.
 
-Append the terminal `http_status:404` catch-all, which Cloudflare requires as the last rule.
+Cloudflare requires a terminal rule with no hostname, and `spec.defaultBackend` is exactly that: map it to the terminal service rule.
+`http_status:404` is the fallback for an Ingress that declares no default backend, not the only ending.
+Cover both, plus an Ingress carrying only a default backend and no rules.
 
 ### 3.2 Reconcile updates, not just creation
 
@@ -117,11 +119,16 @@ Consider resolving the zone from the hostname through the Cloudflare API as a fo
 
 Report the tunnel hostname back on the Ingress so `kubectl get ingress` is informative.
 
-### 3.5 Watch what it owns
+### 3.5 Watch what the config depends on
 
 `SetupWithManager` watches only `Ingress`.
 Add `Owns(&cfv1alpha1.CloudflareTunnel{})` so tunnel status changes re-trigger the Ingress reconcile.
 The same applies to the `CloudflareTunnel` reconciler, which should own `Cloudflared` and `DnsRecord`.
+
+3.1 resolves named ports by reading the backend Service, so the generated config depends on objects the operator does not own.
+Watch those Services and map each back to the Ingresses that name it, which is `Watches` with a mapping function rather than `Owns`.
+Without it, renaming a port or moving it to another number leaves the tunnel pointing at the old one until something else triggers a reconcile.
+Cover a named port changing number.
 
 ### 3.6 Ship an `IngressClass`
 
@@ -147,9 +154,12 @@ Design decision, not just plumbing: it changes how `internal/client.Client` is c
 The commented-out `appReady` helper in `internal/controller/cloudflared_controller.go` is the intended fix.
 It already distinguishes the two workload kinds: `DesiredNumberScheduled == NumberReady` for a DaemonSet, the `Available` condition for a Deployment.
 
+The DaemonSet arm needs `DesiredNumberScheduled > 0` as well.
+Both counters are zero on a DaemonSet no node matches, so the equality alone calls an app that runs nowhere ready.
+
 Wire it in and gate the condition on it, which means dropping the unconditional `Available=True` that `createApp` sets on the way out.
 `Available` stays False until the owned app reports ready, and follows it back down when it stops being ready.
-Cover all three: not ready, ready, and ready to not ready.
+Cover not ready, ready, ready to not ready, and the DaemonSet scheduled onto no nodes.
 
 ### 4.4 e2e coverage for the full path
 
