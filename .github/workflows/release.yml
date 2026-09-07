@@ -32,7 +32,17 @@ jobs:
 
       # Both tags point at the same archive: the chart defaults manager.image.tag
       # to Chart.appVersion, which carries no `v`, while everything that pins a
-      # source pins the git tag. skopeo sets the destination tag, so the second
-      # copy reuses bin/image.tar rather than rebuilding.
-      - run: nix develop -c make push-image IMAGE_TAG=${{ github.ref_name }}
-      - run: nix develop -c make push-image IMAGE_TAG=${GITHUB_REF_NAME#v}
+      # source pins the git tag. skopeo sets the destination tag, and bin/image.tar
+      # is a file target, so the second copy reuses it rather than rebuilding.
+      #
+      # The tag reaches a shell, so it comes in through the environment and is
+      # checked against the shape the trigger promises before it is used.
+      - env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]*$ ]]; then
+            echo "Refusing to publish an unexpected tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          nix develop -c make push-image IMAGE_TAG="$RELEASE_TAG"
+          nix develop -c make push-image IMAGE_TAG="${RELEASE_TAG#v}"
