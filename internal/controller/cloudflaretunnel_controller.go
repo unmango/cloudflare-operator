@@ -386,7 +386,14 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		}
 	}
 
-	if config := tunnel.Spec.Config; config != nil {
+	// Which side owns the configuration is fixed when the tunnel is created, so
+	// what the API reports is authoritative over the spec. Cloudflare keeps no
+	// configuration for a locally-managed tunnel; it comes from a file on the
+	// origin machine instead.
+	remoteConfig := res.ConfigSrc == shared.CloudflareTunnelConfigSrcCloudflare
+	configConflict := tunnel.Spec.Config != nil && !remoteConfig
+
+	if config := tunnel.Spec.Config; config != nil && remoteConfig {
 		c := cfclient.CloudflareTunnelConfig(*config)
 		_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
 			// TODO: AccountId should probably come from the status, not the spec
@@ -405,6 +412,21 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 			Reason:  reasonReconciling,
 			Message: "Tunnel status updated",
 		})
+		if configConflict {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  reasonInvalidSpec,
+				Message: "spec.config is set on a locally managed tunnel and cannot be pushed to Cloudflare",
+			})
+		} else {
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionFalse,
+				Reason:  reasonReconciling,
+				Message: "Tunnel status updated",
+			})
+		}
 		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)

@@ -54,6 +54,15 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		// Cloudflare requires a base64 string decoding to at least 32 bytes.
 		tunnelSecret := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("s", 32)))
 
+		// audTag and teamName are required by the CRD, so even an unused access
+		// block has to carry them.
+		originRequest := cfv1alpha1.CloudflareTunnelOriginRequest{
+			Access: cfv1alpha1.CloudflareTunnelOriginRequestAccess{
+				AudTag:   []string{},
+				TeamName: "test-team",
+			},
+		}
+
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
@@ -411,6 +420,61 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				It("should add a finalizer", func() {
 					Expect(observed().Finalizers).To(ConsistOf(cloudflareTunnelFinalizer))
+				})
+			})
+
+			Context("and config is provided", func() {
+				BeforeEach(func() {
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Config = &cfv1alpha1.CloudflareTunnelConfig{
+						Ingress: []cfv1alpha1.CloudflareTunnelConfigIngress{{
+							Hostname:      "test.example.com",
+							Service:       "http://test.default.svc.cluster.local:80",
+							OriginRequest: originRequest,
+						}},
+						OriginRequest: originRequest,
+					}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil)
+				})
+
+				Context("and the tunnel is remotely managed", func() {
+					BeforeEach(func() {
+						cfmock.EXPECT().
+							UpdateConfiguration(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+							Return(nil, nil)
+
+						reconcileOnce()
+					})
+
+					It("should not mark the resource as degraded", func() {
+						Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionFalse),
+						)))
+					})
+				})
+
+				Context("and the tunnel is locally managed", func() {
+					BeforeEach(func() {
+						// UpdateConfiguration is deliberately not expected:
+						// Cloudflare stores no configuration for a locally
+						// managed tunnel.
+						found.ConfigSrc = shared.CloudflareTunnelConfigSrcLocal
+
+						reconcileOnce()
+					})
+
+					It("should mark the resource as degraded", func() {
+						Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionTrue),
+							HaveField("Reason", reasonInvalidSpec),
+						)))
+					})
 				})
 			})
 
