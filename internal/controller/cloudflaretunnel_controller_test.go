@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -35,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -45,7 +48,11 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			accountId    = "test-account-id"
 			accountTag   = "test-account-tag"
 			tunnelId     = "test-tunnel-id"
+			secretName   = "test-tunnel-secret"
 		)
+
+		// Cloudflare requires a base64 string decoding to at least 32 bytes.
+		tunnelSecret := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("s", 32)))
 
 		ctx := context.Background()
 
@@ -98,6 +105,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		AfterEach(func() {
 			deleteIfExists(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
 			deleteIfExists(ctx, typeNamespacedName, &cfv1alpha1.Cloudflared{})
+			deleteIfExists(ctx, types.NamespacedName{
+				Name:      secretName,
+				Namespace: testNamespace,
+			}, &corev1.Secret{})
 		})
 
 		Context("and a matching tunnel does not exist", func() {
@@ -176,6 +187,112 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 
 				It("should use the resource name as the tunnel name", func() {
 					reconcileOnce()
+				})
+			})
+
+			Context("and a tunnel secret is provided inline", func() {
+				BeforeEach(func() {
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						Value: new(tunnelSecret),
+					}
+
+					cfmock.EXPECT().
+						CreateTunnel(gomock.Any(), gomock.Eq(zero_trust.TunnelCloudflaredNewParams{
+							AccountID:    cloudflare.F(accountId),
+							Name:         cloudflare.F(resourceName),
+							ConfigSrc:    cloudflare.F(zero_trust.TunnelCloudflaredNewParamsConfigSrcCloudflare),
+							TunnelSecret: cloudflare.F(tunnelSecret),
+						})).
+						Return(created, nil)
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+				})
+
+				It("should send the secret to the API", func() {
+					reconcileOnce()
+				})
+			})
+
+			Context("and a tunnel secret is read from a Secret", func() {
+				BeforeEach(func() {
+					Expect(k8sClient.Create(ctx, &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      secretName,
+							Namespace: testNamespace,
+						},
+						Data: map[string][]byte{testSecretKey: []byte(tunnelSecret)},
+					})).To(Succeed())
+
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						ValueFrom: &cfv1alpha1.CloudflareTunnelSecretReference{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+								Key:                  testSecretKey,
+							},
+						},
+					}
+
+					cfmock.EXPECT().
+						CreateTunnel(gomock.Any(), gomock.Eq(zero_trust.TunnelCloudflaredNewParams{
+							AccountID:    cloudflare.F(accountId),
+							Name:         cloudflare.F(resourceName),
+							ConfigSrc:    cloudflare.F(zero_trust.TunnelCloudflaredNewParamsConfigSrcCloudflare),
+							TunnelSecret: cloudflare.F(tunnelSecret),
+						})).
+						Return(created, nil)
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+				})
+
+				It("should send the secret to the API", func() {
+					reconcileOnce()
+				})
+			})
+
+			Context("and the referenced Secret does not exist", func() {
+				BeforeEach(func() {
+					// CreateTunnel is deliberately not expected: an unresolvable
+					// secret must not reach the API.
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						ValueFrom: &cfv1alpha1.CloudflareTunnelSecretReference{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+								Key:                  testSecretKey,
+							},
+						},
+					}
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+					reconcileOnce()
+				})
+
+				It("should mark the resource as degraded", func() {
+					Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+					)))
+				})
+			})
+
+			Context("and the tunnel secret is too short", func() {
+				BeforeEach(func() {
+					// CreateTunnel is deliberately not expected: Cloudflare
+					// requires at least 32 bytes and would reject this.
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						Value: new(base64.StdEncoding.EncodeToString([]byte("too-short"))),
+					}
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+					reconcileOnce()
+				})
+
+				It("should mark the resource as degraded", func() {
+					Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+					)))
 				})
 			})
 

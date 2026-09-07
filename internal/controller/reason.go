@@ -4,5 +4,9 @@ package controller
 const (
 	reasonReconciling = "Reconciling"
 
+	// The spec cannot be acted on as written, and reconciling again will not
+	// change that. The user has to edit the resource.
+	reasonInvalidSpec = "InvalidSpec"
+
 	msgStartingReconciliation = "Starting reconciliation"
 )

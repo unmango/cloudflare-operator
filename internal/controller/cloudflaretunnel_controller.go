@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -58,6 +60,7 @@ type CloudflareTunnelReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core,resources=secrets;configmaps,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -269,12 +272,56 @@ func effectiveName(tunnel *cfv1alpha1.CloudflareTunnel) string {
 	return tunnel.Name
 }
 
+// degrade records a user-fixable problem with the spec on the resource.
+func (r *CloudflareTunnelReconciler) degrade(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, message string) error {
+	return patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+			Type:    typeDegradedCloudflareTunnel,
+			Status:  metav1.ConditionTrue,
+			Reason:  reasonInvalidSpec,
+			Message: message,
+		})
+	})
+}
+
+// tunnelSecret resolves spec.tunnelSecret. The second return reports whether a
+// secret was configured at all; without one Cloudflare generates its own.
+func (r *CloudflareTunnelReconciler) tunnelSecret(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (string, bool, error) {
+	value, err := resolveTunnelSecret(ctx, r, tunnel.Namespace, tunnel.Spec.TunnelSecret)
+	if errors.Is(err, errValueUnset) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	// Cloudflare rejects anything shorter, and the failure it reports is much
+	// less specific than this one.
+	if raw, err := base64.StdEncoding.DecodeString(value); err != nil {
+		return "", false, fmt.Errorf("tunnel secret is not valid base64: %w", err)
+	} else if len(raw) < 32 {
+		return "", false, fmt.Errorf("tunnel secret decodes to %d bytes, at least 32 are required", len(raw))
+	}
+
+	return value, true, nil
+}
+
 func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
+	value, ok, err := r.tunnelSecret(ctx, tunnel)
+	if err != nil {
+		return errors.Join(err, r.degrade(ctx, tunnel, fmt.Sprintf("Resolving tunnel secret: %s", err)))
+	}
+
+	secret := cloudflare.Null[string]()
+	if ok {
+		secret = cloudflare.F(value)
+	}
+
 	res, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
 		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
 		Name:         cloudflare.F(effectiveName(tunnel)),
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
-		TunnelSecret: cloudflare.Null[string](),
+		TunnelSecret: secret,
 	})
 	if err != nil {
 		return cfclient.IgnoreConflict(err)
