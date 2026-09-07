@@ -59,18 +59,32 @@ Keep the deliberate swallows where the failure is terminal, and comment them.
 
 Close the manual step: make a hostname routed by a tunnel get its CNAME automatically.
 
-### 2.1 Add `spec.config.ingress[].dns` (or a tunnel-level `spec.dns`)
+### 2.1 Add DNS settings, at the tunnel and per ingress entry
 
-New optional field carrying at minimum `zoneId`, plus `proxied` (default true) and `ttl`.
+Both levels, not one or the other.
+`spec.dns` carries the defaults, at minimum `zoneId` plus `proxied` (default true) and `ttl`.
+`spec.config.ingress[].dns` overrides them field by field for one entry, so a single hostname can opt out of the proxy without restating the zone.
+
+Precedence is per field: an entry value wins where it is set, the tunnel value fills the rest, and the field default applies when neither is.
+DNS is off unless a `zoneId` resolves through that chain, which is what makes the whole phase opt-in.
+
 Requires `make manifests generate` and `make helm`.
 
 ### 2.2 Reconcile a `DnsRecord` per routed hostname
 
-In the `CloudflareTunnel` reconciler, once `status.id` is set, create or update an owned `DnsRecord` per ingress entry that has DNS config: type CNAME, name the hostname, content `<status.id>.cfargotunnel.com`.
+In the `CloudflareTunnel` reconciler, once `status.id` is set, create or update an owned `DnsRecord` per routed hostname: type CNAME, name the hostname, content `<status.id>.cfargotunnel.com`.
 `proxied` comes from the resolved DNS config and only defaults to true where the field is omitted, so an entry that asks for a grey-cloud record gets one.
 Set the controller reference so deletion cascades, and name the records deterministically (`<tunnel>-<hostname-hash>`) so repeated reconciles converge.
 
+The unit is the hostname, not the ingress entry.
+Several entries routing different paths of one hostname to different services are ordinary, and they need one record between them, so the entries are grouped by hostname before any record is built.
+Where those entries resolve to different DNS settings there is no right answer to pick: report it as a manifest error on the tunnel, naming the hostname, and write nothing for it.
+Resolving it silently would make the record depend on ingress ordering.
+
 The terminal entry carries no hostname and must be skipped; there is nothing to point a record at.
+
+Records also have to go away.
+Compute the full desired set first, then delete owned records whose names are absent from it: a hostname dropped from the config, or one whose DNS settings were cleared, leaves a record that owner references never collect, because the tunnel itself is still there.
 
 Check that the hostname sits inside the configured `zoneId` before writing anything.
 A hostname from another zone is a manifest error, and catching it locally reports which record and which zone; the API rejects it with far less context, after the call.
@@ -86,6 +100,7 @@ Desired and ready are separate numbers.
 
 Tests: envtest, asserting the owned `DnsRecord` objects rather than the Cloudflare API; the `DnsRecord` controller already covers the API call.
 Cover the transition too, not just the settled state: records desired, then records ready.
+Cover several paths on one hostname collapsing to a single record, and a hostname removed from the config taking its record with it.
 Remember envtest runs no garbage collector, so use `deleteIfExists`.
 
 ## Phase 3: a working Ingress path
@@ -112,7 +127,7 @@ Ingress edits, added rules, and removed rules must all propagate.
 ### 3.3 Zone id for DNS
 
 The Ingress path needs a zone to create records in.
-Add an `ingress.cloudflare.unmango.dev/zoneId` annotation and thread it into the Phase 2 DNS fields.
+Add an `ingress.cloudflare.unmango.dev/zoneId` annotation and thread it into the tunnel-level `spec.dns` from 2.1, which is the level that covers every hostname the Ingress produces.
 Consider resolving the zone from the hostname through the Cloudflare API as a follow-up, which needs a new `ListZones` method on `internal/client.Client` and its regenerated mock.
 
 ### 3.4 Publish `ingress.status.loadBalancer`
