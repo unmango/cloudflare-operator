@@ -71,6 +71,9 @@ const (
 
 // CloudflaredConfigReference defines a reference to either a ConfigMap or Secret with a
 // key containing the tunnel secret to use.
+//
+// +kubebuilder:validation:MaxProperties:=1
+// +kubebuilder:validation:MinProperties:=1
 type CloudflareTunnelSecretReference struct {
 	// ConfigMapKeyRef selects a key from an existing ConfigMap containing the tunnel secret.
 	//

@@ -44,6 +44,11 @@ const (
 	cloudflareTunnelFinalizer = "cloudflaretunnel.cloudflare.unmango.dev/finalizer"
 )
 
+// retryAfterFailedCreate is how long to wait before creating the tunnel again
+// after a failure, whether the Cloudflare API rejected it or the spec named a
+// source that could not be read.
+const retryAfterFailedCreate = time.Minute
+
 const (
 	typeAvailableCloudflareTunnel   = "Available"
 	typeDegradedCloudflareTunnel    = "Degraded"
@@ -165,7 +170,10 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.V(2).Info("Creating cloudflare tunnel", "name", req.Name)
 		if err := r.createTunnel(ctx, tunnel); err != nil {
 			log.Error(err, "Failed to create new cloudflare tunnel", "name", tunnel.Name)
-			return ctrl.Result{}, nil
+			// Nothing else enqueues the tunnel: no controller watches the Secret
+			// or ConfigMap a tunnel secret can name, so without this the tunnel
+			// stays Degraded until its own spec changes.
+			return ctrl.Result{RequeueAfter: retryAfterFailedCreate}, nil
 		}
 
 		log.Info("Created cloudflare tunnel")

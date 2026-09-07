@@ -9577,6 +9577,8 @@ spec:
                   valueFrom:
                     description: ValueFrom defines an existing source in the cluster
                       to pull the tunnel secret from.
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key from an existing

@@ -264,15 +264,51 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					}
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileOnce()
 				})
 
 				It("should mark the resource as degraded", func() {
+					reconcileOnce()
+
 					Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
 						HaveField("Type", typeDegradedCloudflareTunnel),
 						HaveField("Status", metav1.ConditionTrue),
 						HaveField("Reason", reasonInvalidSpec),
 					)))
+				})
+
+				It("should try again without waiting for a spec change", func() {
+					// Nothing watches the referenced Secret, so a requeue is the
+					// only thing that notices it appearing later.
+					Expect(reconcileOnce().RequeueAfter).To(Equal(retryAfterFailedCreate))
+				})
+			})
+
+			Context("and valueFrom names no source", func() {
+				It("should be rejected by the api server", func() {
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						ValueFrom: &cfv1alpha1.CloudflareTunnelSecretReference{},
+					}
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).NotTo(Succeed())
+				})
+			})
+
+			Context("and valueFrom names both a Secret and a ConfigMap", func() {
+				It("should be rejected by the api server", func() {
+					cloudflaretunnel.Spec.TunnelSecret = &cfv1alpha1.CloudflareTunnelSecret{
+						ValueFrom: &cfv1alpha1.CloudflareTunnelSecretReference{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+								Key:                  testSecretKey,
+							},
+							ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+								Key:                  testSecretKey,
+							},
+						},
+					}
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).NotTo(Succeed())
 				})
 			})
 

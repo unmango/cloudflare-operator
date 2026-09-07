@@ -31,21 +31,24 @@ func resolveTunnelSecret(ctx context.Context, c reader, namespace string, secret
 		return *secret.Value, nil
 	}
 	if secret.ValueFrom == nil {
-		return "", errValueUnset
+		return "", fmt.Errorf("tunnel secret has neither value nor valueFrom")
 	}
 
 	if c == nil {
 		return "", fmt.Errorf("no reader configured for tunnel secret references")
 	}
 
-	if ref := secret.ValueFrom.SecretKeyRef; ref != nil {
-		return resolveSecretKey(ctx, c, namespace, ref)
+	secretRef, configMapRef := secret.ValueFrom.SecretKeyRef, secret.ValueFrom.ConfigMapKeyRef
+	switch {
+	case secretRef != nil && configMapRef != nil:
+		return "", fmt.Errorf("valueFrom has both secretKeyRef and configMapKeyRef")
+	case secretRef != nil:
+		return resolveSecretKey(ctx, c, namespace, secretRef)
+	case configMapRef != nil:
+		return resolveConfigMapKey(ctx, c, namespace, configMapRef)
+	default:
+		return "", fmt.Errorf("valueFrom has neither secretKeyRef nor configMapKeyRef")
 	}
-	if ref := secret.ValueFrom.ConfigMapKeyRef; ref != nil {
-		return resolveConfigMapKey(ctx, c, namespace, ref)
-	}
-
-	return "", errValueUnset
 }
 
 func resolveSecretKey(ctx context.Context, c reader, namespace string, ref *corev1.SecretKeySelector) (string, error) {
