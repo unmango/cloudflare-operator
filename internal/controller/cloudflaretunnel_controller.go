@@ -433,7 +433,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
 		obj.Status.ConnectionsInactiveAt = metav1.NewTime(res.ConnsInactiveAt)
 		obj.Status.Id = &res.ID
-		obj.Status.RemoteConfig = res.ConfigSrc == shared.CloudflareTunnelConfigSrcCloudflare
+		obj.Status.RemoteConfig = remoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
 	}); err != nil {
