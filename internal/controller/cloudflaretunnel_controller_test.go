@@ -260,6 +260,56 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 			})
 
+			Context("and Name is not provided", func() {
+				BeforeEach(func() {
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Name = ""
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+
+					// EditTunnel is deliberately not expected: the tunnel was
+					// created under the resource name, so the remote name
+					// already matches and there is nothing to rename.
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil)
+
+					reconcileOnce()
+				})
+
+				It("should not rename the tunnel", func() {
+					Expect(observed().Status.Name).To(Equal(resourceName))
+				})
+			})
+
+			Context("and Name differs from the observed tunnel", func() {
+				const renamed = "renamed-tunnel"
+
+				BeforeEach(func() {
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Name = renamed
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil)
+
+					edited := *found
+					edited.Name = renamed
+					cfmock.EXPECT().
+						EditTunnel(gomock.Eq(ctx), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredEditParams{
+							AccountID: cloudflare.F(accountId),
+							Name:      cloudflare.F(renamed),
+						})).
+						Return(&edited, nil)
+
+					reconcileOnce()
+				})
+
+				It("should record the name the API returned", func() {
+					Expect(observed().Status.Name).To(Equal(renamed))
+				})
+			})
+
 			Context("and the resource is marked for deletion", func() {
 				BeforeEach(func() {
 					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())

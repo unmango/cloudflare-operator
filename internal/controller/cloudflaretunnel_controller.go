@@ -259,15 +259,20 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
-func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
-	name := tunnel.Spec.Name
-	if name == "" {
-		name = tunnel.Name
+// effectiveName is the name the tunnel is given on the Cloudflare side. The API
+// requires one, so an unset spec.name falls back to the name of the object.
+func effectiveName(tunnel *cfv1alpha1.CloudflareTunnel) string {
+	if tunnel.Spec.Name != "" {
+		return tunnel.Spec.Name
 	}
 
+	return tunnel.Name
+}
+
+func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
 	res, err := r.Cloudflare.CreateTunnel(ctx, zero_trust.TunnelCloudflaredNewParams{
 		AccountID:    cloudflare.F(tunnel.Spec.AccountId),
-		Name:         cloudflare.F(name),
+		Name:         cloudflare.F(effectiveName(tunnel)),
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
 		TunnelSecret: cloudflare.Null[string](),
 	})
@@ -306,14 +311,17 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		return err
 	}
 
-	if tunnel.Spec.Name != res.Name {
-		_, err := r.Cloudflare.EditTunnel(ctx, id, zero_trust.TunnelCloudflaredEditParams{
+	if name := effectiveName(tunnel); name != res.Name {
+		edited, err := r.Cloudflare.EditTunnel(ctx, id, zero_trust.TunnelCloudflaredEditParams{
 			// TODO: AccountId should probably come from the status, not the spec
 			AccountID: cloudflare.F(tunnel.Spec.AccountId),
-			Name:      cloudflare.F(tunnel.Spec.Name),
+			Name:      cloudflare.F(name),
 		})
 		if err != nil {
 			return err
+		}
+		if edited != nil {
+			res = edited
 		}
 	}
 
@@ -336,7 +344,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 			Reason:  reasonReconciling,
 			Message: "Tunnel status updated",
 		})
-		obj.Status.Name = tunnel.Spec.Name
+		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
 		obj.Status.CreatedAt = metav1.NewTime(res.CreatedAt)
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
