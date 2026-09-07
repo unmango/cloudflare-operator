@@ -157,6 +157,25 @@ rbac:
   ##
   namespaced: false
 
+  ## Read access to the Secret or ConfigMap named by a CloudflareTunnel's
+  ## spec.tunnelSecret.valueFrom.
+  ##
+  ## The manager role grants no access to core Secrets or ConfigMaps. Without
+  ## this role a tunnel that references one is marked Degraded with
+  ## InvalidSpec, and a tunnel with an inline value or no tunnel secret at all
+  ## is unaffected.
+  ##
+  ## Only get is granted: the manager reads these directly instead of through
+  ## its cache, so it needs neither list nor watch.
+  ##
+  tunnelSecrets:
+    enabled: false
+
+    ## Restrict the role to Secrets and ConfigMaps with these names. Leave
+    ## empty to allow any name.
+    ##
+    resourceNames: []
+
   ## Helper roles for CRD management (admin/editor/viewer)
   ##
   helpers:

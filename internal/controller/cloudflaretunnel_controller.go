@@ -55,12 +55,18 @@ type CloudflareTunnelReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Cloudflare cfclient.Client
+
+	// Sources reads the Secret or ConfigMap named by spec.tunnelSecret. It
+	// bypasses the manager cache so the operator needs only get on those
+	// resources, rather than the cluster-wide list and watch a cached read
+	// would require. Access is granted separately from the manager role, so
+	// reads through it fail with Forbidden on a default install.
+	Sources client.Reader
 }
 
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/finalizers,verbs=update
-// +kubebuilder:rbac:groups=core,resources=secrets;configmaps,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -287,7 +293,7 @@ func (r *CloudflareTunnelReconciler) degrade(ctx context.Context, tunnel *cfv1al
 // tunnelSecret resolves spec.tunnelSecret. The second return reports whether a
 // secret was configured at all; without one Cloudflare generates its own.
 func (r *CloudflareTunnelReconciler) tunnelSecret(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (string, bool, error) {
-	value, err := resolveTunnelSecret(ctx, r, tunnel.Namespace, tunnel.Spec.TunnelSecret)
+	value, err := resolveTunnelSecret(ctx, r.Sources, tunnel.Namespace, tunnel.Spec.TunnelSecret)
 	if errors.Is(err, errValueUnset) {
 		return "", false, nil
 	}

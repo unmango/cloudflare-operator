@@ -34,6 +34,10 @@ func resolveTunnelSecret(ctx context.Context, c reader, namespace string, secret
 		return "", errValueUnset
 	}
 
+	if c == nil {
+		return "", fmt.Errorf("no reader configured for tunnel secret references")
+	}
+
 	if ref := secret.ValueFrom.SecretKeyRef; ref != nil {
 		return resolveSecretKey(ctx, c, namespace, ref)
 	}

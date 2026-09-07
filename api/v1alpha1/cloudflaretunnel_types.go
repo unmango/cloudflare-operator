@@ -308,6 +308,9 @@ type CloudflareTunnelSpec struct {
 	// Sets the password required to run a locally-managed tunnel. Must decode to at least
 	// 32 bytes and be encoded as a base64 string. When unset, Cloudflare generates one.
 	//
+	// valueFrom requires the operator to be granted read access to the referenced Secret or
+	// ConfigMap, which is not part of its default permissions.
+	//
 	// +optional
 	TunnelSecret *CloudflareTunnelSecret `json:"tunnelSecret,omitempty"`
 }

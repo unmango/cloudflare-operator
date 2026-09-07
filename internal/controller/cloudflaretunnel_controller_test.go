@@ -72,6 +72,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				Client:     k8sClient,
 				Scheme:     k8sClient.Scheme(),
 				Cloudflare: cfmock,
+				Sources:    k8sClient,
 			}).Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 			return result
