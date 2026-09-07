@@ -91,7 +91,12 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 	if accountId, ok := annotations.AccountId(); ok {
 		tunnel.Spec.AccountId = accountId
 	} else {
-		logf.FromContext(ctx).Info("Missing account id")
+		// A tunnel cannot be created without an account. Reconciling again
+		// changes nothing until the annotation is added, and the edit brings us
+		// back here on its own.
+		logf.FromContext(ctx).Info("Ignoring ingress with no account id",
+			"annotation", annotation.Definitions.AccountId,
+		)
 		return ctrl.Result{}, nil
 	}
 	cloudflared := &cfv1alpha1.CloudflareTunnelCloudflared{}

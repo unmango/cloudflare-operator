@@ -83,6 +83,14 @@ var _ = Describe("DnsRecord Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
+		// reconcileFails is the counterpart to reconcileOnce for the paths where
+		// a failed API call has to surface as a failed reconcile.
+		reconcileFails := func() {
+			GinkgoHelper()
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(HaveOccurred())
+		}
+
 		observed := func() *cfv1alpha1.DnsRecord {
 			GinkgoHelper()
 			resource := &cfv1alpha1.DnsRecord{}
@@ -179,7 +187,7 @@ var _ = Describe("DnsRecord Controller", func() {
 					AnyTimes()
 
 				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
-				reconcileOnce()
+				reconcileFails()
 				Expect(observed().Finalizers).To(ConsistOf(dnsRecordFinalizer))
 				Expect(observed().Status.Id).To(BeNil())
 

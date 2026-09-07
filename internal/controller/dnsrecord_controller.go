@@ -99,7 +99,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		})
 		if err != nil {
 			log.Error(err, "Failed to create DNS record")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 
 		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
@@ -109,7 +109,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Name = &res.Name
 			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		} else {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
@@ -120,7 +120,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		})
 		if err != nil {
 			log.Error(err, "Failed to read DNS record")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 
 		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
@@ -130,7 +130,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Name = &res.Name
 			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -142,7 +142,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		})
 		if err != nil {
 			log.Error(err, "Failed to update DNS record")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 
 		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
@@ -152,7 +152,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			obj.Status.Name = &res.Name
 			obj.Status.Type = new(string(res.Type))
 		}); err != nil {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 	}
 

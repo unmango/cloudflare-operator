@@ -87,6 +87,18 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			return result
 		}
 
+		// reconcileFails is the counterpart to reconcileOnce for the paths where
+		// a failed API call has to surface as a failed reconcile.
+		reconcileFails := func() {
+			GinkgoHelper()
+			_, err := (&CloudflareTunnelReconciler{
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Cloudflare: cfmock,
+			}).Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(HaveOccurred())
+		}
+
 		observed := func() *cfv1alpha1.CloudflareTunnel {
 			GinkgoHelper()
 			resource := &cfv1alpha1.CloudflareTunnel{}
@@ -273,6 +285,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					}
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+					reconcileFails()
 				})
 
 				It("should mark the resource as degraded", func() {
@@ -330,7 +343,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					}
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileOnce()
+					reconcileFails()
 				})
 
 				It("should mark the resource as degraded", func() {
@@ -349,7 +362,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						Return(nil, fmt.Errorf("new tunnel failed"))
 
 					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
-					reconcileOnce()
+					reconcileFails()
 				})
 
 				It("should not record a tunnel id", func() {
@@ -478,6 +491,74 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 			})
 
+			Context("and a cloudflared template is provided", func() {
+				const labelKey = "app"
+
+				setCloudflared := func(cloudflared *cfv1alpha1.CloudflareTunnelCloudflared) {
+					GinkgoHelper()
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Cloudflared = cloudflared
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil)
+				}
+
+				assertDegraded := func() {
+					GinkgoHelper()
+					Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+					)))
+					Expect(apierrors.IsNotFound(
+						k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.Cloudflared{}),
+					)).To(BeTrueBecause("No Cloudflared should have been created"))
+				}
+
+				Context("and the selector does not match the template labels", func() {
+					BeforeEach(func() {
+						setCloudflared(&cfv1alpha1.CloudflareTunnelCloudflared{
+							Selector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{labelKey: "selected"},
+							},
+							Template: &cfv1alpha1.CloudflaredTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{labelKey: "something-else"},
+								},
+							},
+						})
+
+						reconcileOnce()
+					})
+
+					It("should mark the resource as degraded", assertDegraded)
+				})
+
+				Context("and the selector is malformed", func() {
+					BeforeEach(func() {
+						setCloudflared(&cfv1alpha1.CloudflareTunnelCloudflared{
+							Selector: &metav1.LabelSelector{
+								MatchExpressions: []metav1.LabelSelectorRequirement{{
+									Key:      labelKey,
+									Operator: "NotAnOperator",
+								}},
+							},
+							Template: &cfv1alpha1.CloudflaredTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{labelKey: "selected"},
+								},
+							},
+						})
+
+						reconcileOnce()
+					})
+
+					It("should mark the resource as degraded", assertDegraded)
+				})
+			})
+
 			Context("and Name is not provided", func() {
 				BeforeEach(func() {
 					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
@@ -559,7 +640,7 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					})
 
 					It("should keep the finalizer", func() {
-						reconcileOnce()
+						reconcileFails()
 
 						Expect(observed().Finalizers).NotTo(BeEmpty())
 					})
