@@ -1,0 +1,21 @@
+{{- if .Values.ingressClass.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "cloudflare-operator.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ .Values.ingressClass.name }}
+  {{- if .Values.ingressClass.default }}
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+  {{- end }}
+spec:
+  controller: cloudflare.unmango.dev/ingress-controller
+  {{- with .Values.ingressClass.parameters }}
+  parameters:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

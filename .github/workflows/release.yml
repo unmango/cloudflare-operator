@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: unstoppablemango
+
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      # skopeo reads its own auth file, so it logs itself in rather than going
+      # through docker/login-action.
+      - run: nix develop -c skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GH_TOKEN"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # Both tags point at the same archive: the chart defaults manager.image.tag
+      # to Chart.appVersion, which carries no `v`, while everything that pins a
+      # source pins the git tag. skopeo sets the destination tag, and bin/image.tar
+      # is a file target, so the second copy reuses it rather than rebuilding.
+      #
+      # The tag reaches a shell, so it comes in through the environment and is
+      # checked against the shape the trigger promises before it is used.
+      - env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]*$ ]]; then
+            echo "Refusing to publish an unexpected tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          nix develop -c make push-image IMAGE_TAG="$RELEASE_TAG"
+          nix develop -c make push-image IMAGE_TAG="${RELEASE_TAG#v}"

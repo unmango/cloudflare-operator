@@ -1,0 +1,4 @@
+root = true
+
+[Dockerfile]
+indent_style = tab

@@ -1,0 +1,9 @@
+{
+    "recommendations": [
+        "golang.go",
+        "ms-vscode-remote.remote-containers",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "mkhl.direnv",
+        "ms-azuretools.vscode-containers"
+    ]
+}
