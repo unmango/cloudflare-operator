@@ -89,9 +89,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
-		if tunnel.Spec.Cloudflared != nil {
+		// A malformed selector cannot have selected anything, and owner
+		// references cascade the delete regardless, so it must not hold the
+		// finalizer hostage.
+		if selector, err := tunnelSelector(tunnel); tunnel.Spec.Cloudflared != nil && err == nil {
 			log.Info("Listing cloudflareds")
-			cloudflareds, err := r.listCloudflareds(ctx, tunnel)
+			cloudflareds, err := r.listCloudflareds(ctx, tunnel.Namespace, selector)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -118,11 +121,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		log.V(2).Info("Deleting tunnel from the cloudflare API")
 		if err := r.deleteTunnel(ctx, *tunnel.Status.Id, tunnel); err != nil {
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			log.Error(err, "Failed to delete cloudflare tunnel", "id", *tunnel.Status.Id)
+			return ctrl.Result{}, err
 		}
 
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.RemoveFinalizer(tunnel, cloudflareTunnelFinalizer)
+			_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -159,7 +163,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !controllerutil.ContainsFinalizer(tunnel, cloudflareTunnelFinalizer) {
 		log.V(2).Info("Adding finalizer to CloudflareTunnel")
 		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.AddFinalizer(tunnel, cloudflareTunnelFinalizer)
+			_ = controllerutil.AddFinalizer(obj, cloudflareTunnelFinalizer)
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -185,12 +189,23 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log.V(2).Info("Updating existing cloudflare tunnel", "id", tunnelId)
 	if err := r.updateTunnel(ctx, tunnelId, tunnel); err != nil {
 		log.Error(err, "Failed to update existing cloudflare tunnel", "id", tunnelId)
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
 	if cf := tunnel.Spec.Cloudflared; cf != nil {
+		// A malformed selector is a spec problem: reconciling again produces the
+		// same result, so it is recorded and left alone until the user edits the
+		// resource.
+		selector, err := tunnelSelector(tunnel)
+		if err != nil {
+			log.Error(err, "Failed to convert LabelSelector to selector")
+			return ctrl.Result{}, r.degrade(ctx, tunnel,
+				fmt.Sprintf("spec.cloudflared.selector is not a valid label selector: %s", err),
+			)
+		}
+
 		log.V(2).Info("Listing selected Cloudflared resources")
-		cloudflareds, err := r.listCloudflareds(ctx, tunnel)
+		cloudflareds, err := r.listCloudflareds(ctx, tunnel.Namespace, selector)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -219,7 +234,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			log.V(2).Info("Applying tunnel id to Cloudflared", "name", c.Name, "id", tunnelId)
 			if err := r.Update(ctx, &c); err != nil {
 				log.Error(err, "Failed to update Cloudflared")
-				return ctrl.Result{}, nil
+				return ctrl.Result{}, err
 			} else {
 				count++
 				log.Info("Applied config to Cloudflared",
@@ -231,18 +246,16 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		if cf.Template != nil && count == 0 {
-			selector, err := metav1.LabelSelectorAsSelector(cf.Selector)
-			if err != nil {
-				log.Error(err, "Failed to convert LabelSelector to selector")
-				return ctrl.Result{}, nil
-			}
-
+			// A template the selector cannot match would leave the controller
+			// creating a Cloudflared it never selects again.
 			if !selector.Matches(labels.Set(cf.Template.Labels)) {
 				log.Info("Given label selector does not match Cloudflared template labels",
 					"selector", selector,
 					"labels", cf.Template.Labels,
 				)
-				return ctrl.Result{}, nil
+				return ctrl.Result{}, r.degrade(ctx, tunnel,
+					"spec.cloudflared.selector does not match the labels on spec.cloudflared.template",
+				)
 			}
 
 			cloudflared := &cfv1alpha1.Cloudflared{
@@ -263,12 +276,12 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 			if err := controllerutil.SetControllerReference(tunnel, cloudflared, r.Scheme); err != nil {
 				log.Error(err, "Failed to set controller reference")
-				return ctrl.Result{}, nil
+				return ctrl.Result{}, err
 			}
 
 			if err := r.Create(ctx, cloudflared); err != nil {
 				log.Error(err, "Failed to create Cloudflared")
-				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+				return ctrl.Result{}, err
 			}
 		}
 	}
@@ -443,15 +456,24 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 	return nil
 }
 
-func (r *CloudflareTunnelReconciler) listCloudflareds(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (*cfv1alpha1.CloudflaredList, error) {
-	selector, err := metav1.LabelSelectorAsSelector(tunnel.Spec.Cloudflared.Selector)
-	if err != nil {
-		return nil, fmt.Errorf("converting label selector into label: %w", err)
+// tunnelSelector converts spec.cloudflared.selector into a selector.
+func tunnelSelector(tunnel *cfv1alpha1.CloudflareTunnel) (labels.Selector, error) {
+	if tunnel.Spec.Cloudflared == nil {
+		return labels.Nothing(), nil
 	}
 
+	selector, err := metav1.LabelSelectorAsSelector(tunnel.Spec.Cloudflared.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("converting label selector into a selector: %w", err)
+	}
+
+	return selector, nil
+}
+
+func (r *CloudflareTunnelReconciler) listCloudflareds(ctx context.Context, namespace string, selector labels.Selector) (*cfv1alpha1.CloudflaredList, error) {
 	cloudflareds := &cfv1alpha1.CloudflaredList{}
 	if err := r.List(ctx, cloudflareds, &client.ListOptions{
-		Namespace:     tunnel.Namespace,
+		Namespace:     namespace,
 		LabelSelector: selector,
 	}); err != nil {
 		return nil, fmt.Errorf("listing cloudflareds: %w", err)
