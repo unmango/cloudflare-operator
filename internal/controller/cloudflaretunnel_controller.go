@@ -180,7 +180,6 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{RequeueAfter: retryAfterFailedCreate}, nil
 		}
 
-		log.Info("Created cloudflare tunnel")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	} else {
 		tunnelId = *id
@@ -350,16 +349,53 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		ConfigSrc:    cloudflare.F(r.mapConfigSrc(tunnel.Spec.ConfigSource)),
 		TunnelSecret: secret,
 	})
+	if cfclient.IsConflict(err) {
+		return r.adoptTunnel(ctx, tunnel, err)
+	}
 	if err != nil {
-		return cfclient.IgnoreConflict(err)
+		return err
 	}
 
-	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+	logf.FromContext(ctx).Info("Created cloudflare tunnel", "id", res.ID)
+	return r.recordTunnel(ctx, tunnel, res, "Successfully created cloudflare tunnel")
+}
+
+// adoptTunnel records the existing tunnel whose name made the create conflict.
+// Cloudflare tunnels carry no marker of who created them, so a unique name is
+// the only thing that identifies the one this resource describes.
+func (r *CloudflareTunnelReconciler) adoptTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, conflict error) error {
+	name := effectiveName(tunnel)
+	tunnels, err := r.Cloudflare.ListTunnels(ctx, zero_trust.TunnelCloudflaredListParams{
+		AccountID: cloudflare.F(tunnel.Spec.AccountId),
+		Name:      cloudflare.F(name),
+		IsDeleted: cloudflare.F(false),
+	})
+	if err != nil {
+		return errors.Join(conflict, err)
+	}
+
+	switch len(tunnels) {
+	case 0:
+		// The conflicting tunnel was deleted between the two calls.
+		return conflict
+	case 1:
+		res := &tunnels[0]
+		logf.FromContext(ctx).Info("Adopted existing cloudflare tunnel", "id", res.ID)
+		return r.recordTunnel(ctx, tunnel, res, "Adopted existing cloudflare tunnel")
+	default:
+		err := fmt.Errorf("%d cloudflare tunnels are named %q", len(tunnels), name)
+		return errors.Join(err, r.degrade(ctx, tunnel, err.Error()))
+	}
+}
+
+// recordTunnel writes a tunnel returned by the Cloudflare API to the status.
+func (r *CloudflareTunnelReconciler) recordTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, res *shared.CloudflareTunnel, message string) error {
+	return patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
 			Status:  metav1.ConditionTrue,
 			Reason:  reasonReconciling,
-			Message: "Successfully created cloudflare tunnel",
+			Message: message,
 		})
 		obj.Status.Name = res.Name
 		obj.Status.AccountTag = res.AccountTag
@@ -370,11 +406,7 @@ func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *c
 		obj.Status.ConnectionsActiveAt = metav1.NewTime(res.ConnsActiveAt)
 		obj.Status.ConnectionsInactiveAt = metav1.NewTime(res.ConnsInactiveAt)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string, tunnel *cfv1alpha1.CloudflareTunnel) error {

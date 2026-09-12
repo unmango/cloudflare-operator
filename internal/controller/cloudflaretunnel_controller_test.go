@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -355,6 +357,95 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 						HaveField("Status", metav1.ConditionTrue),
 						HaveField("Reason", reasonInvalidSpec),
 					)))
+				})
+			})
+
+			Context("and the tunnel name is already taken", func() {
+				listParams := zero_trust.TunnelCloudflaredListParams{
+					AccountID: cloudflare.F(accountId),
+					Name:      cloudflare.F(resourceName),
+					IsDeleted: cloudflare.F(false),
+				}
+
+				BeforeEach(func() {
+					// Error() dereferences Request and Response, and the
+					// controller logs the error.
+					cfmock.EXPECT().
+						CreateTunnel(gomock.Any(), gomock.Any()).
+						Return(nil, &cloudflare.Error{
+							StatusCode: http.StatusConflict,
+							Request:    httptest.NewRequest(http.MethodPost, "/", nil),
+							Response:   &http.Response{StatusCode: http.StatusConflict},
+						})
+
+					Expect(k8sClient.Create(ctx, cloudflaretunnel)).To(Succeed())
+				})
+
+				Context("and exactly one tunnel has that name", func() {
+					BeforeEach(func() {
+						cfmock.EXPECT().
+							ListTunnels(gomock.Any(), gomock.Eq(listParams)).
+							Return([]shared.CloudflareTunnel{*created}, nil)
+
+						reconcileOnce()
+					})
+
+					It("should record the existing tunnel", func() {
+						status := observed().Status
+
+						Expect(status.Id).To(Equal(new(created.ID)))
+						Expect(status.Name).To(Equal(created.Name))
+						Expect(status.AccountTag).To(Equal(created.AccountTag))
+						Expect(status.RemoteConfig).To(BeTrue())
+						Expect(status.Status).To(Equal(cfv1alpha1.HealthyCloudflareTunnelHealth))
+						Expect(status.Type).To(Equal(cfv1alpha1.CfdTunnelCloudflareTunnelType))
+					})
+				})
+
+				Context("and no tunnel has that name", func() {
+					var result reconcile.Result
+
+					BeforeEach(func() {
+						cfmock.EXPECT().
+							ListTunnels(gomock.Any(), gomock.Eq(listParams)).
+							Return(nil, nil)
+
+						result = reconcileOnce()
+					})
+
+					It("should not record a tunnel id", func() {
+						Expect(observed().Status.Id).To(BeNil())
+					})
+
+					It("should try again later", func() {
+						Expect(result.RequeueAfter).To(Equal(retryAfterFailedCreate))
+					})
+				})
+
+				Context("and more than one tunnel has that name", func() {
+					BeforeEach(func() {
+						other := *created
+						other.ID = "other-tunnel-id"
+
+						cfmock.EXPECT().
+							ListTunnels(gomock.Any(), gomock.Eq(listParams)).
+							Return([]shared.CloudflareTunnel{*created, other}, nil)
+
+						reconcileOnce()
+					})
+
+					It("should not record a tunnel id", func() {
+						Expect(observed().Status.Id).To(BeNil())
+					})
+
+					It("should mark the resource as degraded", func() {
+						Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionTrue),
+							HaveField("Reason", reasonInvalidSpec),
+							HaveField("Message", ContainSubstring(resourceName)),
+						)))
+					})
 				})
 			})
 
