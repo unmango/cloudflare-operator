@@ -114,6 +114,8 @@ Reconcilers are idempotent and converge over several passes rather than doing ev
 Changing a `Cloudflared` from `DaemonSet` to `Deployment` takes two: the first deletes the owned app and requeues, the second observes it gone and clears `status.kind`.
 Tests that assert on a converged state have to reconcile more than once.
 
+A `CloudflareTunnel` whose create returns 409 adopts the one non-deleted tunnel with that name; several matches leave it Degraded.
+
 All three resource controllers add a finalizer so the Cloudflare-side object is deleted before the Kubernetes object goes away.
 
 ### Tests

@@ -20,6 +20,7 @@ type Client interface {
 	GetDnsRecord(ctx context.Context, recordId string, params dns.RecordGetParams) (*dns.RecordResponse, error)
 	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*shared.CloudflareTunnel, error)
 	GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error)
+	ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]shared.CloudflareTunnel, error)
 	UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error)
 	UpdateDnsRecord(ctx context.Context, recordId string, params dns.RecordUpdateParams) (*dns.RecordResponse, error)
 }
@@ -70,6 +71,17 @@ func (c *client) GetTunnel(ctx context.Context, tunnelId string, params zero_tru
 // GetTunnelToken implements Client.
 func (c *client) GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.Token.Get(ctx, tunnelId, params)
+}
+
+// ListTunnels implements Client.
+func (c *client) ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]shared.CloudflareTunnel, error) {
+	var tunnels []shared.CloudflareTunnel
+	iter := c.ZeroTrust.Tunnels.Cloudflared.ListAutoPaging(ctx, params)
+	for iter.Next() {
+		tunnels = append(tunnels, iter.Current())
+	}
+
+	return tunnels, iter.Err()
 }
 
 // UpdateConfiguration implements Client.
