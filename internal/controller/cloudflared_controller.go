@@ -412,7 +412,8 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 	}
 
 	var volumeMounts []corev1.VolumeMount
-	if len(template.Spec.Volumes) > 0 {
+	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil &&
+		(config.ValueFrom.SecretKeyRef != nil || config.ValueFrom.ConfigMapKeyRef != nil) {
 		volumeMounts = []corev1.VolumeMount{{
 			Name:      configVolumeName,
 			MountPath: "/etc/cloudflared",
@@ -487,6 +488,7 @@ func (tunnel) applyCustomizations(base, custom *corev1.Container) {
 	if len(custom.Image) > 0 {
 		base.Image = custom.Image
 	}
+	base.VolumeMounts = append(base.VolumeMounts, custom.VolumeMounts...)
 }
 
 func (tunnel) labels(ctr corev1.Container) map[string]string {

@@ -261,6 +261,35 @@ var _ = Describe("Cloudflared Controller", func() {
 					))
 				})
 			})
+
+			Context("and a volume is mounted into cloudflared", func() {
+				caMount := corev1.VolumeMount{Name: "ca", MountPath: "/etc/ca", ReadOnly: true}
+
+				BeforeEach(func() {
+					cloudflared.Spec.Template.Spec.Volumes = []corev1.Volume{{
+						Name: "ca",
+						VolumeSource: corev1.VolumeSource{
+							ConfigMap: &corev1.ConfigMapVolumeSource{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "kube-root-ca.crt"},
+							},
+						},
+					}}
+					cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
+						Name:         cloudflaredContainerName,
+						VolumeMounts: []corev1.VolumeMount{caMount},
+					}}
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					reconcileOnce()
+				})
+
+				It("should keep the volume and its mount", func() {
+					template := daemonSet().Spec.Template
+					Expect(template.Spec.Volumes).To(ContainElement(HaveField("Name", "ca")))
+
+					container := containerNamed(template, cloudflaredContainerName)
+					Expect(container.VolumeMounts).To(HaveExactElements(caMount))
+				})
+			})
 		})
 
 		Context("and inline config is provided", func() {
