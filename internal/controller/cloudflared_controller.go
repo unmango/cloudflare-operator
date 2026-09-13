@@ -103,7 +103,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if cloudflared.Status.Kind == nil {
 		if err := r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		} else {
 			log.Info("Successfully created app for Cloudflared")
 			return ctrl.Result{}, nil
@@ -121,7 +121,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get app for Cloudflared")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 
 		if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {
@@ -148,7 +148,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		)
 		if err := r.deleteApp(ctx, app); err != nil {
 			log.Error(err, "Failed to delete app for Cloudflared", "kind", app.GetObjectKind())
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		} else {
 			log.Info("Successfully deleted app for Cloudflared, requeuing to create replacement",
 				"kind", app.GetObjectKind(),
@@ -159,7 +159,7 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err = r.updateApp(ctx, app, cloudflared); err != nil {
 		log.Error(err, "Failed to update app for Cloudflared")
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	} else {
 		log.Info("Successfully updated app for Cloudflared")
 		return ctrl.Result{}, nil

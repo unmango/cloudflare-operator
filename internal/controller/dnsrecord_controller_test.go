@@ -83,6 +83,14 @@ var _ = Describe("DnsRecord Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
+		// reconcileFails is the counterpart to reconcileOnce for the paths where
+		// a failed API call has to surface as a failed reconcile.
+		reconcileFails := func() {
+			GinkgoHelper()
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(HaveOccurred())
+		}
+
 		observed := func() *cfv1alpha1.DnsRecord {
 			GinkgoHelper()
 			resource := &cfv1alpha1.DnsRecord{}
@@ -179,7 +187,7 @@ var _ = Describe("DnsRecord Controller", func() {
 					AnyTimes()
 
 				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
-				reconcileOnce()
+				reconcileFails()
 				Expect(observed().Finalizers).To(ConsistOf(dnsRecordFinalizer))
 				Expect(observed().Status.Id).To(BeNil())
 
@@ -236,6 +244,30 @@ var _ = Describe("DnsRecord Controller", func() {
 				reconcileOnce()
 
 				Expect(observed().Status.Id).To(Equal(ptr.To(recordId)))
+			})
+
+			It("should fail the reconcile when the read fails", func() {
+				cfmock.EXPECT().
+					GetDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(nil, errors.New("get record failed"))
+
+				reconcileFails()
+			})
+
+			It("should fail the reconcile when the update fails", func() {
+				// Content the spec does not agree with is what sends the
+				// controller into the update branch.
+				stale := recordResponse()
+				stale.Content = "stale-content"
+
+				cfmock.EXPECT().
+					GetDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(stale, nil)
+				cfmock.EXPECT().
+					UpdateDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(nil, errors.New("update record failed"))
+
+				reconcileFails()
 			})
 		})
 	})
