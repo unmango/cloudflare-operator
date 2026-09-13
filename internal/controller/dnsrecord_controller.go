@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -93,14 +94,36 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if id := record.Status.Id; id == nil {
-		log.Info("Creating DnsRecord")
-		res, err := r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
+		// Cloudflare does not deduplicate creates, so a status patch that failed
+		// after an earlier create would otherwise leave an untracked duplicate.
+		name, typ := recordKey(record)
+		existing, err := r.Cloudflare.ListDnsRecords(ctx, dns.RecordListParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
-			Body:   r.toCloudflareNew(record),
+			Name:   cloudflare.F(dns.RecordListParamsName{Exact: cloudflare.F(name)}),
+			Type:   cloudflare.F(dns.RecordListParamsType(typ)),
 		})
 		if err != nil {
-			log.Error(err, "Failed to create DNS record")
+			log.Error(err, "Failed to list DNS records")
 			return ctrl.Result{}, err
+		}
+
+		var res *dns.RecordResponse
+		switch len(existing) {
+		case 0:
+			log.Info("Creating DnsRecord")
+			res, err = r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
+				ZoneID: cloudflare.F(record.Spec.ZoneId),
+				Body:   r.toCloudflareNew(record),
+			})
+			if err != nil {
+				log.Error(err, "Failed to create DNS record")
+				return ctrl.Result{}, err
+			}
+		case 1:
+			res = &existing[0]
+			log.Info("Adopting existing DnsRecord", "id", res.ID)
+		default:
+			return ctrl.Result{}, fmt.Errorf("%d %s records are named %q", len(existing), typ, name)
 		}
 
 		if err := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
@@ -236,6 +259,24 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 
 	// Reports whether any compared field differs from the observed status.
 	return slices.Contains(conditions, false)
+}
+
+// recordKey is the name and type that identify the record within its zone.
+func recordKey(record *cfv1alpha1.DnsRecord) (name, typ string) {
+	switch spec := record.Spec.Record; {
+	case spec.AAAARecord != nil:
+		return spec.AAAARecord.Name, spec.AAAARecord.Type
+	case spec.ARecord != nil:
+		return spec.ARecord.Name, spec.ARecord.Type
+	case spec.CAARecord != nil:
+		return spec.CAARecord.Name, spec.CAARecord.Type
+	case spec.CNAMERecord != nil:
+		return spec.CNAMERecord.Name, spec.CNAMERecord.Type
+	case spec.TXTRecord != nil:
+		return spec.TXTRecord.Name, spec.TXTRecord.Type
+	default:
+		return "", ""
+	}
 }
 
 func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.RecordNewParamsBodyUnion {
