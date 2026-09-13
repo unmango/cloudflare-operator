@@ -38,6 +38,14 @@ Run `make helm` after changing anything under `config/` or any kubebuilder marke
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
 
+## Releases
+
+release-please owns versioning.
+It reads Conventional Commit subjects on `main` (PRs are squash-merged, so the PR title is the subject) and keeps a release PR open.
+Merging that PR tags `vX.Y.Z`, and `.github/workflows/release.yml` then pushes the image to `ghcr.io/unmango/cloudflare-operator` and the chart to `oci://ghcr.io/unmango/charts`.
+The version in `flake.nix`, the chart `version` and `appVersion` in `dist/chart/Chart.yaml`, `.release-please-manifest.json`, and `CHANGELOG.md` all move together in that PR; do not edit them by hand.
+release-please authenticates as the `thecluster-bot` GitHub App through the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret, so the release PR triggers CI and its commits are signed.
+
 Scaffold new resources with `kubebuilder create api` rather than writing the files by hand.
 `hack/init.sh` records the exact invocations that produced the current layout.
 The group is `cloudflare` and the domain is `unmango.dev`, which combine into `cloudflare.unmango.dev`.

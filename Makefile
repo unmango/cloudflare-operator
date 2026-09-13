@@ -174,6 +174,14 @@ IMAGE_TAG  ?= latest
 push-image: bin/image.tar ## Push the image to $(PUSH_IMAGE):$(IMAGE_TAG).
 	$(SKOPEO) copy docker-archive:bin/image.tar 'docker://$(PUSH_IMAGE):$(IMAGE_TAG)'
 
+PUSH_CHART    ?= oci://ghcr.io/unmango/charts
+CHART_VERSION  = $(shell awk '/^version:/{print $$2}' dist/chart/Chart.yaml)
+
+.PHONY: push-chart
+push-chart: | bin ## Package dist/chart and push it to $(PUSH_CHART).
+	$(HELM) package dist/chart --destination bin
+	$(HELM) push bin/cloudflare-operator-$(CHART_VERSION).tgz '$(PUSH_CHART)'
+
 ##@ Deployment
 
 ifndef ignore-not-found
