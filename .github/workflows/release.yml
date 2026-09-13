@@ -2,15 +2,40 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  image:
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # A pull request opened with GITHUB_TOKEN does not trigger workflows,
+      # so the release PR arrives with no CI. RELEASE_PLEASE_TOKEN is a PAT
+      # that fixes that; without one releases still work.
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Publishing runs here rather than on a tag trigger, because a tag pushed
+  # with GITHUB_TOKEN starts no workflows.
+  image:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -36,9 +61,9 @@ jobs:
       # is a file target, so the second copy reuses it rather than rebuilding.
       #
       # The tag reaches a shell, so it comes in through the environment and is
-      # checked against the shape the trigger promises before it is used.
+      # checked against the expected shape before it is used.
       - env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]*$ ]]; then
             echo "Refusing to publish an unexpected tag: $RELEASE_TAG" >&2
@@ -46,3 +71,25 @@ jobs:
           fi
           nix develop -c make push-image IMAGE_TAG="$RELEASE_TAG"
           nix develop -c make push-image IMAGE_TAG="${RELEASE_TAG#v}"
+
+  chart:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - run: nix develop -c helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GH_TOKEN"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: nix develop -c make push-chart
