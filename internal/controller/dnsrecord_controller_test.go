@@ -139,6 +139,14 @@ var _ = Describe("DnsRecord Controller", func() {
 
 		Context("and the record does not exist yet", func() {
 			BeforeEach(func() {
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Eq(ctx), gomock.Eq(dns.RecordListParams{
+						ZoneID: cloudflare.F(zoneId),
+						Name:   cloudflare.F(dns.RecordListParamsName{Exact: cloudflare.F("test-a-record")}),
+						Type:   cloudflare.F(dns.RecordListParamsTypeA),
+					})).
+					Return(nil, nil)
+
 				// Asserting on the full parameter set is the point: this is
 				// where the CRD spec is translated into the Cloudflare API.
 				cfmock.EXPECT().
@@ -178,11 +186,44 @@ var _ = Describe("DnsRecord Controller", func() {
 			})
 		})
 
+		// A status patch that failed after an earlier create leaves the record
+		// in the zone with no id on the resource.
+		Context("and a matching record already exists upstream", func() {
+			BeforeEach(func() {
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+			})
+
+			It("should adopt it rather than create another", func() {
+				// CreateDnsRecord is deliberately not expected.
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Any(), gomock.Any()).
+					Return([]dns.RecordResponse{*recordResponse()}, nil)
+
+				reconcileOnce()
+
+				Expect(observed().Status.Id).To(Equal(ptr.To(recordId)))
+			})
+
+			It("should refuse to choose between several", func() {
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Any(), gomock.Any()).
+					Return([]dns.RecordResponse{*recordResponse(), *recordResponse()}, nil)
+
+				reconcileFails()
+
+				Expect(observed().Status.Id).To(BeNil())
+			})
+		})
+
 		Context("and the record is being deleted", func() {
 			// Without a working Cloudflare API the create never lands, so the
 			// status carries no id. The finalizer still has to come off or the
 			// resource can never leave the cluster.
 			It("should release the finalizer when the create never succeeded", func() {
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Any(), gomock.Any()).
+					Return(nil, nil).
+					AnyTimes()
 				cfmock.EXPECT().
 					CreateDnsRecord(gomock.Any(), gomock.Any()).
 					Return(nil, errors.New("no api token")).
@@ -261,6 +302,9 @@ var _ = Describe("DnsRecord Controller", func() {
 				reconcileFails()
 				Expect(observed().Status.Id).To(BeNil())
 
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Any(), gomock.Any()).
+					Return(nil, nil)
 				cfmock.EXPECT().
 					CreateDnsRecord(gomock.Any(), gomock.Any()).
 					Return(recordResponse(), nil)
