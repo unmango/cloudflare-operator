@@ -144,8 +144,8 @@ type CloudflareTunnelOriginRequest struct {
 	// Path to the certificate authority (CA) for the certificate of your origin.
 	// This option should be used only if your certificate is not signed by Cloudflare.
 	//
-	// +ptional
-	CaPool string `json:"caPool"`
+	// +optional
+	CaPool string `json:"caPool,omitempty"`
 
 	// Timeout for establishing a new TCP connection to your origin server.
 	// This excludes the time taken to establish TLS, which is controlled by tlsTimeout.

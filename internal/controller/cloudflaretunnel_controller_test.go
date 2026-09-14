@@ -34,8 +34,10 @@ import (
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -741,5 +743,37 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 			})
 		})
+	})
+})
+
+var _ = Describe("CloudflareTunnel CRD", func() {
+	ctx := context.Background()
+
+	// Unstructured, because the typed client serializes every field without
+	// omitempty and so would always satisfy a required marker.
+	It("should accept an originRequest without caPool", func() {
+		obj := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": cfv1alpha1.GroupVersion.String(),
+			"kind":       "CloudflareTunnel",
+			"metadata": map[string]any{
+				"name":      "no-ca-pool",
+				"namespace": testNamespace,
+			},
+			"spec": map[string]any{
+				"accountId": "test-account-id",
+				"config": map[string]any{
+					"ingress": []any{map[string]any{
+						"hostname": "example.com",
+						"service":  "https://localhost",
+						"originRequest": map[string]any{
+							"noTlsVerify": true,
+						},
+					}},
+				},
+			},
+		}}
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 	})
 })

@@ -9410,8 +9410,6 @@ spec:
                                 Tunnel to an HTTPS server.
                               format: int64
                               type: integer
-                          required:
-                          - caPool
                           type: object
                         path:
                           description: Requests with this path route to this public
@@ -9532,8 +9530,6 @@ spec:
                           HTTPS server.
                         format: int64
                         type: integer
-                    required:
-                    - caPool
                     type: object
                   warpRouting:
                     description: |-
