@@ -290,6 +290,39 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(container.VolumeMounts).To(HaveExactElements(caMount))
 				})
 			})
+
+			Context("and a volume is mounted over the config from valueFrom", func() {
+				configMount := corev1.VolumeMount{Name: configVolumeName, MountPath: "/etc/cloudflared"}
+
+				BeforeEach(func() {
+					cloudflared.Spec.Config = &cfv1alpha1.CloudflaredConfig{
+						ValueFrom: &cfv1alpha1.CloudflaredConfigReference{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "cloudflared-config"},
+								Key:                  "config.yml",
+							},
+						},
+					}
+					cloudflared.Spec.Template.Spec.Volumes = []corev1.Volume{{
+						Name:         "user-config",
+						VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+					}}
+					cloudflared.Spec.Template.Spec.Containers = []corev1.Container{{
+						Name: cloudflaredContainerName,
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      "user-config",
+							MountPath: "/etc/cloudflared",
+						}},
+					}}
+					Expect(k8sClient.Create(ctx, cloudflared)).To(Succeed())
+					reconcileOnce()
+				})
+
+				It("should keep only the generated config mount", func() {
+					container := containerNamed(daemonSet().Spec.Template, cloudflaredContainerName)
+					Expect(container.VolumeMounts).To(HaveExactElements(configMount))
+				})
+			})
 		})
 
 		Context("and inline config is provided", func() {

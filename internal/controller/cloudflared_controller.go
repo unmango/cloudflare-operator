@@ -488,7 +488,17 @@ func (tunnel) applyCustomizations(base, custom *corev1.Container) {
 	if len(custom.Image) > 0 {
 		base.Image = custom.Image
 	}
-	base.VolumeMounts = append(base.VolumeMounts, custom.VolumeMounts...)
+	// A custom mount at a path the operator already mounts, such as the config
+	// from valueFrom, is dropped: the API server rejects duplicate mount paths.
+	taken := map[string]bool{}
+	for _, mount := range base.VolumeMounts {
+		taken[mount.MountPath] = true
+	}
+	for _, mount := range custom.VolumeMounts {
+		if !taken[mount.MountPath] {
+			base.VolumeMounts = append(base.VolumeMounts, mount)
+		}
+	}
 }
 
 func (tunnel) labels(ctr corev1.Container) map[string]string {
