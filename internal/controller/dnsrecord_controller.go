@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -118,6 +119,16 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		res, err := r.Cloudflare.GetDnsRecord(ctx, *id, dns.RecordGetParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
 		})
+		if cfclient.IsNotFound(err) {
+			// Forget the stale id so the retry takes the create branch.
+			log.Info("DNS record was deleted upstream", "id", *id)
+			if patchErr := patchSubResource(ctx, r.Status(), record, func(obj *cfv1alpha1.DnsRecord) {
+				obj.Status.Id = nil
+			}); patchErr != nil {
+				return ctrl.Result{}, errors.Join(err, patchErr)
+			}
+			return ctrl.Result{}, err
+		}
 		if err != nil {
 			log.Error(err, "Failed to read DNS record")
 			return ctrl.Result{}, err

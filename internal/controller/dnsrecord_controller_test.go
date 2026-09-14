@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -243,6 +245,27 @@ var _ = Describe("DnsRecord Controller", func() {
 
 				reconcileOnce()
 
+				Expect(observed().Status.Id).To(Equal(ptr.To(recordId)))
+			})
+
+			It("should recreate the record when it was deleted upstream", func() {
+				cfmock.EXPECT().
+					GetDnsRecord(gomock.Any(), gomock.Eq(recordId), gomock.Any()).
+					Return(nil, &cloudflare.Error{
+						StatusCode: http.StatusNotFound,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusNotFound},
+					})
+
+				// The first pass forgets the stale id and retries.
+				reconcileFails()
+				Expect(observed().Status.Id).To(BeNil())
+
+				cfmock.EXPECT().
+					CreateDnsRecord(gomock.Any(), gomock.Any()).
+					Return(recordResponse(), nil)
+
+				reconcileOnce()
 				Expect(observed().Status.Id).To(Equal(ptr.To(recordId)))
 			})
 
