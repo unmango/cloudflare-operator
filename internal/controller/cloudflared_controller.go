@@ -219,11 +219,24 @@ func (r *CloudflaredReconciler) createApp(ctx context.Context, cloudflared *cfv1
 		return fmt.Errorf("unsupported kind: %s", cloudflared.Spec.Kind)
 	}
 
-	if err := ctrl.SetControllerReference(cloudflared, app, r.Scheme); err != nil {
-		return fmt.Errorf("set controller reference: %w", err)
-	}
-	if err := r.Create(ctx, app); err != nil {
-		return fmt.Errorf("create app: %w", err)
+	// A status patch that failed after an earlier create leaves the app in
+	// place with no Kind recorded, so adopt it rather than create it again.
+	existing, err := r.getApp(ctx, client.ObjectKeyFromObject(cloudflared), cloudflared.Spec.Kind)
+	switch {
+	case err == nil:
+		if !metav1.IsControlledBy(existing, cloudflared) {
+			return fmt.Errorf("%s %s exists and is not owned by this Cloudflared", cloudflared.Spec.Kind, existing.GetName())
+		}
+		log.Info("Adopting existing app for Cloudflared")
+	case apierrors.IsNotFound(err):
+		if err := ctrl.SetControllerReference(cloudflared, app, r.Scheme); err != nil {
+			return fmt.Errorf("set controller reference: %w", err)
+		}
+		if err := r.Create(ctx, app); err != nil {
+			return fmt.Errorf("create app: %w", err)
+		}
+	default:
+		return fmt.Errorf("get app: %w", err)
 	}
 
 	if err := patchSubResource(ctx, r.Status(), cloudflared, func(obj *cfv1alpha1.Cloudflared) {

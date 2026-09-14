@@ -202,6 +202,36 @@ var _ = Describe("Cloudflared Controller", func() {
 					Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 				})
 			})
+
+			// A status patch that fails after the create leaves the app in place
+			// with no Kind recorded.
+			Context("and the Kind status was never recorded", func() {
+				BeforeEach(func() {
+					resource := observed()
+					resource.Status.Kind = nil
+					Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
+				})
+
+				It("should adopt the owned DaemonSet and record the Kind", func() {
+					reconcileOnce()
+
+					Expect(observed().Status.Kind).To(Equal(ptr.To(cfv1alpha1.DaemonSetCloudflaredKind)))
+				})
+
+				It("should refuse a DaemonSet it does not own", func() {
+					app := daemonSet()
+					app.OwnerReferences = nil
+					Expect(k8sClient.Update(ctx, app)).To(Succeed())
+
+					_, err := (&CloudflaredReconciler{
+						Client:     k8sClient,
+						Scheme:     k8sClient.Scheme(),
+						Cloudflare: cfmock,
+					}).Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+					Expect(err).To(MatchError(ContainSubstring("not owned")))
+					Expect(observed().Status.Kind).To(BeNil())
+				})
+			})
 		})
 
 		Context("and a pod template is configured", func() {
