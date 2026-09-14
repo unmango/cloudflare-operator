@@ -412,7 +412,8 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 	}
 
 	var volumeMounts []corev1.VolumeMount
-	if len(template.Spec.Volumes) > 0 {
+	if config := cloudflared.Spec.Config; config != nil && config.ValueFrom != nil &&
+		(config.ValueFrom.SecretKeyRef != nil || config.ValueFrom.ConfigMapKeyRef != nil) {
 		volumeMounts = []corev1.VolumeMount{{
 			Name:      configVolumeName,
 			MountPath: "/etc/cloudflared",
@@ -486,6 +487,17 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 func (tunnel) applyCustomizations(base, custom *corev1.Container) {
 	if len(custom.Image) > 0 {
 		base.Image = custom.Image
+	}
+	// A custom mount at a path the operator already mounts, such as the config
+	// from valueFrom, is dropped: the API server rejects duplicate mount paths.
+	taken := map[string]bool{}
+	for _, mount := range base.VolumeMounts {
+		taken[mount.MountPath] = true
+	}
+	for _, mount := range custom.VolumeMounts {
+		if !taken[mount.MountPath] {
+			base.VolumeMounts = append(base.VolumeMounts, mount)
+		}
 	}
 }
 
