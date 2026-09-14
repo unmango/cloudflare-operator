@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.1](https://github.com/unmango/cloudflare-operator/compare/v0.1.0...v0.1.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* adopt an existing DNS record instead of creating a duplicate ([#212](https://github.com/unmango/cloudflare-operator/issues/212)) ([22a5a98](https://github.com/unmango/cloudflare-operator/commit/22a5a98deff8158d257bd11a1a114b6104885428)), closes [#195](https://github.com/unmango/cloudflare-operator/issues/195)
+* adopt an owned cloudflared app when its Kind was never recorded ([#210](https://github.com/unmango/cloudflare-operator/issues/210)) ([c79eaf5](https://github.com/unmango/cloudflare-operator/commit/c79eaf56dd35eb73f90a2fe9b9ae6d250f507a3d)), closes [#194](https://github.com/unmango/cloudflare-operator/issues/194)
+* make originRequest.caPool optional ([#208](https://github.com/unmango/cloudflare-operator/issues/208)) ([8063897](https://github.com/unmango/cloudflare-operator/commit/80638976cde7d1e550fc2dacaa27d918ce39571d)), closes [#198](https://github.com/unmango/cloudflare-operator/issues/198)
+* mount user volumes into the cloudflared container ([#209](https://github.com/unmango/cloudflare-operator/issues/209)) ([37b6ba3](https://github.com/unmango/cloudflare-operator/commit/37b6ba3e10c60e4ee967cfb7f9dfd48269f32637))
+* recreate a DnsRecord whose record was deleted upstream ([#211](https://github.com/unmango/cloudflare-operator/issues/211)) ([4b768ec](https://github.com/unmango/cloudflare-operator/commit/4b768ecb11ddeaaa54479dd989170207a8be5fbe)), closes [#196](https://github.com/unmango/cloudflare-operator/issues/196)
+
 ## [0.1.0](https://github.com/unmango/cloudflare-operator/compare/v0.0.4...v0.1.0) (2026-09-13)
 
 
