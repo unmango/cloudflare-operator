@@ -1,0 +1,16 @@
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareGatewayConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: cloudflare-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: cloudflaregatewayconfig-sample
+spec:
+  # Gateways of the referencing class provision their own tunnel from this
+  # template. Set tunnelRef instead to attach them all to one existing tunnel.
+  template:
+    spec:
+      accountId: replace-with-account-id
+      # Route-derived rules are assembled at push time, which Cloudflare only
+      # accepts for a remotely managed tunnel.
+      configSource: cloudflare

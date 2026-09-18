@@ -46,6 +46,32 @@ ingressClass:
 
   parameters: {}
 
+## GatewayClass for the Gateway controllers.
+##
+## Disabled by default, unlike ingressClass, for two reasons. The Gateway API
+## CRDs are not shipped with this chart, so installing a GatewayClass into a
+## cluster without them fails. And the controller does read this object, through
+## spec.parametersRef, so a class with no parameters reports Accepted=False
+## rather than sitting inert.
+##
+## GatewayClass is cluster scoped, so two releases in different namespaces
+## collide unless one of them changes the name or leaves this disabled.
+##
+gatewayClass:
+  enabled: false
+  name: cloudflare
+
+  ## The CloudflareGatewayConfig holding the account and the tunnel this class
+  ## attaches to or provisions. Required when enabled.
+  ##
+  ## parametersRef:
+  ##   group: cloudflare.unmango.dev
+  ##   kind: CloudflareGatewayConfig
+  ##   name: gateway-config
+  ##   namespace: cloudflare-operator-system
+  ##
+  parametersRef: {}
+
 ## Configure the controller manager deployment
 ##
 manager:

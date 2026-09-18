@@ -25,15 +25,21 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
@@ -50,6 +56,9 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(cloudflarev1alpha1.AddToScheme(scheme))
+	// ReferenceGrant is v1beta1 in the standard channel; every other kind is v1.
+	utilruntime.Must(gatewayv1.Install(scheme))
+	utilruntime.Must(gatewayv1beta1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -211,6 +220,25 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "ingress")
 		os.Exit(1)
 	}
+	gatewayAPI, err := gatewayAPIInstalled(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "Failed to discover the Gateway API")
+		os.Exit(1)
+	}
+	if gatewayAPI {
+		if err := (&controller.GatewayClassReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gatewayclass")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Gateway API CRDs are not installed, skipping the Gateway controllers",
+			"group", gatewayv1.GroupVersion.String(),
+			"hint", "install the CRDs and restart the manager to enable them",
+		)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -227,4 +255,26 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// gatewayAPIInstalled reports whether the cluster serves the Gateway API.
+//
+// Registering a controller for a kind the API server does not serve makes the
+// manager fail to start, so the Gateway controllers are wired up only when the
+// CRDs are present. Installing them later needs a restart.
+func gatewayAPIInstalled(cfg *rest.Config) (bool, error) {
+	client, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = client.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

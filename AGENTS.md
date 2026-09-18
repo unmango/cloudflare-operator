@@ -33,7 +33,7 @@ After changing `*_types.go` or any kubebuilder marker, run `make manifests gener
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
-`dist/chart` is generated too, with four exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, and `templates/rbac/tunnel-secret-reader.yaml`.
+`dist/chart` is generated too, with five exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, and `templates/rbac/tunnel-secret-reader.yaml`.
 Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
@@ -97,7 +97,9 @@ It also appends an `##@ Helm Deployment` section to the `Makefile` whose `instal
 
 The CRDs ship as templates under `crd.enabled` rather than in a `crds/` directory, because `crds/` is install-only and Helm would never upgrade them, which is the wrong trade for a `v1alpha1` API.
 `crd.keep` adds `helm.sh/resource-policy: keep`, so `helm uninstall` leaves them behind.
-Size is the constraint to watch: the rendered chart is 1.4 MB and the Helm release Secret measures 792 KB against the API server's ~1.5 MiB object limit, so roughly half the budget is spent.
+Size is the constraint to watch: the rendered chart is 2.3 MB and the Helm release Secret measures 315 KB against the API server's ~1.5 MiB object limit.
+Most of that is two CRDs that embed a full `PodTemplateSpec`, `cloudflaretunnels` and `cloudflaregatewayconfigs`, at roughly 800 KB each.
+Re-measure with `helm template x dist/chart | gzip -9 | base64 -w0 | wc -c` before adding another CRD that embeds one.
 Re-measure with `kubectl -n <ns> get secret -l owner=helm -o jsonpath='{.items[0].data.release}' | wc -c` if the CRD surface grows.
 
 ### Package layout
