@@ -66,6 +66,18 @@ The CRDs carry `helm.sh/resource-policy: keep`, so `helm uninstall` leaves them 
 helm uninstall cloudflare-operator --namespace cloudflare-operator-system
 ```
 
+### Gateway API
+
+Gateway API support requires the `gateway.networking.k8s.io` CRDs, which the chart does not ship.
+They are large, and a cluster usually installs them once for every controller that implements the API.
+
+```sh
+make install-gateway-crds
+```
+
+That applies the standard channel CRDs from the pinned `sigs.k8s.io/gateway-api` module, so the cluster gets the same version the operator compiles against.
+Any other install of the same version works equally well.
+
 To install from source without Helm, apply the kustomize output instead.
 This path does not wire up the token; set it yourself afterwards.
 
