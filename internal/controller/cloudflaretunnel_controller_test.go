@@ -776,4 +776,42 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 
 		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 	})
+
+	It("should accept a catch-all ingress rule without a hostname", func() {
+		rule := func(hostname, service string) map[string]any {
+			r := map[string]any{"service": service}
+			if hostname != "" {
+				r["hostname"] = hostname
+			}
+
+			return r
+		}
+		obj := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": cfv1alpha1.GroupVersion.String(),
+			"kind":       "CloudflareTunnel",
+			"metadata": map[string]any{
+				"name":      "catch-all-ingress",
+				"namespace": testNamespace,
+			},
+			"spec": map[string]any{
+				"accountId": "test-account-id",
+				"config": map[string]any{
+					"ingress": []any{
+						rule("tunnel.example.com", "https://localhost"),
+						rule("", "http_status:404"),
+					},
+				},
+			},
+		}}
+		key := client.ObjectKeyFromObject(obj)
+		DeferCleanup(deleteIfExists, ctx, key, &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+
+		tunnel := &cfv1alpha1.CloudflareTunnel{}
+		Expect(k8sClient.Get(ctx, key, tunnel)).To(Succeed())
+		Expect(tunnel.Spec.Config.Ingress).To(HaveLen(2))
+		Expect(tunnel.Spec.Config.Ingress[1].Hostname).To(BeEmpty())
+		Expect(tunnel.Spec.Config.Ingress[1].Service).To(Equal("http_status:404"))
+	})
 })
