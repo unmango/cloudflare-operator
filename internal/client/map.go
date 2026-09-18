@@ -34,12 +34,21 @@ func (c CloudflareTunnelConfig) originRequest() CloudflareTunnelOriginRequest {
 }
 
 func (c CloudflareTunnelConfigIngress) update() zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngress {
-	return zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngress{
-		Hostname:      cloudflare.F(c.Hostname),
+	params := zero_trust.TunnelCloudflaredConfigurationUpdateParamsConfigIngress{
 		Service:       cloudflare.F(c.Service),
 		OriginRequest: cloudflare.F(c.originRequest().ingressUpdate()),
-		Path:          cloudflare.F(c.Path),
 	}
+
+	// The last rule has to match all requests, so it sends neither field rather
+	// than an empty filter.
+	if c.Hostname != "" {
+		params.Hostname = cloudflare.F(c.Hostname)
+	}
+	if c.Path != "" {
+		params.Path = cloudflare.F(c.Path)
+	}
+
+	return params
 }
 
 func (c CloudflareTunnelConfigIngress) originRequest() CloudflareTunnelOriginRequest {

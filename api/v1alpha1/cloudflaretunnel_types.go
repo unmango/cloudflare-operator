@@ -223,9 +223,10 @@ type CloudflareTunnelOriginRequest struct {
 
 type CloudflareTunnelConfigIngress struct {
 	// Public hostname for this service.
+	// The last rule of a remotely managed tunnel must omit it so that it matches all requests.
 	//
-	// +required
-	Hostname string `json:"hostname"`
+	// +optional
+	Hostname string `json:"hostname,omitempty"`
 
 	// Protocol and address of destination server.
 	// Supported protocols: http://, https://, unix://, tcp://, ssh://, rdp://, unix+tls://, smb://.
