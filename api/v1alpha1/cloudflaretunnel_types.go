@@ -158,7 +158,7 @@ type CloudflareTunnelOriginRequest struct {
 	// Useful if you are running a WSGI server.
 	//
 	// +optional
-	DisableChunkedEncoding bool `json:"diableChunkedEncoding,omitempty"`
+	DisableChunkedEncoding bool `json:"disableChunkedEncoding,omitempty"`
 
 	// Attempt to connect to origin using HTTP2.
 	// Origin must be configured as https.
