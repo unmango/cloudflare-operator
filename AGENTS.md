@@ -46,7 +46,8 @@ Merging that PR tags `vX.Y.Z`, and `.github/workflows/release.yml` then pushes t
 The version in `flake.nix`, the chart `version` and `appVersion` in `dist/chart/Chart.yaml`, `.release-please-manifest.json`, and `CHANGELOG.md` all move together in that PR; do not edit them by hand.
 release-please authenticates as the `thecluster-bot` GitHub App through the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret.
 An app token rather than `GITHUB_TOKEN`, because a pull request opened with `GITHUB_TOKEN` triggers no workflows, so the release PR would carry no CI and the tag it pushes would start no downstream run.
-An app token rather than a PAT, because it does not act as a person and does not expire.
+An app token rather than a PAT, because the App credentials identify the App instead of a person and do not expire.
+Each workflow run mints an installation token from them that expires after an hour.
 Signing does not distinguish them: release-please writes through the GitHub API, and GitHub signs those commits with its web-flow key whatever token authenticated the call.
 
 Scaffold new resources with `kubebuilder create api` rather than writing the files by hand.
