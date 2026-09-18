@@ -30,7 +30,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -472,6 +474,130 @@ var _ = Describe("Cloudflared Controller", func() {
 				Expect(container.AllowPrivilegeEscalation).To(Equal(new(false)))
 				Expect(container.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
 			})
+		})
+	})
+
+	// The controller has to observe the referenced tunnel, not just its own
+	// object, or a Cloudflared that reconciled before the tunnel had an id keeps
+	// running --hello-world until the next resync.
+	Context("When the referenced CloudflareTunnel changes", func() {
+		const (
+			resourceName = "test-watched-resource"
+			tunnelId     = "test-watched-tunnel-id"
+			accountId    = "test-watched-account-id"
+			token        = "test-watched-token"
+		)
+
+		key := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: testNamespace,
+		}
+
+		var (
+			mgrCtx    context.Context
+			mgrCancel context.CancelFunc
+			mgrDone   chan struct{}
+			tunnel    *cfv1alpha1.CloudflareTunnel
+		)
+
+		// Fetches the args of the cloudflared container in the owned DaemonSet.
+		args := func() []string {
+			resource := &appsv1.DaemonSet{}
+			if err := k8sClient.Get(ctx, key, resource); err != nil {
+				return nil
+			}
+			for _, ctr := range resource.Spec.Template.Spec.Containers {
+				if ctr.Name == cloudflaredContainerName {
+					return ctr.Args
+				}
+			}
+			return nil
+		}
+
+		BeforeEach(func() {
+			cfmock := testing.NewMockClient(gomock.NewController(GinkgoT()))
+			cfmock.EXPECT().
+				GetTunnelToken(gomock.Any(), gomock.Eq(tunnelId), gomock.Eq(zero_trust.TunnelCloudflaredTokenGetParams{
+					AccountID: cloudflare.F(accountId),
+				})).
+				Return(ptr.To(token), nil).
+				AnyTimes()
+
+			By("Starting a manager running the Cloudflared controller")
+			mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+				Scheme:  k8sClient.Scheme(),
+				Metrics: metricsserver.Options{BindAddress: "0"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect((&CloudflaredReconciler{
+				Client:     mgr.GetClient(),
+				Scheme:     mgr.GetScheme(),
+				Cloudflare: cfmock,
+			}).SetupWithManager(mgr)).To(Succeed())
+
+			mgrCtx, mgrCancel = context.WithCancel(ctx)
+			mgrDone = make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				defer close(mgrDone)
+				Expect(mgr.Start(mgrCtx)).To(Succeed())
+			}()
+			Expect(mgr.GetCache().WaitForCacheSync(mgrCtx)).To(BeTrue())
+
+			By("Creating a CloudflareTunnel without an observed id")
+			tunnel = &cfv1alpha1.CloudflareTunnel{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: testNamespace,
+				},
+				Spec: cfv1alpha1.CloudflareTunnelSpec{
+					ConfigSource: cfv1alpha1.CloudflareCloudflareTunnelConfigSource,
+				},
+			}
+			Expect(k8sClient.Create(ctx, tunnel)).To(Succeed())
+
+			By("Creating a Cloudflared referencing it")
+			Expect(k8sClient.Create(ctx, &cfv1alpha1.Cloudflared{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: testNamespace,
+				},
+				Spec: cfv1alpha1.CloudflaredSpec{
+					Config: &cfv1alpha1.CloudflaredConfig{
+						TunnelRef: &cfv1alpha1.CloudflaredTunnelReference{
+							Name: resourceName,
+						},
+					},
+				},
+			})).To(Succeed())
+
+			Eventually(args, 30*time.Second).Should(HaveExactElements("--hello-world"))
+		})
+
+		AfterEach(func() {
+			mgrCancel()
+			Eventually(mgrDone, 30*time.Second).Should(BeClosed())
+
+			for _, obj := range []client.Object{
+				&cfv1alpha1.Cloudflared{},
+				&cfv1alpha1.CloudflareTunnel{},
+				&appsv1.DaemonSet{},
+				&appsv1.Deployment{},
+			} {
+				deleteIfExists(ctx, key, obj)
+			}
+		})
+
+		It("should run the tunnel once its status reports an id", func() {
+			By("Recording the tunnel id in the CloudflareTunnel status")
+			Expect(k8sClient.Get(ctx, key, tunnel)).To(Succeed())
+			tunnel.Status = cfv1alpha1.CloudflareTunnelStatus{
+				AccountTag: accountId,
+				Id:         ptr.To(tunnelId),
+			}
+			Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
+
+			Eventually(args, 30*time.Second).Should(HaveExactElements("run", tunnelId))
 		})
 	})
 })
