@@ -32,6 +32,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -44,6 +45,9 @@ const (
 	defaultCloudflaredImage = "docker.io/cloudflare/cloudflared:latest"
 	defaultMetricsPort      = 2000
 	cloudflaredFinalizer    = "cloudflared.unmango.dev/finalizer"
+
+	// tunnelRefNameField indexes Cloudflareds by the tunnel they reference.
+	tunnelRefNameField = "spec.config.tunnelRef.name"
 )
 
 const (
@@ -67,6 +71,7 @@ type CloudflaredReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflareds/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/status,verbs=get
 // +kubebuilder:rbac:groups=apps,resources=daemonsets;deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -529,10 +534,58 @@ func (tunnel) labels(ctr corev1.Container) map[string]string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(),
+		&cfv1alpha1.Cloudflared{},
+		tunnelRefNameField,
+		func(obj client.Object) []string {
+			cloudflared, ok := obj.(*cfv1alpha1.Cloudflared)
+			if !ok {
+				return nil
+			}
+			if config := cloudflared.Spec.Config; config != nil && config.TunnelRef != nil {
+				return []string{config.TunnelRef.Name}
+			}
+			return nil
+		},
+	); err != nil {
+		return fmt.Errorf("index %s: %w", tunnelRefNameField, err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.Cloudflared{}).
 		Named("cloudflared").
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&appsv1.Deployment{}).
+		// The tunnel id and account tag come from the referenced tunnel's
+		// status, which changes without any edit to the Cloudflared.
+		Watches(&cfv1alpha1.CloudflareTunnel{},
+			handler.EnqueueRequestsFromMapFunc(r.cloudflaredsForTunnel),
+		).
 		Complete(r)
+}
+
+// cloudflaredsForTunnel enqueues every Cloudflared in the tunnel's namespace
+// that references it by name.
+func (r *CloudflaredReconciler) cloudflaredsForTunnel(ctx context.Context, obj client.Object) []ctrl.Request {
+	log := logf.FromContext(ctx)
+
+	cloudflareds := &cfv1alpha1.CloudflaredList{}
+	if err := r.List(ctx, cloudflareds,
+		client.InNamespace(obj.GetNamespace()),
+		client.MatchingFields{tunnelRefNameField: obj.GetName()},
+	); err != nil {
+		log.Error(err, "Failed to list Cloudflareds referencing CloudflareTunnel",
+			"tunnel", client.ObjectKeyFromObject(obj),
+		)
+		return nil
+	}
+
+	requests := make([]ctrl.Request, 0, len(cloudflareds.Items))
+	for _, cloudflared := range cloudflareds.Items {
+		requests = append(requests, ctrl.Request{
+			NamespacedName: client.ObjectKeyFromObject(&cloudflared),
+		})
+	}
+
+	return requests
 }
