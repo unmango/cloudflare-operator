@@ -9349,7 +9349,7 @@ spec:
                                 This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
                               format: int64
                               type: integer
-                            diableChunkedEncoding:
+                            disableChunkedEncoding:
                               description: |-
                                 Disables chunked transfer encoding.
                                 Useful if you are running a WSGI server.
@@ -9469,7 +9469,7 @@ spec:
                           This excludes the time taken to establish TLS, which is controlled by tlsTimeout.
                         format: int64
                         type: integer
-                      diableChunkedEncoding:
+                      disableChunkedEncoding:
                         description: |-
                           Disables chunked transfer encoding.
                           Useful if you are running a WSGI server.

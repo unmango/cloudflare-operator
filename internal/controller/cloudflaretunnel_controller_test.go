@@ -746,63 +746,70 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 	})
 })
 
+// originRequestKey is the originRequest field name in an unstructured spec.
+const originRequestKey = "originRequest"
+
+// tunnelRule builds an unstructured ingress rule. An empty hostname is omitted
+// so the rule serializes as the catch-all Cloudflare requires last.
+func tunnelRule(hostname, service string, originRequest map[string]any) map[string]any {
+	rule := map[string]any{"service": service}
+	if hostname != "" {
+		rule["hostname"] = hostname
+	}
+	if originRequest != nil {
+		rule[originRequestKey] = originRequest
+	}
+
+	return rule
+}
+
+// tunnelObject builds an unstructured CloudflareTunnel around the given config.
+func tunnelObject(name string, config map[string]any) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": cfv1alpha1.GroupVersion.String(),
+		"kind":       "CloudflareTunnel",
+		"metadata": map[string]any{
+			"name":      name,
+			"namespace": testNamespace,
+		},
+		"spec": map[string]any{
+			"accountId": "test-account-id",
+			"config":    config,
+		},
+	}}
+}
+
+// tunnelConfig builds an unstructured spec.config from ingress rules.
+func tunnelConfig(rules ...map[string]any) map[string]any {
+	ingress := make([]any, len(rules))
+	for i, rule := range rules {
+		ingress[i] = rule
+	}
+
+	return map[string]any{"ingress": ingress}
+}
+
 var _ = Describe("CloudflareTunnel CRD", func() {
 	ctx := context.Background()
 
 	// Unstructured, because the typed client serializes every field without
 	// omitempty and so would always satisfy a required marker.
 	It("should accept an originRequest without caPool", func() {
-		obj := &unstructured.Unstructured{Object: map[string]any{
-			"apiVersion": cfv1alpha1.GroupVersion.String(),
-			"kind":       "CloudflareTunnel",
-			"metadata": map[string]any{
-				"name":      "no-ca-pool",
-				"namespace": testNamespace,
-			},
-			"spec": map[string]any{
-				"accountId": "test-account-id",
-				"config": map[string]any{
-					"ingress": []any{map[string]any{
-						"hostname": "example.com",
-						"service":  "https://localhost",
-						"originRequest": map[string]any{
-							"noTlsVerify": true,
-						},
-					}},
-				},
-			},
-		}}
+		obj := tunnelObject("no-ca-pool", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", map[string]any{
+				"noTlsVerify": true,
+			}),
+		))
 		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
 
 		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 	})
 
 	It("should accept a catch-all ingress rule without a hostname", func() {
-		rule := func(hostname, service string) map[string]any {
-			r := map[string]any{"service": service}
-			if hostname != "" {
-				r["hostname"] = hostname
-			}
-
-			return r
-		}
-		obj := &unstructured.Unstructured{Object: map[string]any{
-			"apiVersion": cfv1alpha1.GroupVersion.String(),
-			"kind":       "CloudflareTunnel",
-			"metadata": map[string]any{
-				"name":      "catch-all-ingress",
-				"namespace": testNamespace,
-			},
-			"spec": map[string]any{
-				"accountId": "test-account-id",
-				"config": map[string]any{
-					"ingress": []any{
-						rule("tunnel.example.com", "https://localhost"),
-						rule("", "http_status:404"),
-					},
-				},
-			},
-		}}
+		obj := tunnelObject("catch-all-ingress", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+			tunnelRule("", "http_status:404", nil),
+		))
 		key := client.ObjectKeyFromObject(obj)
 		DeferCleanup(deleteIfExists, ctx, key, &cfv1alpha1.CloudflareTunnel{})
 
@@ -813,5 +820,25 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 		Expect(tunnel.Spec.Config.Ingress).To(HaveLen(2))
 		Expect(tunnel.Spec.Config.Ingress[1].Hostname).To(BeEmpty())
 		Expect(tunnel.Spec.Config.Ingress[1].Service).To(Equal("http_status:404"))
+	})
+
+	It("should preserve disableChunkedEncoding", func() {
+		config := tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", map[string]any{
+				"disableChunkedEncoding": true,
+			}),
+		)
+		config[originRequestKey] = map[string]any{"disableChunkedEncoding": true}
+
+		obj := tunnelObject("disable-chunked-encoding", config)
+		key := client.ObjectKeyFromObject(obj)
+		DeferCleanup(deleteIfExists, ctx, key, &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+
+		tunnel := &cfv1alpha1.CloudflareTunnel{}
+		Expect(k8sClient.Get(ctx, key, tunnel)).To(Succeed())
+		Expect(tunnel.Spec.Config.OriginRequest.DisableChunkedEncoding).To(BeTrue())
+		Expect(tunnel.Spec.Config.Ingress[0].OriginRequest.DisableChunkedEncoding).To(BeTrue())
 	})
 })

@@ -58,7 +58,7 @@ var _ = Describe("Ingress Controller", func() {
 			Spec: networkingv1.IngressSpec{
 				IngressClassName: new("cloudflare"),
 				Rules: []networkingv1.IngressRule{{
-					Host: "example.com",
+					Host: testHostname,
 				}},
 			},
 		}

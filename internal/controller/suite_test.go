@@ -130,6 +130,9 @@ const testNamespace = "default"
 // testSecretKey is the key specs use inside a fixture Secret or ConfigMap.
 const testSecretKey = "secret"
 
+// testHostname is the hostname specs route through a tunnel.
+const testHostname = "example.com"
+
 // deleteIfExists removes obj and waits for it to disappear.
 //
 // envtest runs no controllers and no garbage collector, so finalizers added
