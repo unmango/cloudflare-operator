@@ -48,4 +48,20 @@ resources:
   kind: Ingress
   path: k8s.io/api/networking/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: unmango.dev
+  group: cloudflare
+  kind: CloudflareGatewayConfig
+  path: github.com/unmango/cloudflare-operator/api/v1alpha1
+  version: v1alpha1
+- controller: true
+  domain: networking.k8s.io
+  external: true
+  group: gateway
+  kind: GatewayClass
+  module: sigs.k8s.io/gateway-api@v1.6.2
+  path: sigs.k8s.io/gateway-api/apis/v1
+  version: v1
 version: "3"

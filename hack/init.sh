@@ -24,3 +24,23 @@ kubebuilder create api \
   --kind Ingress \
   --resource=false \
   --controller
+
+# Parameters for a GatewayClass, referenced through its parametersRef.
+kubebuilder create api \
+  --group cloudflare \
+  --version v1alpha1 \
+  --kind CloudflareGatewayConfig \
+  --resource \
+  --controller=false
+
+# Watches Gateway API objects. The types come from sigs.k8s.io/gateway-api, so
+# no resource is scaffolded for them.
+kubebuilder create api \
+  --group gateway \
+  --version v1 \
+  --kind GatewayClass \
+  --external-api-domain networking.k8s.io \
+  --external-api-path sigs.k8s.io/gateway-api/apis/v1 \
+  --external-api-module sigs.k8s.io/gateway-api@v1.6.2 \
+  --resource=false \
+  --controller
