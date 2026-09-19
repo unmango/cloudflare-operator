@@ -980,4 +980,56 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 		Expect(tunnel.Spec.Config.OriginRequest.DisableChunkedEncoding).To(BeTrue())
 		Expect(tunnel.Spec.Config.Ingress[0].OriginRequest.DisableChunkedEncoding).To(BeTrue())
 	})
+
+	It("should accept dns settings at the tunnel and on a rule", func() {
+		rule := tunnelRule(testHostname, "https://localhost", nil)
+		rule["dns"] = map[string]any{"proxied": false, "ttl": int64(300)}
+
+		obj := tunnelObject("dns-both-levels", tunnelConfig(rule))
+		Expect(unstructured.SetNestedField(obj.Object,
+			testZoneId, "spec", "dns", "zoneId",
+		)).To(Succeed())
+		key := client.ObjectKeyFromObject(obj)
+		DeferCleanup(deleteIfExists, ctx, key, &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+
+		tunnel := &cfv1alpha1.CloudflareTunnel{}
+		Expect(k8sClient.Get(ctx, key, tunnel)).To(Succeed())
+		Expect(tunnel.Spec.Dns.ZoneId).To(Equal(testZoneId))
+		// A pointer, so that an entry can override a tunnel-level true.
+		Expect(tunnel.Spec.Config.Ingress[0].Dns.Proxied).To(HaveValue(BeFalse()))
+		Expect(tunnel.Spec.Config.Ingress[0].Dns.Ttl).To(HaveValue(BeEquivalentTo(300)))
+	})
+
+	It("should reject a ttl outside the supported range", func() {
+		obj := tunnelObject("dns-ttl-out-of-range", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+		))
+		Expect(unstructured.SetNestedField(obj.Object,
+			int64(86401), "spec", "dns", "ttl",
+		)).To(Succeed())
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		err := k8sClient.Create(ctx, obj)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("spec.dns.ttl"))
+	})
+
+	It("should reject dns on a rule without a hostname", func() {
+		catchAll := tunnelRule("", testCatchAllService, nil)
+		catchAll["dns"] = map[string]any{"zoneId": testZoneId}
+
+		obj := remoteTunnelObject("dns-on-catch-all", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+			catchAll,
+		))
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		err := k8sClient.Create(ctx, obj)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("a rule in spec.config.ingress without a hostname cannot set dns"))
+	})
 })
