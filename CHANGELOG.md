@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/unmango/cloudflare-operator/compare/v0.1.1...v0.2.0) (2026-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* the originRequest field diableChunkedEncoding is renamed to disableChunkedEncoding. Stored objects that set the misspelled key lose the value on the next apply, and manifests using it must be updated.
+
+### Bug Fixes
+
+* allow an ingress rule without a hostname ([#224](https://github.com/unmango/cloudflare-operator/issues/224)) ([893ca22](https://github.com/unmango/cloudflare-operator/commit/893ca22b8e1e637bafe627f4c99a4d4d81eb34a1)), closes [#218](https://github.com/unmango/cloudflare-operator/issues/218)
+* correct DisableChunkedEncoding json tag spelling ([#226](https://github.com/unmango/cloudflare-operator/issues/226)) ([66fced3](https://github.com/unmango/cloudflare-operator/commit/66fced3018beff99ab3bfc0f25b8bc5c72e7b524)), closes [#207](https://github.com/unmango/cloudflare-operator/issues/207)
+* **deps:** update module github.com/onsi/ginkgo/v2 to v2.33.0 ([#220](https://github.com/unmango/cloudflare-operator/issues/220)) ([e62a5fd](https://github.com/unmango/cloudflare-operator/commit/e62a5fd6fe0c9d4f1270780f1742daa632bb885f))
+* **deps:** update module github.com/onsi/gomega to v1.43.1 ([#219](https://github.com/unmango/cloudflare-operator/issues/219)) ([d34d42e](https://github.com/unmango/cloudflare-operator/commit/d34d42ef35e378b7224dcbaffd8fd8b223f53bc2))
+* reconcile Cloudflared when its referenced tunnel changes ([#225](https://github.com/unmango/cloudflare-operator/issues/225)) ([f5537ec](https://github.com/unmango/cloudflare-operator/commit/f5537ecb85929fd1aa3ede74ba32271e793920f8))
+
 ## [0.1.1](https://github.com/unmango/cloudflare-operator/compare/v0.1.0...v0.1.1) (2026-09-14)
 
 
