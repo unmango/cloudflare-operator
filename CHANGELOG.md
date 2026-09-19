@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/unmango/cloudflare-operator/compare/v0.3.0...v0.3.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* reject an ingress rule that is not the catch-all from anywhere but the end ([#232](https://github.com/unmango/cloudflare-operator/issues/232)) ([ba8de3b](https://github.com/unmango/cloudflare-operator/commit/ba8de3bc4ec03c94299e58e47e99d861c3c29ac1)), closes [#227](https://github.com/unmango/cloudflare-operator/issues/227)
+
 ## [0.3.0](https://github.com/unmango/cloudflare-operator/compare/v0.2.0...v0.3.0) (2026-09-19)
 
 
