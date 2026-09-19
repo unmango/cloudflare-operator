@@ -77,6 +77,10 @@ make install-gateway-crds
 
 That applies the standard channel CRDs from the pinned `sigs.k8s.io/gateway-api` module, so the cluster gets the same version the operator compiles against.
 Any other install of the same version works equally well.
+`GATEWAY_API_CRDS` overrides the directory the target applies, for a checkout outside the module cache.
+
+The manager registers no Gateway API controller, so the CRDs on their own change nothing the operator does.
+They make the types available to the envtest suites and to a cluster preparing for that support.
 
 To install from source without Helm, apply the kustomize output instead.
 This path does not wire up the token; set it yourself afterwards.
