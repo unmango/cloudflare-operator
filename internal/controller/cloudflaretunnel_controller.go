@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -332,6 +333,27 @@ func (r *CloudflareTunnelReconciler) tunnelSecret(ctx context.Context, tunnel *c
 	return value, true, nil
 }
 
+// validateIngress mirrors the CEL rules on CloudflareTunnelSpec for a tunnel the
+// Cloudflare API reports as remotely managed even though its spec does not, which
+// admission cannot see. It returns an empty string when the rules are well ordered.
+func validateIngress(rules []cfv1alpha1.CloudflareTunnelConfigIngress) string {
+	catchAll := func(rule cfv1alpha1.CloudflareTunnelConfigIngress) bool {
+		return rule.Hostname == "" && rule.Path == ""
+	}
+
+	if len(rules) == 0 {
+		return ""
+	}
+	if !catchAll(rules[len(rules)-1]) {
+		return "the last rule in spec.config.ingress must omit both hostname and path so that it matches all requests"
+	}
+	if slices.ContainsFunc(rules[:len(rules)-1], catchAll) {
+		return "only the last rule in spec.config.ingress may omit both hostname and path"
+	}
+
+	return ""
+}
+
 func (r *CloudflareTunnelReconciler) createTunnel(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) error {
 	value, ok, err := r.tunnelSecret(ctx, tunnel)
 	if err != nil {
@@ -438,15 +460,20 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 	remoteConfig := res.ConfigSrc == shared.CloudflareTunnelConfigSrcCloudflare
 	configConflict := tunnel.Spec.Config != nil && !remoteConfig
 
+	// Pushing an ill-ordered ingress list only earns a 400 from Cloudflare, so the
+	// problem is reported on the resource instead.
+	var ingressErr string
 	if config := tunnel.Spec.Config; config != nil && remoteConfig {
-		c := cfclient.CloudflareTunnelConfig(*config)
-		_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
-			// TODO: AccountId should probably come from the status, not the spec
-			AccountID: cloudflare.F(tunnel.Spec.AccountId),
-			Config:    cloudflare.F(c.UpdateParams()),
-		})
-		if err != nil {
-			return err
+		if ingressErr = validateIngress(config.Ingress); ingressErr == "" {
+			c := cfclient.CloudflareTunnelConfig(*config)
+			_, err := r.Cloudflare.UpdateConfiguration(ctx, id, zero_trust.TunnelCloudflaredConfigurationUpdateParams{
+				// TODO: AccountId should probably come from the status, not the spec
+				AccountID: cloudflare.F(tunnel.Spec.AccountId),
+				Config:    cloudflare.F(c.UpdateParams()),
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -457,14 +484,22 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 			Reason:  reasonReconciling,
 			Message: "Tunnel status updated",
 		})
-		if configConflict {
+		switch {
+		case configConflict:
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
 				Status:  metav1.ConditionTrue,
 				Reason:  reasonInvalidSpec,
 				Message: "spec.config is set on a locally managed tunnel and cannot be pushed to Cloudflare",
 			})
-		} else {
+		case ingressErr != "":
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  reasonInvalidSpec,
+				Message: ingressErr,
+			})
+		default:
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
 				Status:  metav1.ConditionFalse,

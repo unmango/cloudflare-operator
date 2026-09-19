@@ -9587,12 +9587,15 @@ spec:
                             description: |-
                               List of public hostname definitions.
                               At least one ingress rule needs to be defined for the tunnel.
+                              Cloudflare evaluates the rules in order and the last one is the catch-all, so it
+                              omits both hostname and path while no earlier rule may.
                             items:
                               properties:
                                 hostname:
                                   description: |-
                                     Public hostname for this service.
-                                    The last rule of a remotely managed tunnel must omit it so that it matches all requests.
+                                    The last rule of a remotely managed tunnel must omit it, along with path, so that it
+                                    matches all requests. No earlier rule may omit both.
                                   type: string
                                 originRequest:
                                   description: Configuration parameters for the public
@@ -9922,6 +9925,23 @@ spec:
                     required:
                     - accountId
                     type: object
+                    x-kubernetes-validations:
+                    - message: the last rule in spec.config.ingress must omit both
+                        hostname and path so that it matches all requests
+                      rule: '!has(self.configSource) || self.configSource != ''cloudflare''
+                        || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress)
+                        == 0 || ((!has(self.config.ingress[size(self.config.ingress)
+                        - 1].hostname) || size(self.config.ingress[size(self.config.ingress)
+                        - 1].hostname) == 0) && (!has(self.config.ingress[size(self.config.ingress)
+                        - 1].path) || size(self.config.ingress[size(self.config.ingress)
+                        - 1].path) == 0))'
+                    - message: only the last rule in spec.config.ingress may omit
+                        both hostname and path
+                      rule: '!has(self.configSource) || self.configSource != ''cloudflare''
+                        || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress)
+                        == 0 || self.config.ingress.filter(r, (!has(r.hostname) ||
+                        size(r.hostname) == 0) && (!has(r.path) || size(r.path) ==
+                        0)).size() == 1'
                 required:
                 - spec
                 type: object

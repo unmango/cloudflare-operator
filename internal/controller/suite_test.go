@@ -149,6 +149,9 @@ const testSecretKey = "secret"
 // testHostname is the hostname specs route through a tunnel.
 const testHostname = "example.com"
 
+// testCatchAllService is the service specs give the trailing catch-all ingress rule.
+const testCatchAllService = "http_status:404"
+
 // deleteIfExists removes obj and waits for it to disappear.
 //
 // envtest runs no controllers and no garbage collector, so finalizers added

@@ -223,7 +223,8 @@ type CloudflareTunnelOriginRequest struct {
 
 type CloudflareTunnelConfigIngress struct {
 	// Public hostname for this service.
-	// The last rule of a remotely managed tunnel must omit it so that it matches all requests.
+	// The last rule of a remotely managed tunnel must omit it, along with path, so that it
+	// matches all requests. No earlier rule may omit both.
 	//
 	// +optional
 	Hostname string `json:"hostname,omitempty"`
@@ -255,6 +256,8 @@ type CloudflareTunnelWarpRouting struct {
 type CloudflareTunnelConfig struct {
 	// List of public hostname definitions.
 	// At least one ingress rule needs to be defined for the tunnel.
+	// Cloudflare evaluates the rules in order and the last one is the catch-all, so it
+	// omits both hostname and path while no earlier rule may.
 	Ingress []CloudflareTunnelConfigIngress `json:"ingress,omitempty"`
 
 	// Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
@@ -271,6 +274,16 @@ type CloudflareTunnelConfig struct {
 
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
 // https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
+//
+// Cloudflare evaluates spec.config.ingress top to bottom and treats a rule with neither a
+// hostname nor a path as the catch-all, which it requires to be last. A catch-all placed
+// earlier makes every rule after it unreachable, and a list without one is rejected with
+// `code 1056, Bad Configuration`. Both rules below only apply to a remotely managed tunnel,
+// since Cloudflare stores no configuration for a local one. They read an empty hostname or
+// path as absent, because both fields serialize away when empty.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.configSource) || self.configSource != 'cloudflare' || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress) == 0 || ((!has(self.config.ingress[size(self.config.ingress) - 1].hostname) || size(self.config.ingress[size(self.config.ingress) - 1].hostname) == 0) && (!has(self.config.ingress[size(self.config.ingress) - 1].path) || size(self.config.ingress[size(self.config.ingress) - 1].path) == 0))",message="the last rule in spec.config.ingress must omit both hostname and path so that it matches all requests"
+// +kubebuilder:validation:XValidation:rule="!has(self.configSource) || self.configSource != 'cloudflare' || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress) == 0 || self.config.ingress.filter(r, (!has(r.hostname) || size(r.hostname) == 0) && (!has(r.path) || size(r.path) == 0)).size() == 1",message="only the last rule in spec.config.ingress may omit both hostname and path"
 type CloudflareTunnelSpec struct {
 	// Cloudflare account ID.
 	//
