@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/cloudflare/cloudflare-go/v7 v7.10.0
 	github.com/onsi/ginkgo/v2 v2.33.0
-	github.com/onsi/gomega v1.43.0
+	github.com/onsi/gomega v1.43.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
 	k8s.io/api v0.37.0
