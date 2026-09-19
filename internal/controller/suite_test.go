@@ -36,8 +36,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	networkingv1 "k8s.io/api/networking/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+	"github.com/unmango/cloudflare-operator/internal/gatewayapi"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -70,11 +73,24 @@ var _ = BeforeSuite(func() {
 	err = networkingv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	// ReferenceGrant is v1beta1 in the standard channel; every other kind is v1.
+	err = gatewayv1.Install(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = gatewayv1beta1.Install(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:scheme
+
+	gatewayCRDs, err := gatewayapi.CRDDirectory()
+	Expect(err).NotTo(HaveOccurred())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			gatewayCRDs,
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 

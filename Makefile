@@ -202,6 +202,18 @@ install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/con
 uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+# The Gateway API CRDs ship inside the Go module, so the YAML installed here is
+# the same version the controllers compile against and envtest loads.
+GATEWAY_API_CRDS ?= $(shell $(GO) list -m -f '{{.Dir}}' sigs.k8s.io/gateway-api)/config/crd/standard
+
+.PHONY: install-gateway-crds
+install-gateway-crds: ## Install the Gateway API CRDs into the cluster specified in ~/.kube/config.
+	$(KUBECTL) apply --server-side --force-conflicts -f $(GATEWAY_API_CRDS)
+
+.PHONY: uninstall-gateway-crds
+uninstall-gateway-crds: ## Uninstall the Gateway API CRDs from the cluster specified in ~/.kube/config.
+	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f $(GATEWAY_API_CRDS)
+
 .PHONY: deploy
 deploy: manifests ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply --server-side --force-conflicts -f -
