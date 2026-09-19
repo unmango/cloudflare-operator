@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/unmango/cloudflare-operator/compare/v0.2.0...v0.3.0) (2026-09-19)
+
+
+### Features
+
+* **gateway:** add CloudflareGatewayConfig and a GatewayClass controller ([#229](https://github.com/unmango/cloudflare-operator/issues/229)) ([14d58d0](https://github.com/unmango/cloudflare-operator/commit/14d58d0560c890160d0f8b29f90502aba8c61661))
+
 ## [0.2.0](https://github.com/unmango/cloudflare-operator/compare/v0.1.1...v0.2.0) (2026-09-19)
 
 
