@@ -29,6 +29,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 )
 
@@ -145,6 +146,9 @@ func (r *GatewayClassReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.GatewayClass{}).
 		Watches(&gatewayv1.Gateway{}, gatewayClassHandler()).
+		// The Accepted condition depends on the referenced config, which comes
+		// and goes without any edit to the class.
+		Watches(&cfv1alpha1.CloudflareGatewayConfig{}, gatewayConfigHandler(mgr.GetCache())).
 		Named("gatewayclass").
 		Complete(r)
 }

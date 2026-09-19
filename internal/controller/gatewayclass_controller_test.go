@@ -228,6 +228,50 @@ var _ = Describe("GatewayClass Controller", func() {
 		})
 	})
 
+	Context("When mapping a CloudflareGatewayConfig to the classes that name it", func() {
+		mapped := func() []reconcile.Request {
+			GinkgoHelper()
+			return gatewayClassesForConfig(k8sClient)(ctx, config)
+		}
+
+		BeforeEach(func() {
+			Expect(k8sClient.Create(ctx, class)).To(Succeed())
+		})
+
+		It("should enqueue a class whose parametersRef names it", func() {
+			Expect(mapped()).To(ConsistOf(reconcile.Request{NamespacedName: key}))
+		})
+
+		It("should ignore a class naming another object", func() {
+			class.Spec.ParametersRef.Name = "other"
+			Expect(k8sClient.Update(ctx, class)).To(Succeed())
+
+			Expect(mapped()).To(BeEmpty())
+		})
+
+		It("should ignore a class naming another namespace", func() {
+			ns := gatewayv1.Namespace("other")
+			class.Spec.ParametersRef.Namespace = &ns
+			Expect(k8sClient.Update(ctx, class)).To(Succeed())
+
+			Expect(mapped()).To(BeEmpty())
+		})
+
+		It("should ignore a class naming another kind", func() {
+			class.Spec.ParametersRef.Kind = "ConfigMap"
+			Expect(k8sClient.Update(ctx, class)).To(Succeed())
+
+			Expect(mapped()).To(BeEmpty())
+		})
+
+		It("should ignore a class without a parametersRef", func() {
+			class.Spec.ParametersRef = nil
+			Expect(k8sClient.Update(ctx, class)).To(Succeed())
+
+			Expect(mapped()).To(BeEmpty())
+		})
+	})
+
 	It("should reject a config setting both tunnelRef and template", func() {
 		config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
 			Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: "test-account"},

@@ -99,8 +99,8 @@ The CRDs ship as templates under `crd.enabled` rather than in a `crds/` director
 `crd.keep` adds `helm.sh/resource-policy: keep`, so `helm uninstall` leaves them behind.
 Size is the constraint to watch: the rendered chart is 2.3 MB and the Helm release Secret measures 315 KB against the API server's ~1.5 MiB object limit.
 Most of that is two CRDs that embed a full `PodTemplateSpec`, `cloudflaretunnels` and `cloudflaregatewayconfigs`, at roughly 800 KB each.
-Re-measure with `helm template x dist/chart | gzip -9 | base64 -w0 | wc -c` before adding another CRD that embeds one.
-Re-measure with `kubectl -n <ns> get secret -l owner=helm -o jsonpath='{.items[0].data.release}' | wc -c` if the CRD surface grows.
+`helm template x dist/chart | gzip -9 | base64 -w0 | wc -c` estimates the manifests alone and undercounts, because the release Secret also carries the chart files, the values and the release metadata.
+Measure the deployed Secret with `kubectl -n <ns> get secret -l owner=helm -o jsonpath='{.items[0].data.release}' | wc -c` before adding another CRD that embeds a `PodTemplateSpec`.
 
 ### Package layout
 
