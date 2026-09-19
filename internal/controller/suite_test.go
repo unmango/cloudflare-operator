@@ -152,6 +152,9 @@ const testHostname = "example.com"
 // testCatchAllService is the service specs give the trailing catch-all ingress rule.
 const testCatchAllService = "http_status:404"
 
+// testZoneId is the zone specs create DNS records in.
+const testZoneId = "test-zone-id"
+
 // deleteIfExists removes obj and waits for it to disappear.
 //
 // envtest runs no controllers and no garbage collector, so finalizers added

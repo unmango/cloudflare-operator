@@ -221,7 +221,43 @@ type CloudflareTunnelOriginRequest struct {
 	TlsTimeout int64 `json:"tlsTimeout"`
 }
 
+// CloudflareTunnelDns configures the DNS records created for the hostnames a tunnel
+// routes. Records are only created once a zoneId resolves, either here or at the
+// tunnel level.
+//
+// proxied and ttl are pointers so that an ingress entry can override a value the
+// tunnel sets rather than only add to it: an entry asking for proxied false has to
+// be distinguishable from an entry that says nothing.
+type CloudflareTunnelDns struct {
+	// Identifier of the zone the records are created in.
+	//
+	// +kubebuilder:validation:MaxLength:=32
+	// +optional
+	ZoneId string `json:"zoneId,omitempty"`
+
+	// Whether the record is receiving the performance and security benefits of
+	// Cloudflare. Defaults to true.
+	//
+	// +optional
+	Proxied *bool `json:"proxied,omitempty"`
+
+	// Time To Live (TTL) of the DNS record in seconds. 1 means 'automatic', which
+	// is the default. Value must be between 60 and 86400, with the minimum reduced
+	// to 30 for Enterprise zones.
+	//
+	// +kubebuilder:validation:Minimum:=1
+	// +kubebuilder:validation:Maximum:=86400
+	// +optional
+	Ttl *int64 `json:"ttl,omitempty"`
+}
+
 type CloudflareTunnelConfigIngress struct {
+	// DNS settings for this hostname, overriding spec.dns field by field.
+	// The catch-all rule routes no hostname and so cannot carry them.
+	//
+	// +optional
+	Dns *CloudflareTunnelDns `json:"dns,omitempty"`
+
 	// Public hostname for this service.
 	// The last rule of a remotely managed tunnel must omit it, along with path, so that it
 	// matches all requests. No earlier rule may omit both.
@@ -284,6 +320,12 @@ type CloudflareTunnelConfig struct {
 //
 // +kubebuilder:validation:XValidation:rule="!has(self.configSource) || self.configSource != 'cloudflare' || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress) == 0 || ((!has(self.config.ingress[size(self.config.ingress) - 1].hostname) || size(self.config.ingress[size(self.config.ingress) - 1].hostname) == 0) && (!has(self.config.ingress[size(self.config.ingress) - 1].path) || size(self.config.ingress[size(self.config.ingress) - 1].path) == 0))",message="the last rule in spec.config.ingress must omit both hostname and path so that it matches all requests"
 // +kubebuilder:validation:XValidation:rule="!has(self.configSource) || self.configSource != 'cloudflare' || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress) == 0 || self.config.ingress.filter(r, (!has(r.hostname) || size(r.hostname) == 0) && (!has(r.path) || size(r.path) == 0)).size() == 1",message="only the last rule in spec.config.ingress may omit both hostname and path"
+//
+// A DNS record points at a hostname, so a rule that routes none has nothing to
+// create one for. That covers the catch-all, and applies whichever side manages the
+// configuration.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.config) || !has(self.config.ingress) || self.config.ingress.filter(r, has(r.dns) && (!has(r.hostname) || size(r.hostname) == 0)).size() == 0",message="a rule in spec.config.ingress without a hostname cannot set dns"
 type CloudflareTunnelSpec struct {
 	// Cloudflare account ID.
 	//
@@ -316,6 +358,13 @@ type CloudflareTunnelSpec struct {
 	//
 	// +kubebuilder:default:=local
 	ConfigSource CloudflareTunnelConfigSource `json:"configSource,omitempty"`
+
+	// Default DNS settings for every hostname this tunnel routes. An entry in
+	// spec.config.ingress overrides them field by field. No records are created
+	// until a zoneId resolves.
+	//
+	// +optional
+	Dns *CloudflareTunnelDns `json:"dns,omitempty"`
 
 	// A user-friendly name for a tunnel.
 	//

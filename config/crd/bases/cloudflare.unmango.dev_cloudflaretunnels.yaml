@@ -72,6 +72,10 @@ spec:
               `code 1056, Bad Configuration`. Both rules below only apply to a remotely managed tunnel,
               since Cloudflare stores no configuration for a local one. They read an empty hostname or
               path as absent, because both fields serialize away when empty.
+
+              A DNS record points at a hostname, so a rule that routes none has nothing to
+              create one for. That covers the catch-all, and applies whichever side manages the
+              configuration.
             properties:
               accountId:
                 description: Cloudflare account ID.
@@ -9311,6 +9315,31 @@ spec:
                       omits both hostname and path while no earlier rule may.
                     items:
                       properties:
+                        dns:
+                          description: |-
+                            DNS settings for this hostname, overriding spec.dns field by field.
+                            The catch-all rule routes no hostname and so cannot carry them.
+                          properties:
+                            proxied:
+                              description: |-
+                                Whether the record is receiving the performance and security benefits of
+                                Cloudflare. Defaults to true.
+                              type: boolean
+                            ttl:
+                              description: |-
+                                Time To Live (TTL) of the DNS record in seconds. 1 means 'automatic', which
+                                is the default. Value must be between 60 and 86400, with the minimum reduced
+                                to 30 for Enterprise zones.
+                              format: int64
+                              maximum: 86400
+                              minimum: 1
+                              type: integer
+                            zoneId:
+                              description: Identifier of the zone the records are
+                                created in.
+                              maxLength: 32
+                              type: string
+                          type: object
                         hostname:
                           description: |-
                             Public hostname for this service.
@@ -9563,6 +9592,31 @@ spec:
                 - local
                 - cloudflare
                 type: string
+              dns:
+                description: |-
+                  Default DNS settings for every hostname this tunnel routes. An entry in
+                  spec.config.ingress overrides them field by field. No records are created
+                  until a zoneId resolves.
+                properties:
+                  proxied:
+                    description: |-
+                      Whether the record is receiving the performance and security benefits of
+                      Cloudflare. Defaults to true.
+                    type: boolean
+                  ttl:
+                    description: |-
+                      Time To Live (TTL) of the DNS record in seconds. 1 means 'automatic', which
+                      is the default. Value must be between 60 and 86400, with the minimum reduced
+                      to 30 for Enterprise zones.
+                    format: int64
+                    maximum: 86400
+                    minimum: 1
+                    type: integer
+                  zoneId:
+                    description: Identifier of the zone the records are created in.
+                    maxLength: 32
+                    type: string
+                type: object
               name:
                 description: A user-friendly name for a tunnel.
                 type: string
@@ -9659,6 +9713,11 @@ spec:
                 || !has(self.config) || !has(self.config.ingress) || size(self.config.ingress)
                 == 0 || self.config.ingress.filter(r, (!has(r.hostname) || size(r.hostname)
                 == 0) && (!has(r.path) || size(r.path) == 0)).size() == 1'
+            - message: a rule in spec.config.ingress without a hostname cannot set
+                dns
+              rule: '!has(self.config) || !has(self.config.ingress) || self.config.ingress.filter(r,
+                has(r.dns) && (!has(r.hostname) || size(r.hostname) == 0)).size()
+                == 0'
           status:
             description: CloudflareTunnelStatus defines the observed state of CloudflareTunnel.
             properties:
