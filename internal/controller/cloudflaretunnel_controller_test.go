@@ -540,6 +540,9 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 							Hostname:      "test.example.com",
 							Service:       "http://test.default.svc.cluster.local:80",
 							OriginRequest: originRequest,
+						}, {
+							Service:       testCatchAllService,
+							OriginRequest: originRequest,
 						}},
 						OriginRequest: originRequest,
 					}
@@ -582,6 +585,43 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 							HaveField("Type", typeDegradedCloudflareTunnel),
 							HaveField("Status", metav1.ConditionTrue),
 							HaveField("Reason", reasonInvalidSpec),
+						)))
+					})
+				})
+
+				Context("and the ingress rules are out of order", func() {
+					BeforeEach(func() {
+						// Admission rejects an ill-ordered list on a spec that
+						// declares configSource: cloudflare, so the only way to
+						// store one is the divergence the controller handles:
+						// Cloudflare owns the configuration and the spec says
+						// otherwise.
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+						cloudflaretunnel.Spec.ConfigSource = cfv1alpha1.LocalCloudflareTunnelConfigSource
+						cloudflaretunnel.Spec.Config.Ingress = []cfv1alpha1.CloudflareTunnelConfigIngress{{
+							Service:       testCatchAllService,
+							OriginRequest: originRequest,
+						}, {
+							Hostname:      "test.example.com",
+							Service:       "http://test.default.svc.cluster.local:80",
+							OriginRequest: originRequest,
+						}, {
+							Service:       testCatchAllService,
+							OriginRequest: originRequest,
+						}}
+						Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+
+						// UpdateConfiguration is deliberately not expected:
+						// Cloudflare would answer the push with a 400.
+						reconcileOnce()
+					})
+
+					It("should mark the resource as degraded", func() {
+						Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionTrue),
+							HaveField("Reason", reasonInvalidSpec),
+							HaveField("Message", ContainSubstring("only the last rule in spec.config.ingress")),
 						)))
 					})
 				})
@@ -746,6 +786,47 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 	})
 })
 
+var _ = Describe("validateIngress", func() {
+	rule := func(hostname, path string) cfv1alpha1.CloudflareTunnelConfigIngress {
+		return cfv1alpha1.CloudflareTunnelConfigIngress{
+			Hostname: hostname,
+			Path:     path,
+			Service:  "http://localhost",
+		}
+	}
+	catchAll := rule("", "")
+
+	DescribeTable("accepting a well-ordered list",
+		func(rules []cfv1alpha1.CloudflareTunnelConfigIngress) {
+			Expect(validateIngress(rules)).To(BeEmpty())
+		},
+		Entry("when it is empty", []cfv1alpha1.CloudflareTunnelConfigIngress{}),
+		Entry("when it is nil", nil),
+		Entry("when it holds only the catch-all", []cfv1alpha1.CloudflareTunnelConfigIngress{catchAll}),
+		Entry("when the catch-all is last", []cfv1alpha1.CloudflareTunnelConfigIngress{
+			rule(testHostname, ""), rule("", "/api"), catchAll,
+		}),
+	)
+
+	DescribeTable("rejecting an ill-ordered list",
+		func(rules []cfv1alpha1.CloudflareTunnelConfigIngress, message string) {
+			Expect(validateIngress(rules)).To(ContainSubstring(message))
+		},
+		Entry("when the last rule carries a hostname",
+			[]cfv1alpha1.CloudflareTunnelConfigIngress{rule(testHostname, "")},
+			"the last rule in spec.config.ingress must omit both hostname and path",
+		),
+		Entry("when the last rule carries a path",
+			[]cfv1alpha1.CloudflareTunnelConfigIngress{catchAll, rule("", "/api")},
+			"the last rule in spec.config.ingress must omit both hostname and path",
+		),
+		Entry("when an earlier rule is also a catch-all",
+			[]cfv1alpha1.CloudflareTunnelConfigIngress{catchAll, rule(testHostname, ""), catchAll},
+			"only the last rule in spec.config.ingress may omit both hostname and path",
+		),
+	)
+})
+
 // originRequestKey is the originRequest field name in an unstructured spec.
 const originRequestKey = "originRequest"
 
@@ -779,6 +860,16 @@ func tunnelObject(name string, config map[string]any) *unstructured.Unstructured
 	}}
 }
 
+// remoteTunnelObject builds a tunnelObject whose configuration Cloudflare owns,
+// the only case the ingress ordering rules apply to.
+func remoteTunnelObject(name string, config map[string]any) *unstructured.Unstructured {
+	GinkgoHelper()
+	obj := tunnelObject(name, config)
+	Expect(unstructured.SetNestedField(obj.Object, "cloudflare", "spec", "configSource")).To(Succeed())
+
+	return obj
+}
+
 // tunnelConfig builds an unstructured spec.config from ingress rules.
 func tunnelConfig(rules ...map[string]any) map[string]any {
 	ingress := make([]any, len(rules))
@@ -806,9 +897,9 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 	})
 
 	It("should accept a catch-all ingress rule without a hostname", func() {
-		obj := tunnelObject("catch-all-ingress", tunnelConfig(
+		obj := remoteTunnelObject("catch-all-ingress", tunnelConfig(
 			tunnelRule(testHostname, "https://localhost", nil),
-			tunnelRule("", "http_status:404", nil),
+			tunnelRule("", testCatchAllService, nil),
 		))
 		key := client.ObjectKeyFromObject(obj)
 		DeferCleanup(deleteIfExists, ctx, key, &cfv1alpha1.CloudflareTunnel{})
@@ -819,7 +910,55 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 		Expect(k8sClient.Get(ctx, key, tunnel)).To(Succeed())
 		Expect(tunnel.Spec.Config.Ingress).To(HaveLen(2))
 		Expect(tunnel.Spec.Config.Ingress[1].Hostname).To(BeEmpty())
-		Expect(tunnel.Spec.Config.Ingress[1].Service).To(Equal("http_status:404"))
+		Expect(tunnel.Spec.Config.Ingress[1].Service).To(Equal(testCatchAllService))
+	})
+
+	It("should reject a catch-all ingress rule before the end of the list", func() {
+		obj := remoteTunnelObject("catch-all-not-last", tunnelConfig(
+			tunnelRule("", testCatchAllService, nil),
+			tunnelRule(testHostname, "https://localhost", nil),
+			tunnelRule("", testCatchAllService, nil),
+		))
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		err := k8sClient.Create(ctx, obj)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("only the last rule in spec.config.ingress may omit both hostname and path"))
+	})
+
+	It("should reject an ingress list without a catch-all rule", func() {
+		obj := remoteTunnelObject("no-catch-all", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+		))
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		err := k8sClient.Create(ctx, obj)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("the last rule in spec.config.ingress must omit both hostname and path"))
+	})
+
+	It("should read an empty hostname and path on the last rule as the catch-all", func() {
+		obj := remoteTunnelObject("empty-string-catch-all", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+			map[string]any{"service": testCatchAllService, "hostname": "", "path": ""},
+		))
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+	})
+
+	It("should not order the ingress rules of a locally managed tunnel", func() {
+		// Cloudflare stores no configuration for a local tunnel, so it never
+		// sees the list and the ordering carries no meaning.
+		obj := tunnelObject("local-unordered-ingress", tunnelConfig(
+			tunnelRule("", testCatchAllService, nil),
+			tunnelRule(testHostname, "https://localhost", nil),
+		))
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 	})
 
 	It("should preserve disableChunkedEncoding", func() {
