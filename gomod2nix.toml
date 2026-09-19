@@ -182,8 +182,8 @@ schema = 3
     hash = 'sha256-dbprIPI9nmIWGqO9p1kG5W5rDpcDMZwvigmd3CmG3Sk='
 
   [mod.'github.com/onsi/gomega']
-    version = 'v1.43.0'
-    hash = 'sha256-DmIIvuINKEf4kb4ILGXpsUe+MRrlr7aae4D8uwOymYo='
+    version = 'v1.43.1'
+    hash = 'sha256-EPFqz1qHdQkVSvmkUlbbTj7OAmiV7vixv8FhUxKlsoM='
 
   [mod.'github.com/pmezard/go-difflib']
     version = 'v1.0.1-0.20181226105442-5d4384ee4fb2'
