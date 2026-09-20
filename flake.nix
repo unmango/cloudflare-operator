@@ -31,9 +31,10 @@
     inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = [
-        inputs.systems.flakeModule
-        inputs.treefmt-nix.flakeModule
+
+      imports = with inputs; [
+        systems.flakeModule
+        treefmt-nix.flakeModule
       ];
 
       perSystem =
@@ -60,7 +61,9 @@
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
-            overlays = [ inputs.gomod2nix.overlays.default ];
+            overlays = with inputs; [
+              gomod2nix.overlays.default
+            ];
           };
 
           packages = {
