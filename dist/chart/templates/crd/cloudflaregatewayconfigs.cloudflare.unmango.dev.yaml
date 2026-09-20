@@ -9616,6 +9616,11 @@ spec:
                                       maxLength: 32
                                       type: string
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: ttl must be 1 (automatic) or at least
+                                      30
+                                    rule: '!has(self.ttl) || self.ttl == 1 || self.ttl
+                                      >= 30'
                                 hostname:
                                   description: |-
                                     Public hostname for this service.
@@ -9896,6 +9901,9 @@ spec:
                             maxLength: 32
                             type: string
                         type: object
+                        x-kubernetes-validations:
+                        - message: ttl must be 1 (automatic) or at least 30
+                          rule: '!has(self.ttl) || self.ttl == 1 || self.ttl >= 30'
                       name:
                         description: A user-friendly name for a tunnel.
                         type: string

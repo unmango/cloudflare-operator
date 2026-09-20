@@ -228,6 +228,8 @@ type CloudflareTunnelOriginRequest struct {
 // proxied and ttl are pointers so that an ingress entry can override a value the
 // tunnel sets rather than only add to it: an entry asking for proxied false has to
 // be distinguishable from an entry that says nothing.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.ttl) || self.ttl == 1 || self.ttl >= 30",message="ttl must be 1 (automatic) or at least 30"
 type CloudflareTunnelDns struct {
 	// Identifier of the zone the records are created in.
 	//

@@ -1017,6 +1017,33 @@ var _ = Describe("CloudflareTunnel CRD", func() {
 		Expect(err.Error()).To(ContainSubstring("spec.dns.ttl"))
 	})
 
+	It("should reject a ttl between automatic and the enterprise minimum", func() {
+		obj := tunnelObject("dns-ttl-below-minimum", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+		))
+		Expect(unstructured.SetNestedField(obj.Object,
+			int64(15), "spec", "dns", "ttl",
+		)).To(Succeed())
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		err := k8sClient.Create(ctx, obj)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("ttl must be 1 (automatic) or at least 30"))
+	})
+
+	It("should accept an automatic ttl", func() {
+		obj := tunnelObject("dns-ttl-automatic", tunnelConfig(
+			tunnelRule(testHostname, "https://localhost", nil),
+		))
+		Expect(unstructured.SetNestedField(obj.Object,
+			int64(1), "spec", "dns", "ttl",
+		)).To(Succeed())
+		DeferCleanup(deleteIfExists, ctx, client.ObjectKeyFromObject(obj), &cfv1alpha1.CloudflareTunnel{})
+
+		Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+	})
+
 	It("should reject dns on a rule without a hostname", func() {
 		catchAll := tunnelRule("", testCatchAllService, nil)
 		catchAll["dns"] = map[string]any{"zoneId": testZoneId}
