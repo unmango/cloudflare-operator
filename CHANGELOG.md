@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/unmango/cloudflare-operator/compare/v0.3.1...v0.4.0) (2026-09-20)
+
+
+### Features
+
+* **tunnel:** add DNS settings at the tunnel and per ingress entry ([#234](https://github.com/unmango/cloudflare-operator/issues/234)) ([2c68954](https://github.com/unmango/cloudflare-operator/commit/2c68954778d7da8857b4a2325637081ac2c41515))
+
 ## [0.3.1](https://github.com/unmango/cloudflare-operator/compare/v0.3.0...v0.3.1) (2026-09-19)
 
 
