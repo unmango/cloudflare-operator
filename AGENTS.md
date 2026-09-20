@@ -62,8 +62,14 @@ Passing the full domain as `--domain` instead produces `cloudflare.cloudflare.un
 Every generator and linter comes from `nixpkgs` through `devShells.default`, so the Makefile has no dependency-download section and there is no `bin/` directory.
 `controller-gen`, `kustomize`, `golangci-lint`, `mockgen`, `kubebuilder` and `kind` are all on `PATH` inside the shell.
 
-`KUBEBUILDER_ASSETS` points at `nix/envtest.nix`, a `linkFarm` of the `etcd` and `kube-apiserver` binaries from `nixpkgs`.
+`KUBEBUILDER_ASSETS` points at `nix/envtest.nix`, a `linkFarm` of `etcd`, `kube-apiserver` and `kubectl`.
 This replaces `setup-envtest`, which downloads those binaries at test time.
+
+They come from the `kubepkgs` flake input, which exposes a package set per Kubernetes minor.
+`flake.nix` pins one minor in `k8sMinor`, so the suites run against a known API server and against the etcd release that minor itself pins, rather than two unrelated `nixpkgs` versions.
+Moving `k8sMinor` is a deliberate edit; kubepkgs supports four minors at a time.
+The input does not follow this repo's `nixpkgs`: kubepkgs' CI pushes these builds to the shared `unstoppablemango` cachix cache, and a follow would change every derivation hash and force a from-source build of the control plane.
+Every CI job that runs `nix develop` realises the assets, so each one configures `cachix/cachix-action` for that cache.
 
 The container image is built by `nix/image.nix` using `streamLayeredImage`, which produces a script that writes the tarball to stdout rather than a tarball in the store.
 There is no Dockerfile.
