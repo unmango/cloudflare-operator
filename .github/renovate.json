@@ -1,17 +1,12 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
 	"extends": [
-		"config:recommended",
-		"github>UnstoppableMango/renovate-config"
+		"github>UnstoppableMango/renovate-config",
+		"schedule:monthly",
+		":approveMajorUpdates",
+		"github>UnstoppableMango/renovate-config//presets/release-please"
 	],
-	"schedule": [
-		"before 4am on the first day of the month"
-	],
-	"major": {
-		"dependencyDashboardApproval": true
-	},
 	"git-submodules": {
 		"enabled": true
-	},
-	"packageRules": []
+	}
 }
