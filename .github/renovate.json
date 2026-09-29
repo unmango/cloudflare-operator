@@ -4,7 +4,7 @@
 		"github>UnstoppableMango/renovate-config",
 		"schedule:monthly",
 		":approveMajorUpdates",
-		"github>UnstoppableMango/renovate-config//presets/release-please"
+		"github>UnstoppableMango/renovate-config:release-please"
 	],
 	"git-submodules": {
 		"enabled": true
