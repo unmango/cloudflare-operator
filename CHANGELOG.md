@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/unmango/cloudflare-operator/compare/v0.4.0...v0.4.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **renovate:** reference shared presets by name ([#242](https://github.com/unmango/cloudflare-operator/issues/242)) ([3503499](https://github.com/unmango/cloudflare-operator/commit/3503499bdf38dee55fcca82e8af7b09aa9f5e39b)), closes [#241](https://github.com/unmango/cloudflare-operator/issues/241)
+
 ## [0.4.0](https://github.com/unmango/cloudflare-operator/compare/v0.3.1...v0.4.0) (2026-09-20)
 
 
