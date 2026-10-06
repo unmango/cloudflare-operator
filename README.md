@@ -1,5 +1,7 @@
 # cloudflare-operator
 
+[![Hercules CI](https://hercules-ci.com/api/v1/site/github/account/unmango/project/cloudflare-operator/badge)](https://hercules-ci.com/github/unmango/cloudflare-operator)
+
 A Kubernetes operator for Cloudflare.
 
 It manages Cloudflare tunnels, the `cloudflared` daemons that run them, and DNS records, as Kubernetes resources.
