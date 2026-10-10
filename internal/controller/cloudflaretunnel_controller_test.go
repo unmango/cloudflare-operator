@@ -31,6 +31,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/shared"
 	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -624,6 +625,244 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 							HaveField("Message", ContainSubstring("only the last rule in spec.config.ingress")),
 						)))
 					})
+				})
+			})
+
+			Context("and DNS is configured", func() {
+				const (
+					service  = "http://test.default.svc.cluster.local:80"
+					zoneName = "example.com"
+					webHost  = "web.example.com"
+					apiHost  = "api.example.com"
+				)
+
+				var zoneErr error
+
+				entry := func(host, path string, dns *cfv1alpha1.CloudflareTunnelDns) cfv1alpha1.CloudflareTunnelConfigIngress {
+					return cfv1alpha1.CloudflareTunnelConfigIngress{
+						Hostname:      host,
+						Path:          path,
+						Service:       service,
+						OriginRequest: originRequest,
+						Dns:           dns,
+					}
+				}
+
+				setIngress := func(rules ...cfv1alpha1.CloudflareTunnelConfigIngress) {
+					GinkgoHelper()
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Dns = &cfv1alpha1.CloudflareTunnelDns{ZoneId: testZoneId}
+					cloudflaretunnel.Spec.Config = &cfv1alpha1.CloudflareTunnelConfig{
+						Ingress: append(rules, cfv1alpha1.CloudflareTunnelConfigIngress{
+							Service:       testCatchAllService,
+							OriginRequest: originRequest,
+						}),
+						OriginRequest: originRequest,
+					}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+				}
+
+				record := func(host string) *cfv1alpha1.DnsRecord {
+					GinkgoHelper()
+					record := &cfv1alpha1.DnsRecord{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      dnsRecordName(cloudflaretunnel, host),
+						Namespace: testNamespace,
+					}, record)).To(Succeed())
+					return record
+				}
+
+				recordAbsent := func(host string) {
+					GinkgoHelper()
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      dnsRecordName(cloudflaretunnel, host),
+						Namespace: testNamespace,
+					}, &cfv1alpha1.DnsRecord{})
+					Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("no record should exist for %s", host))
+				}
+
+				BeforeEach(func() {
+					zoneErr = nil
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil).
+						AnyTimes()
+					cfmock.EXPECT().
+						UpdateConfiguration(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(nil, nil).
+						AnyTimes()
+					cfmock.EXPECT().
+						GetZone(gomock.Any(), gomock.Eq(zones.ZoneGetParams{ZoneID: cloudflare.F(testZoneId)})).
+						DoAndReturn(func(context.Context, zones.ZoneGetParams) (*zones.Zone, error) {
+							if zoneErr != nil {
+								return nil, zoneErr
+							}
+							return &zones.Zone{ID: testZoneId, Name: zoneName}, nil
+						}).
+						AnyTimes()
+				})
+
+				AfterEach(func() {
+					for _, host := range []string{webHost, apiHost, "other.test"} {
+						deleteIfExists(ctx, types.NamespacedName{
+							Name:      dnsRecordName(cloudflaretunnel, host),
+							Namespace: testNamespace,
+						}, &cfv1alpha1.DnsRecord{})
+					}
+				})
+
+				It("should own one CNAME per hostname, pointing at the tunnel", func() {
+					setIngress(
+						entry(webHost, "/a", nil),
+						entry(webHost, "/b", nil),
+						entry(apiHost, "", &cfv1alpha1.CloudflareTunnelDns{Proxied: new(false)}),
+					)
+
+					reconcileOnce()
+
+					web := record(webHost)
+					Expect(metav1.IsControlledBy(web, observed())).To(BeTrue())
+					Expect(web.Spec.ZoneId).To(Equal(testZoneId))
+					Expect(web.Spec.CNAMERecord).To(HaveValue(SatisfyAll(
+						HaveField("Name", webHost),
+						HaveField("TunnelRef", Equal(&cfv1alpha1.DnsRecordTunnelReference{Name: resourceName})),
+						HaveField("Proxied", true),
+						HaveField("Ttl", int64(1)),
+					)))
+					Expect(record(apiHost).Spec.CNAMERecord.Proxied).To(BeFalse())
+				})
+
+				It("should report records as desired before they are ready", func() {
+					setIngress(entry(webHost, "", nil), entry(apiHost, "", nil))
+
+					reconcileOnce()
+
+					status := observed().Status
+					Expect(status.DnsRecords).To(Equal(int32(2)))
+					Expect(status.DnsRecordsReady).To(BeZero())
+					Expect(status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDnsReadyCloudflareTunnel),
+						HaveField("Status", metav1.ConditionFalse),
+					)))
+
+					for _, host := range []string{webHost, apiHost} {
+						web := record(host)
+						web.Status.Id = new("record-" + host)
+						web.Status.Content = ptr.To(tunnelId + ".cfargotunnel.com")
+						Expect(k8sClient.Status().Update(ctx, web)).To(Succeed())
+					}
+
+					reconcileOnce()
+
+					status = observed().Status
+					Expect(status.DnsRecordsReady).To(Equal(int32(2)))
+					Expect(status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDnsReadyCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+					)))
+				})
+
+				It("should delete the record of a hostname that left the config", func() {
+					setIngress(entry(webHost, "", nil), entry(apiHost, "", nil))
+					reconcileOnce()
+					record(apiHost)
+
+					setIngress(entry(webHost, "", nil))
+					reconcileOnce()
+
+					record(webHost)
+					recordAbsent(apiHost)
+					Expect(observed().Status.DnsRecords).To(Equal(int32(1)))
+				})
+
+				It("should write nothing for a hostname whose entries disagree", func() {
+					setIngress(
+						entry(webHost, "/a", nil),
+						entry(webHost, "/b", &cfv1alpha1.CloudflareTunnelDns{Proxied: new(false)}),
+						entry(apiHost, "", nil),
+					)
+
+					reconcileOnce()
+
+					recordAbsent(webHost)
+					record(apiHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+						HaveField("Message", ContainSubstring(webHost)),
+					)))
+				})
+
+				It("should write nothing for a hostname outside the zone", func() {
+					setIngress(entry("other.test", "", nil), entry(webHost, "", nil))
+
+					reconcileOnce()
+
+					recordAbsent("other.test")
+					record(webHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Message", ContainSubstring("other.test is not in zone example.com")),
+					)))
+				})
+
+				It("should skip the zone check when the token cannot read the zone", func() {
+					zoneErr = &cloudflare.Error{
+						StatusCode: http.StatusForbidden,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusForbidden},
+					}
+					setIngress(entry("other.test", "", nil))
+
+					reconcileOnce()
+
+					record("other.test")
+				})
+
+				It("should keep its records while the zone reads as missing", func() {
+					setIngress(entry(webHost, "", nil))
+					reconcileOnce()
+					record(webHost)
+
+					zoneErr = &cloudflare.Error{
+						StatusCode: http.StatusNotFound,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusNotFound},
+					}
+					reconcileOnce()
+
+					record(webHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Message", ContainSubstring("does not exist")),
+					)))
+				})
+
+				It("should leave alone a record it does not own", func() {
+					Expect(k8sClient.Create(ctx, &cfv1alpha1.DnsRecord{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      dnsRecordName(cloudflaretunnel, webHost),
+							Namespace: testNamespace,
+						},
+						Spec: cfv1alpha1.DnsRecordSpec{
+							ZoneId: testZoneId,
+							Record: cfv1alpha1.Record{CNAMERecord: &cfv1alpha1.CNAMERecord{
+								Name:    webHost,
+								Content: "elsewhere.example.com",
+							}},
+						},
+					})).To(Succeed())
+					setIngress(entry(webHost, "", nil))
+
+					reconcileOnce()
+
+					Expect(record(webHost).Spec.CNAMERecord.Content).To(Equal("elsewhere.example.com"))
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Message", ContainSubstring("is not owned by the tunnel")),
+					)))
 				})
 			})
 
