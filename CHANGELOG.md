@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/unmango/cloudflare-operator/compare/v0.6.0...v0.7.0) (2026-10-10)
+
+
+### Features
+
+* **gateway:** route TLSRoute, TCPRoute and UDPRoute through Envoy ([#263](https://github.com/unmango/cloudflare-operator/issues/263)) ([665a95f](https://github.com/unmango/cloudflare-operator/commit/665a95fb6bcc86426011bd071896bff4fe025995))
+
 ## [0.6.0](https://github.com/unmango/cloudflare-operator/compare/v0.5.0...v0.6.0) (2026-10-10)
 
 
