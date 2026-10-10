@@ -271,6 +271,37 @@ var _ = Describe("Snapshot", func() {
 		Expect(routes["http-80"].ValidateAll()).To(Succeed())
 	})
 
+	It("should not fall through to a route of another listener on the port", func() {
+		onListener := func(section string) routeOption {
+			return func(r *gatewayv1.HTTPRoute) {
+				r.Spec.ParentRefs = []gatewayv1.ParentReference{{Name: "gw", SectionName: new(gatewayv1.SectionName(section))}}
+			}
+		}
+		snapshot := snapshotOf(testGateway(
+			httpListener("specific", 80, "foo.example.com"),
+			httpListener("wild", 80, "*.example.com"),
+		), testRefs("10.0.0.1", 9000),
+			httpRoute("s", now, onListener("specific"), withRule(gatewayv1.HTTPRouteRule{
+				Matches:     []gatewayv1.HTTPRouteMatch{prefix("/s")},
+				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef("backend", 1)},
+			})),
+			httpRoute("w", now, onListener("wild"), withRule(gatewayv1.HTTPRouteRule{
+				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef("backend", 1)},
+			})),
+		)
+
+		routes := resources[*routev3.RouteConfiguration](snapshot, resourcev3.RouteType)
+		byDomain := map[string]*routev3.VirtualHost{}
+		for _, vh := range routes["http-80"].GetVirtualHosts() {
+			byDomain[vh.GetDomains()[0]] = vh
+		}
+
+		// foo.example.com/other is a 404, not a request for the wildcard
+		// listener's route.
+		Expect(routeNames(byDomain["foo.example.com"])).To(Equal([]string{"HTTPRoute/default/s/0/0"}))
+		Expect(routeNames(byDomain["*.example.com"])).To(Equal([]string{"HTTPRoute/default/w/0/0"}))
+	})
+
 	It("should send traffic to the ready endpoints of a Service port", func() {
 		snapshot := snapshotOf(testGateway(httpListener("http", 80, "")), testRefs("10.0.0.1", 9000),
 			httpRoute("r", now, withRule(gatewayv1.HTTPRouteRule{

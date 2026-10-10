@@ -261,12 +261,14 @@ func httpsFilterChain(routeName string, l gateway.Listener) (*listenerv3.FilterC
 	return chain, nil
 }
 
-// entry is one match of one rule of an attached route, served on one host.
+// entry is one match of one rule of an attached route, served on one host of
+// one listener.
 type entry struct {
-	route *gateway.AttachedRoute
-	host  string
-	rule  int
-	match int
+	route    *gateway.AttachedRoute
+	listener int
+	host     string
+	rule     int
+	match    int
 }
 
 // routeConfiguration holds a virtual host for each hostname the routes attached
@@ -274,7 +276,10 @@ type entry struct {
 // specific domain, but Gateway API lets a request fall through to a route with
 // a less specific hostname when no rule of a more specific one matches it, so
 // each virtual host also carries the entries of every hostname that covers its
-// own, after them. Every request that matches nothing gets a 404.
+// own, after them. Those come only from the most specific listener whose
+// hostname covers the virtual host's, since a request for a host is routed by
+// the routes of that listener alone, whatever another listener on the same
+// port allows. Every request that matches nothing gets a 404.
 func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters map[string]*gateway.Cluster) *routev3.RouteConfiguration {
 	byHost := map[string][]entry{}
 	seen := map[string]bool{}
@@ -285,12 +290,12 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 				for _, host := range parent.Hostnames[i] {
 					for rule, ru := range route.Rules {
 						for match := range ru.Matches {
-							key := fmt.Sprintf("%s|%s|%d|%d", host, route.Key(), rule, match)
+							key := fmt.Sprintf("%d|%s|%s|%d|%d", i, host, route.Key(), rule, match)
 							if seen[key] {
 								continue
 							}
 							seen[key] = true
-							byHost[host] = append(byHost[host], entry{route: route, host: host, rule: rule, match: match})
+							byHost[host] = append(byHost[host], entry{route: route, listener: i, host: host, rule: rule, match: match})
 						}
 					}
 				}
@@ -306,10 +311,17 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 
 	config := &routev3.RouteConfiguration{Name: name}
 	for _, host := range hosts {
+		owner := owningListener(m, listeners, host)
+
 		var entries []entry
 		for _, other := range hosts {
-			if gateway.HostCovers(other, host) {
-				entries = append(entries, byHost[other]...)
+			if !gateway.HostCovers(other, host) {
+				continue
+			}
+			for _, e := range byHost[other] {
+				if e.listener == owner {
+					entries = append(entries, e)
+				}
 			}
 		}
 		slices.SortStableFunc(entries, compareEntries)
@@ -332,6 +344,38 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 	return config
 }
 
+// owningListener is the most specific of listeners whose hostname covers host.
+func owningListener(m *gateway.Model, listeners []int, host string) int {
+	owner, best := -1, ""
+	for _, i := range listeners {
+		h := "*"
+		if l := m.Listeners[i].Hostname; l != nil && *l != "" {
+			h = string(*l)
+		}
+		if !gateway.HostCovers(h, host) {
+			continue
+		}
+		if owner < 0 || moreSpecific(h, best) {
+			owner, best = i, h
+		}
+	}
+
+	return owner
+}
+
+// moreSpecific reports whether hostname a is more specific than b: more
+// characters outside a wildcard, then more characters.
+func moreSpecific(a, b string) bool {
+	return cmp.Or(
+		cmp.Compare(exactChars(a), exactChars(b)),
+		cmp.Compare(len(a), len(b)),
+	) > 0
+}
+
+func exactChars(host string) int {
+	return len(strings.TrimPrefix(host, "*"))
+}
+
 // compareEntries orders matches by Gateway API precedence: the most specific
 // hostname, by its characters outside a wildcard and then by all of them; an
 // exact path, then a regular expression, then the longest prefix; a method
@@ -340,10 +384,6 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 func compareEntries(a, b entry) int {
 	ma := &a.route.Rules[a.rule].Matches[a.match]
 	mb := &b.route.Rules[b.rule].Matches[b.match]
-
-	exact := func(host string) int {
-		return len(strings.TrimPrefix(host, "*"))
-	}
 
 	pathRank := func(m *gatewayv1.HTTPRouteMatch) (int, int) {
 		t, v := pathOf(m)
@@ -367,7 +407,7 @@ func compareEntries(a, b entry) int {
 	}
 
 	return cmp.Or(
-		cmp.Compare(exact(b.host), exact(a.host)),
+		cmp.Compare(exactChars(b.host), exactChars(a.host)),
 		cmp.Compare(len(b.host), len(a.host)),
 		cmp.Compare(ta, tb),
 		cmp.Compare(la, lb),
