@@ -1,0 +1,22 @@
+# Envoy proxies provisioned for Gateways fetch their configuration from the
+# manager over this Service. The manager finds it by the component label rather
+# than by name, because kustomize and the Helm chart name it differently.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: cloudflare-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/component: xds
+  name: controller-manager-xds
+  namespace: system
+spec:
+  ports:
+  - name: grpc-xds
+    port: 18000
+    protocol: TCP
+    targetPort: xds
+  selector:
+    control-plane: controller-manager
+    app.kubernetes.io/name: cloudflare-operator

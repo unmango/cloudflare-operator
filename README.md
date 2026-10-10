@@ -81,8 +81,47 @@ That applies the standard channel CRDs from the pinned `sigs.k8s.io/gateway-api`
 Any other install of the same version works equally well.
 `GATEWAY_API_CRDS` overrides the directory the target applies, for a checkout outside the module cache.
 
-The manager registers no Gateway API controller, so the CRDs on their own change nothing the operator does.
-They make the types available to the envtest suites and to a cluster preparing for that support.
+The manager checks for the CRDs at startup and registers its Gateway controllers only when they are present, so installing them later needs a restart.
+
+Each `Gateway` of a class this operator owns gets its own Envoy proxy, a Deployment and Service in the Gateway's namespace, which the manager programs over xDS.
+The class's `CloudflareGatewayConfig` decides how traffic reaches it: `template` provisions a `CloudflareTunnel` per Gateway whose rules send each listener's hostnames to Envoy, and leaving out both `template` and `tunnelRef` serves the Gateway inside the cluster only.
+Gateways accept HTTP listeners for now; routes, the other listener protocols, and a shared `tunnelRef` tunnel follow.
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareGatewayConfig
+metadata:
+  name: gateway-config
+  namespace: cloudflare-operator-system
+spec:
+  template:
+    spec:
+      accountId: <cloudflare-account-id>
+      cloudflared:
+        selector:
+          matchLabels:
+            app: gateway-cloudflared
+        template:
+          metadata:
+            labels:
+              app: gateway-cloudflared
+          spec:
+            kind: Deployment
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+spec:
+  gatewayClassName: cloudflare
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: app.example.com
+```
+
+Enable the class with `gatewayClass.enabled=true` and point `gatewayClass.parametersRef` at the config.
 
 To install from source without Helm, apply the kustomize output instead.
 This path does not wire up the token; set it yourself afterwards.

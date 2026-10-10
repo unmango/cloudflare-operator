@@ -33,6 +33,10 @@ schema = 3
     version = 'v7.10.0'
     hash = 'sha256-uiuxE7lDBbqfBMcCCzlQ41IEi3cC2xSQLpar9Nppie0='
 
+  [mod.'github.com/cncf/xds/go']
+    version = 'v0.0.0-20260202195803-dba9d589def2'
+    hash = 'sha256-nCcna5Dwr8a+FgdSZt43VmoMds5U0FZta2vpJfdMOhs='
+
   [mod.'github.com/davecgh/go-spew']
     version = 'v1.1.2-0.20180830191138-d8f796af33cc'
     hash = 'sha256-fV9oI51xjHdOmEx6+dlq7Ku2Ag+m/bmbzPo6A4Y74qc='
@@ -40,6 +44,22 @@ schema = 3
   [mod.'github.com/emicklei/go-restful/v3']
     version = 'v3.13.0'
     hash = 'sha256-lB2Z29RDLiVQE5NrsV1s2iHeQ4ciGwNj5OG1zJxwZV8='
+
+  [mod.'github.com/envoyproxy/go-control-plane']
+    version = 'v0.14.0'
+    hash = 'sha256-5E2Y185bksvC6/izl4/6wgqqfYrmXUgGEuouB4xK89g='
+
+  [mod.'github.com/envoyproxy/go-control-plane/envoy']
+    version = 'v1.39.0'
+    hash = 'sha256-EjlqubUTPeOSGsIxn+2VcjHAZqbZTTESxUaIzRkPby4='
+
+  [mod.'github.com/envoyproxy/go-control-plane/ratelimit']
+    version = 'v0.1.0'
+    hash = 'sha256-T2vbKalzFEgOtjCDY+5Ob0pvNhrhz4d0m3yuytnoF9I='
+
+  [mod.'github.com/envoyproxy/protoc-gen-validate']
+    version = 'v1.3.3'
+    hash = 'sha256-NsI6A4CBVTpAq4gsmv66sMx0gvY0J0kF/t9zbtlRLr4='
 
   [mod.'github.com/evanphx/json-patch/v5']
     version = 'v5.9.11'
@@ -184,6 +204,10 @@ schema = 3
   [mod.'github.com/onsi/gomega']
     version = 'v1.43.1'
     hash = 'sha256-EPFqz1qHdQkVSvmkUlbbTj7OAmiV7vixv8FhUxKlsoM='
+
+  [mod.'github.com/planetscale/vtprotobuf']
+    version = 'v0.6.1-0.20240319094008-0393e58bdf10'
+    hash = 'sha256-L8dyNm+PCRDNADiIGKZqsPkCgB4xpLrosZjssrN+sUY='
 
   [mod.'github.com/pmezard/go-difflib']
     version = 'v1.0.1-0.20181226105442-5d4384ee4fb2'
