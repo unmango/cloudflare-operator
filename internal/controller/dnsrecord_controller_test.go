@@ -266,6 +266,33 @@ var _ = Describe("DnsRecord Controller", func() {
 					)
 				}).Should(BeTrue())
 			})
+
+			It("should leave the record upstream when another DnsRecord adopted it", func() {
+				adopterKey := types.NamespacedName{Name: "test-adopter", Namespace: testNamespace}
+				DeferCleanup(deleteIfExists, ctx, adopterKey, &cfv1alpha1.DnsRecord{})
+
+				adopter := dnsrecord.DeepCopy()
+				adopter.Name = adopterKey.Name
+				Expect(k8sClient.Create(ctx, adopter)).To(Succeed())
+				adopter.Status.Id = ptr.To(recordId)
+				Expect(k8sClient.Status().Update(ctx, adopter)).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+				Expect(controllerutil.AddFinalizer(dnsrecord, dnsRecordFinalizer)).To(BeTrue())
+				Expect(k8sClient.Update(ctx, dnsrecord)).To(Succeed())
+				dnsrecord.Status.Id = ptr.To(recordId)
+				Expect(k8sClient.Status().Update(ctx, dnsrecord)).To(Succeed())
+
+				// DeleteDnsRecord is deliberately not expected.
+				Expect(k8sClient.Delete(ctx, dnsrecord)).To(Succeed())
+				reconcileOnce()
+
+				Eventually(func() bool {
+					return apierrors.IsNotFound(
+						k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.DnsRecord{}),
+					)
+				}).Should(BeTrue())
+			})
 		})
 
 		Context("and the status already holds a record id", func() {
@@ -335,6 +362,120 @@ var _ = Describe("DnsRecord Controller", func() {
 					Return(nil, errors.New("update record failed"))
 
 				reconcileFails()
+			})
+		})
+
+		Context("and the CNAME points at a tunnel", func() {
+			const (
+				tunnelName = "test-dns-tunnel"
+				tunnelId   = "test-dns-tunnel-id"
+				cnameName  = "tunnel.example.com"
+			)
+
+			tunnelKey := types.NamespacedName{Name: tunnelName, Namespace: testNamespace}
+
+			createTunnel := func(id *string) {
+				GinkgoHelper()
+				tunnel := &cfv1alpha1.CloudflareTunnel{
+					ObjectMeta: metav1.ObjectMeta{Name: tunnelName, Namespace: testNamespace},
+					Spec: cfv1alpha1.CloudflareTunnelSpec{
+						AccountId:    testAccountId,
+						ConfigSource: cfv1alpha1.CloudflareCloudflareTunnelConfigSource,
+					},
+				}
+				Expect(k8sClient.Create(ctx, tunnel)).To(Succeed())
+				if id != nil {
+					tunnel.Status.Id = id
+					Expect(k8sClient.Status().Update(ctx, tunnel)).To(Succeed())
+				}
+			}
+
+			BeforeEach(func() {
+				dnsrecord.Spec.Record = cfv1alpha1.Record{
+					CNAMERecord: &cfv1alpha1.CNAMERecord{
+						Name:      cnameName,
+						TunnelRef: &cfv1alpha1.DnsRecordTunnelReference{Name: tunnelName},
+						Proxied:   true,
+						Ttl:       1,
+					},
+				}
+			})
+
+			AfterEach(func() {
+				deleteIfExists(ctx, tunnelKey, &cfv1alpha1.CloudflareTunnel{})
+			})
+
+			It("should reject content alongside a tunnelRef", func() {
+				dnsrecord.Spec.CNAMERecord.Content = "other.example.com"
+
+				err := k8sClient.Create(ctx, dnsrecord)
+
+				Expect(apierrors.IsInvalid(err)).To(BeTrueBecause("content and tunnelRef are mutually exclusive: %v", err))
+			})
+
+			It("should wait for the tunnel to exist", func() {
+				// No Cloudflare call is expected before the content resolves.
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+
+				reconcileOnce()
+
+				Expect(observed().Status.Id).To(BeNil())
+			})
+
+			It("should wait for the tunnel to have an id", func() {
+				createTunnel(nil)
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+
+				reconcileOnce()
+
+				Expect(observed().Status.Id).To(BeNil())
+			})
+
+			It("should point the record at the tunnel once it has an id", func() {
+				createTunnel(ptr.To(tunnelId))
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+
+				cfmock.EXPECT().
+					ListDnsRecords(gomock.Any(), gomock.Any()).
+					Return(nil, nil)
+				cfmock.EXPECT().
+					CreateDnsRecord(gomock.Any(), gomock.Eq(dns.RecordNewParams{
+						ZoneID: cloudflare.F(zoneId),
+						Body: dns.CNAMERecordParam{
+							Comment: cloudflare.F(""),
+							Content: cloudflare.F(tunnelId + ".cfargotunnel.com"),
+							Name:    cloudflare.F(cnameName),
+							Proxied: cloudflare.F(true),
+							Settings: cloudflare.F(dns.CNAMERecordSettingsParam{
+								IPV4Only: cloudflare.F(false),
+								IPV6Only: cloudflare.F(false),
+							}),
+							Tags: cloudflare.F(toRecordTags[cfv1alpha1.RecordTags](nil)),
+							TTL:  cloudflare.F(dns.TTL(1)),
+							Type: cloudflare.F(dns.CNAMERecordTypeCNAME),
+						},
+					})).
+					Return(&dns.RecordResponse{
+						ID:      recordId,
+						Content: tunnelId + ".cfargotunnel.com",
+						Name:    cnameName,
+						Type:    dns.RecordResponseTypeCNAME,
+					}, nil)
+
+				reconcileOnce()
+
+				Expect(observed().Status.Content).To(Equal(ptr.To(tunnelId + ".cfargotunnel.com")))
+			})
+
+			It("should be enqueued by the tunnel it names", func() {
+				createTunnel(nil)
+				Expect(k8sClient.Create(ctx, dnsrecord)).To(Succeed())
+				tunnel := &cfv1alpha1.CloudflareTunnel{}
+				Expect(k8sClient.Get(ctx, tunnelKey, tunnel)).To(Succeed())
+
+				Expect(reconciler.recordsForTunnel(ctx, tunnel)).To(ConsistOf(
+					reconcile.Request{NamespacedName: typeNamespacedName},
+				))
 			})
 		})
 	})

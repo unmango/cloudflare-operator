@@ -7,6 +7,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v7/dns"
 	"github.com/cloudflare/cloudflare-go/v7/shared"
 	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7/zones"
 )
 
 //go:generate mockgen -destination ../testing/client.go -package testing . Client
@@ -20,6 +21,7 @@ type Client interface {
 	GetDnsRecord(ctx context.Context, recordId string, params dns.RecordGetParams) (*dns.RecordResponse, error)
 	GetTunnel(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredGetParams) (*shared.CloudflareTunnel, error)
 	GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error)
+	GetZone(ctx context.Context, params zones.ZoneGetParams) (*zones.Zone, error)
 	ListDnsRecords(ctx context.Context, params dns.RecordListParams) ([]dns.RecordResponse, error)
 	ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]shared.CloudflareTunnel, error)
 	UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error)
@@ -72,6 +74,11 @@ func (c *client) GetTunnel(ctx context.Context, tunnelId string, params zero_tru
 // GetTunnelToken implements Client.
 func (c *client) GetTunnelToken(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredTokenGetParams) (*string, error) {
 	return c.ZeroTrust.Tunnels.Cloudflared.Token.Get(ctx, tunnelId, params)
+}
+
+// GetZone implements Client.
+func (c *client) GetZone(ctx context.Context, params zones.ZoneGetParams) (*zones.Zone, error) {
+	return c.Zones.Get(ctx, params)
 }
 
 // ListDnsRecords implements Client.

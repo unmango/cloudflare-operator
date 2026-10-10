@@ -24,11 +24,14 @@ import (
 
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/dns"
@@ -50,6 +53,7 @@ type DnsRecordReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch
 
 func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -66,6 +70,16 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		id := record.Status.Id
 		if id == nil {
 			log.Info("No record id, releasing the finalizer")
+			return ctrl.Result{}, releaseDnsRecord(ctx, r, record)
+		}
+
+		// Adopting matches on name and type, so another DnsRecord may have taken
+		// over this one's record, as when a hostname moves between tunnels.
+		// Deleting it upstream would leave that one tracking a record that is gone.
+		if adopter, err := r.adopter(ctx, record); err != nil {
+			return ctrl.Result{}, err
+		} else if adopter != "" {
+			log.Info("DNS record is tracked by another DnsRecord, leaving it in place", "id", id, "adopter", adopter)
 			return ctrl.Result{}, releaseDnsRecord(ctx, r, record)
 		}
 
@@ -93,6 +107,17 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	spec, ok, err := r.resolve(ctx, record)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !ok {
+		// The tunnel's status update enqueues the record again.
+		log.Info("Waiting for the referenced CloudflareTunnel to have an id",
+			"tunnel", record.Spec.CNAMERecord.TunnelRef.Name)
+		return ctrl.Result{}, nil
+	}
+
 	if id := record.Status.Id; id == nil {
 		// Cloudflare does not deduplicate creates, so a status patch that failed
 		// after an earlier create would otherwise leave an untracked duplicate.
@@ -113,7 +138,7 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Info("Creating DnsRecord")
 			res, err = r.Cloudflare.CreateDnsRecord(ctx, dns.RecordNewParams{
 				ZoneID: cloudflare.F(record.Spec.ZoneId),
-				Body:   r.toCloudflareNew(record),
+				Body:   r.toCloudflareNew(spec),
 			})
 			if err != nil {
 				log.Error(err, "Failed to create DNS record")
@@ -168,11 +193,11 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	if r.diff(record) {
+	if r.diff(spec, record.Status) {
 		log.Info("Updating DnsRecord")
 		res, err := r.Cloudflare.UpdateDnsRecord(ctx, *record.Status.Id, dns.RecordUpdateParams{
 			ZoneID: cloudflare.F(record.Spec.ZoneId),
-			Body:   r.toCloudflareUpdate(record),
+			Body:   r.toCloudflareUpdate(spec),
 		})
 		if err != nil {
 			log.Error(err, "Failed to update DNS record")
@@ -193,6 +218,24 @@ func (r *DnsRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
+// adopter names another DnsRecord that tracks the same record in the same zone,
+// or returns an empty string when there is none.
+func (r *DnsRecordReconciler) adopter(ctx context.Context, record *cfv1alpha1.DnsRecord) (string, error) {
+	records := &cfv1alpha1.DnsRecordList{}
+	if err := r.List(ctx, records); err != nil {
+		return "", fmt.Errorf("listing DnsRecords: %w", err)
+	}
+
+	for _, other := range records.Items {
+		if other.UID != record.UID && other.DeletionTimestamp.IsZero() &&
+			other.Spec.ZoneId == record.Spec.ZoneId && ptr.Equal(other.Status.Id, record.Status.Id) {
+			return client.ObjectKeyFromObject(&other).String(), nil
+		}
+	}
+
+	return "", nil
+}
+
 // releaseDnsRecord drops the finalizer so the API server can finish the delete.
 func releaseDnsRecord(ctx context.Context, c patcher, record *cfv1alpha1.DnsRecord) error {
 	if !controllerutil.ContainsFinalizer(record, dnsRecordFinalizer) {
@@ -204,19 +247,60 @@ func releaseDnsRecord(ctx context.Context, c patcher, record *cfv1alpha1.DnsReco
 	}))
 }
 
+// resolve returns the record as it is written to Cloudflare, with a tunnelRef
+// replaced by the tunnel's hostname. It reports false while the tunnel does not
+// exist or has no id yet.
+func (r *DnsRecordReconciler) resolve(ctx context.Context, record *cfv1alpha1.DnsRecord) (cfv1alpha1.Record, bool, error) {
+	spec := *record.Spec.Record.DeepCopy()
+	cname := spec.CNAMERecord
+	if cname == nil || cname.TunnelRef == nil {
+		return spec, true, nil
+	}
+
+	tunnel := &cfv1alpha1.CloudflareTunnel{}
+	key := types.NamespacedName{Namespace: record.Namespace, Name: cname.TunnelRef.Name}
+	if err := r.Get(ctx, key, tunnel); err != nil {
+		return spec, false, client.IgnoreNotFound(err)
+	}
+	if tunnel.Status.Id == nil {
+		return spec, false, nil
+	}
+
+	cname.Content = tunnelTarget(*tunnel.Status.Id)
+	return spec, true, nil
+}
+
+// recordsForTunnel maps a CloudflareTunnel to the records whose tunnelRef names it.
+func (r *DnsRecordReconciler) recordsForTunnel(ctx context.Context, obj client.Object) []reconcile.Request {
+	records := &cfv1alpha1.DnsRecordList{}
+	if err := r.List(ctx, records, client.InNamespace(obj.GetNamespace())); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list DnsRecords for a CloudflareTunnel")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, record := range records.Items {
+		if cname := record.Spec.CNAMERecord; cname != nil && cname.TunnelRef != nil && cname.TunnelRef.Name == obj.GetName() {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
+		}
+	}
+
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.DnsRecord{}).
+		Watches(&cfv1alpha1.CloudflareTunnel{}, handler.EnqueueRequestsFromMapFunc(r.recordsForTunnel)).
 		Named("dnsrecord").
 		Complete(r)
 }
 
-func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
-	status := record.Status
+func (r *DnsRecordReconciler) diff(spec cfv1alpha1.Record, status cfv1alpha1.DnsRecordStatus) bool {
 	var conditions []bool
 
-	if spec := record.Spec.AAAARecord; spec != nil {
+	if spec := spec.AAAARecord; spec != nil {
 		conditions = []bool{
 			ptr.Equal(status.Comment, &spec.Comment),
 			ptr.Equal(status.Content, &spec.Content),
@@ -224,7 +308,7 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 			ptr.Equal(status.Type, &spec.Type),
 		}
 	}
-	if spec := record.Spec.ARecord; spec != nil {
+	if spec := spec.ARecord; spec != nil {
 		conditions = []bool{
 			ptr.Equal(status.Comment, &spec.Comment),
 			ptr.Equal(status.Content, &spec.Content),
@@ -232,7 +316,7 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 			ptr.Equal(status.Type, &spec.Type),
 		}
 	}
-	if spec := record.Spec.CAARecord; spec != nil {
+	if spec := spec.CAARecord; spec != nil {
 		conditions = []bool{
 			ptr.Equal(status.Comment, &spec.Comment),
 			ptr.Equal(status.Content, &spec.Content),
@@ -240,7 +324,7 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 			ptr.Equal(status.Type, &spec.Type),
 		}
 	}
-	if spec := record.Spec.CNAMERecord; spec != nil {
+	if spec := spec.CNAMERecord; spec != nil {
 		conditions = []bool{
 			ptr.Equal(status.Comment, &spec.Comment),
 			ptr.Equal(status.Content, &spec.Content),
@@ -248,7 +332,7 @@ func (r *DnsRecordReconciler) diff(record *cfv1alpha1.DnsRecord) bool {
 			ptr.Equal(status.Type, &spec.Type),
 		}
 	}
-	if spec := record.Spec.TXTRecord; spec != nil {
+	if spec := spec.TXTRecord; spec != nil {
 		conditions = []bool{
 			ptr.Equal(status.Comment, &spec.Comment),
 			ptr.Equal(status.Content, &spec.Content),
@@ -279,8 +363,8 @@ func recordKey(record *cfv1alpha1.DnsRecord) (name, typ string) {
 	}
 }
 
-func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.RecordNewParamsBodyUnion {
-	if r := record.Spec.AAAARecord; r != nil {
+func (DnsRecordReconciler) toCloudflareNew(spec cfv1alpha1.Record) dns.RecordNewParamsBodyUnion {
+	if r := spec.AAAARecord; r != nil {
 		return dns.AAAARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -295,7 +379,7 @@ func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.Rec
 			Type: cloudflare.F(dns.AAAARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.ARecord; r != nil {
+	if r := spec.ARecord; r != nil {
 		return dns.ARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -310,7 +394,7 @@ func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.Rec
 			Type: cloudflare.F(dns.ARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.CAARecord; r != nil {
+	if r := spec.CAARecord; r != nil {
 		return dns.CAARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Data: cloudflare.F(dns.CAARecordDataParam{
@@ -329,7 +413,7 @@ func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.Rec
 			Type: cloudflare.F(dns.CAARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.CNAMERecord; r != nil {
+	if r := spec.CNAMERecord; r != nil {
 		return dns.CNAMERecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -344,7 +428,7 @@ func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.Rec
 			Type: cloudflare.F(dns.CNAMERecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.TXTRecord; r != nil {
+	if r := spec.TXTRecord; r != nil {
 		return dns.TXTRecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -363,8 +447,8 @@ func (DnsRecordReconciler) toCloudflareNew(record *cfv1alpha1.DnsRecord) dns.Rec
 	return nil
 }
 
-func (DnsRecordReconciler) toCloudflareUpdate(record *cfv1alpha1.DnsRecord) dns.RecordUpdateParamsBodyUnion {
-	if r := record.Spec.AAAARecord; r != nil {
+func (DnsRecordReconciler) toCloudflareUpdate(spec cfv1alpha1.Record) dns.RecordUpdateParamsBodyUnion {
+	if r := spec.AAAARecord; r != nil {
 		return dns.AAAARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -379,7 +463,7 @@ func (DnsRecordReconciler) toCloudflareUpdate(record *cfv1alpha1.DnsRecord) dns.
 			Type: cloudflare.F(dns.AAAARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.ARecord; r != nil {
+	if r := spec.ARecord; r != nil {
 		return dns.ARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -394,7 +478,7 @@ func (DnsRecordReconciler) toCloudflareUpdate(record *cfv1alpha1.DnsRecord) dns.
 			Type: cloudflare.F(dns.ARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.CAARecord; r != nil {
+	if r := spec.CAARecord; r != nil {
 		return dns.CAARecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Data: cloudflare.F(dns.CAARecordDataParam{
@@ -413,7 +497,7 @@ func (DnsRecordReconciler) toCloudflareUpdate(record *cfv1alpha1.DnsRecord) dns.
 			Type: cloudflare.F(dns.CAARecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.CNAMERecord; r != nil {
+	if r := spec.CNAMERecord; r != nil {
 		return dns.CNAMERecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),
@@ -428,7 +512,7 @@ func (DnsRecordReconciler) toCloudflareUpdate(record *cfv1alpha1.DnsRecord) dns.
 			Type: cloudflare.F(dns.CNAMERecordType(r.Type)),
 		}
 	}
-	if r := record.Spec.TXTRecord; r != nil {
+	if r := spec.TXTRecord; r != nil {
 		return dns.TXTRecordParam{
 			Comment: cloudflare.F(r.Comment),
 			Content: cloudflare.F(r.Content),

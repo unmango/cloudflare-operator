@@ -167,6 +167,9 @@ A `CloudflareTunnel` whose create returns 409 adopts the one non-deleted tunnel 
 
 All three resource controllers add a finalizer so the Cloudflare-side object is deleted before the Kubernetes object goes away.
 
+A `CloudflareTunnel` whose `spec.dns` resolves a zone owns one `DnsRecord` per routed hostname, named `<tunnel>-<fnv32a of the hostname>`, and deletes the ones whose hostname left the config.
+Those records name the tunnel through `cnameRecord.tunnelRef` rather than carrying its id, and the `DnsRecord` controller resolves the content and watches tunnels to re-resolve it.
+
 ### Tests
 
 The suites in `internal/controller` run against envtest, a real API server and etcd with the CRDs installed, so schema validation and defaulting are exercised.
