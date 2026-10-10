@@ -34,7 +34,7 @@
       perSystem =
         { pkgs, system, ... }:
         let
-          version = "0.5.0"; # x-release-please-version
+          version = "0.6.0"; # x-release-please-version
           envtest-assets = pkgs.callPackage ./nix/envtest.nix { };
           operator = pkgs.callPackage ./nix { inherit envtest-assets version; };
         in

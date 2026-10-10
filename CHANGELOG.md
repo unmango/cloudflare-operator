@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/unmango/cloudflare-operator/compare/v0.5.0...v0.6.0) (2026-10-10)
+
+
+### Features
+
+* **gateway:** route HTTPRoute and GRPCRoute through Envoy and run HTTP conformance ([#259](https://github.com/unmango/cloudflare-operator/issues/259)) ([8d75813](https://github.com/unmango/cloudflare-operator/commit/8d75813a935efc84fee92e9c7c3ce1a721d105b5))
+
+
+### Bug Fixes
+
+* **gateway:** pass the remaining HTTP conformance tests ([#261](https://github.com/unmango/cloudflare-operator/issues/261)) ([ff99aa1](https://github.com/unmango/cloudflare-operator/commit/ff99aa15fa407f3b3588288f8d71d4b3c56f853e))
+
 ## [0.5.0](https://github.com/unmango/cloudflare-operator/compare/v0.4.0...v0.5.0) (2026-10-10)
 
 
