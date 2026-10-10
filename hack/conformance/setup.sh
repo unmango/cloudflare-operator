@@ -11,6 +11,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 namespace=cloudflare-operator-system
 
+# go list reports no directory for a module that is not in the module cache yet,
+# which is the case on a runner that built the operator with Nix.
+go mod download sigs.k8s.io/gateway-api
 crds="$(go list -m -f '{{.Dir}}' sigs.k8s.io/gateway-api)/config/crd/standard"
 kubectl apply --server-side -f "$crds"
 
