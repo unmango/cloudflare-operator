@@ -162,8 +162,6 @@ func httpConnectionManager(name string) (*anypb.Any, error) {
 				ConfigSource:    adsConfigSource(),
 			},
 		},
-		// Listener hostnames never carry a port, and a client may send one.
-		StripPortMode: &hcmv3.HttpConnectionManager_StripAnyHostPort{StripAnyHostPort: true},
 		HttpFilters: []*hcmv3.HttpFilter{{
 			Name:       "envoy.filters.http.router",
 			ConfigType: &hcmv3.HttpFilter_TypedConfig{TypedConfig: router},
@@ -309,7 +307,9 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 	}
 	slices.Sort(hosts)
 
-	config := &routev3.RouteConfiguration{Name: name}
+	// Listener hostnames never carry a port, and a client may send one. The
+	// port is ignored for matching only, so the backend still sees it.
+	config := &routev3.RouteConfiguration{Name: name, IgnorePortInHostMatching: true}
 	for _, host := range hosts {
 		owner := owningListener(m, listeners, host)
 

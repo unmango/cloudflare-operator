@@ -447,6 +447,25 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
+	Context("When only some listeners are valid", func() {
+		BeforeEach(func() {
+			gw.Spec.Listeners = append(gw.Spec.Listeners, gatewayv1.Listener{
+				Name:     "invalid",
+				Port:     81,
+				Protocol: gatewayv1.UDPProtocolType,
+			})
+			createAll()
+		})
+
+		It("should accept the Gateway and say that a listener is not valid", func() {
+			reconcileOnce()
+
+			accepted := condition(string(gatewayv1.GatewayConditionAccepted))
+			Expect(accepted.Status).To(Equal(metav1.ConditionTrue))
+			Expect(accepted.Reason).To(Equal(string(gatewayv1.GatewayReasonListenersNotValid)))
+		})
+	})
+
 	Context("When the class provisions a tunnel per Gateway", func() {
 		BeforeEach(func() {
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{

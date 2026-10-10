@@ -162,6 +162,8 @@ var _ = Describe("Snapshot", func() {
 		Expect(routes).To(HaveLen(2))
 		// Without routes every request is a 404.
 		Expect(routes["http-80"].GetVirtualHosts()).To(BeEmpty())
+		// A Host header with a port still matches, and reaches the backend intact.
+		Expect(routes["http-80"].GetIgnorePortInHostMatching()).To(BeTrue())
 	})
 
 	It("should leave out listeners that are not valid", func() {

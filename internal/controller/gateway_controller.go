@@ -149,6 +149,12 @@ func (r *GatewayReconciler) accept(ctx context.Context, gw *gatewayv1.Gateway, c
 		return reject(gatewayv1.GatewayReasonListenersNotValid, "No listener is valid")
 	}
 
+	if n := status.validListeners(); n < len(gw.Spec.Listeners) {
+		status.accepted(metav1.ConditionTrue, gatewayv1.GatewayReasonListenersNotValid,
+			fmt.Sprintf("%d of %d listeners are invalid", len(gw.Spec.Listeners)-n, len(gw.Spec.Listeners)))
+		return config, true
+	}
+
 	status.accepted(metav1.ConditionTrue, gatewayv1.GatewayReasonAccepted, "Gateway accepted")
 	return config, true
 }
