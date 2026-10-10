@@ -176,7 +176,7 @@ var _ = Describe("Gateway Controller", func() {
 		reconcileOnce()
 
 		Expect(k8sClient.Get(ctx, envoyKey, &appsv1.Deployment{})).NotTo(Succeed())
-		Expect(meta.FindStatusCondition(observed().Status.Conditions, string(gatewayv1.GatewayConditionAccepted)).Reason).
+		Expect(condition(string(gatewayv1.GatewayConditionAccepted)).Reason).
 			To(Equal(string(gatewayv1.GatewayReasonPending)))
 	})
 

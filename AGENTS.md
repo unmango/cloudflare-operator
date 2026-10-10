@@ -5,7 +5,7 @@ Guidance for AI agents working in this repository.
 A Kubernetes operator for Cloudflare, scaffolded with kubebuilder and built with Nix.
 It manages three resources in the `cloudflare.unmango.dev` group: `CloudflareTunnel` creates and reconciles a Cloudflare tunnel through the API, `Cloudflared` runs the `cloudflared` daemon for a tunnel as a DaemonSet or Deployment, and `DnsRecord` manages a single DNS record in a zone.
 A fourth controller watches core `Ingress` objects and creates a `CloudflareTunnel` for any Ingress whose class is `cloudflare`.
-The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, with a `CloudflareTunnel` in front of it.
+The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, and, when the class's `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` in front of it; with neither `template` nor `tunnelRef` the Gateway serves only inside the cluster.
 
 ## Commands
 
