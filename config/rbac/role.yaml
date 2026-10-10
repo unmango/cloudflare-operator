@@ -14,6 +14,14 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - services
   verbs:
   - create
@@ -77,6 +85,14 @@ rules:
   - list
   - watch
 - apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - gateway.networking.k8s.io
   resources:
   - gatewayclasses
@@ -98,6 +114,8 @@ rules:
   resources:
   - gatewayclasses/status
   - gateways/status
+  - grpcroutes/status
+  - httproutes/status
   verbs:
   - get
   - patch
@@ -106,6 +124,9 @@ rules:
   - gateway.networking.k8s.io
   resources:
   - gateways
+  - grpcroutes
+  - httproutes
+  - referencegrants
   verbs:
   - get
   - list

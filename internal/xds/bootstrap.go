@@ -21,6 +21,9 @@ import (
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 )
 
+// httpConnectionManagerFilter names Envoy's HTTP connection manager.
+const httpConnectionManagerFilter = "envoy.filters.network.http_connection_manager"
+
 // Cluster names in the bootstrap.
 const (
 	xdsClusterName   = "xds"
@@ -152,7 +155,7 @@ func readinessListener() (*listenerv3.Listener, error) {
 		Address: socketAddress("0.0.0.0", gateway.EnvoyReadinessPort),
 		FilterChains: []*listenerv3.FilterChain{{
 			Filters: []*listenerv3.Filter{{
-				Name:       "envoy.filters.network.http_connection_manager",
+				Name:       httpConnectionManagerFilter,
 				ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: manager},
 			}},
 		}},

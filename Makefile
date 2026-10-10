@@ -82,6 +82,18 @@ test-e2e: setup-test-e2e manifests generate vet ## Run the e2e tests against a K
 	KUBECONFIG=$(E2E_KUBECONFIG) KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) $(GO) test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
+# The conformance suite reaches each Gateway at its LoadBalancer address, which
+# cloud-provider-kind assigns, so it has to be running on the host alongside.
+.PHONY: setup-test-conformance
+setup-test-conformance: setup-test-e2e kind-load ## Install the operator and a GatewayClass for the conformance suite.
+	KUBECONFIG=$(E2E_KUBECONFIG) ./hack/conformance/setup.sh
+
+.PHONY: test-conformance
+test-conformance: | bin ## Run the Gateway API conformance suite against the cluster setup-test-conformance prepared.
+	KUBECONFIG=$(E2E_KUBECONFIG) $(GO) test -tags=conformance ./test/conformance/ -v -count=1 -timeout 60m \
+		-args --conformance-options-file=$(CURDIR)/hack/conformance/options.yaml \
+		--report-output=$(CURDIR)/bin/conformance-report.yaml
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests.
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)

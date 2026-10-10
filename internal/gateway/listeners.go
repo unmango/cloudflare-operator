@@ -1,17 +1,21 @@
 package gateway
 
 import (
+	"crypto/tls"
 	"fmt"
 	"slices"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // supportedKinds lists, per listener protocol, the route kinds a listener of
 // that protocol accepts. A protocol absent from the map is not implemented yet.
 var supportedKinds = map[gatewayv1.ProtocolType][]gatewayv1.Kind{
-	gatewayv1.HTTPProtocolType: {"HTTPRoute"},
+	gatewayv1.HTTPProtocolType:  {KindHTTPRoute, KindGRPCRoute},
+	gatewayv1.HTTPSProtocolType: {KindHTTPRoute, KindGRPCRoute},
 }
 
 // Listener is one Gateway listener after validation.
@@ -26,16 +30,26 @@ type Listener struct {
 	// the data plane, so the controller adds it.
 	Conditions []metav1.Condition
 
+	// Certificates are the Secrets an HTTPS listener terminates TLS with, once
+	// they resolve.
+	Certificates []*corev1.Secret
+
 	// Valid reports whether the listener can be programmed: it is accepted, its
 	// references resolve, and it conflicts with no other listener.
 	Valid bool
 }
 
-// Listeners validates every listener on gw, in spec order.
-func Listeners(gw *gatewayv1.Gateway) []Listener {
+// Listeners validates every listener on gw, in spec order. refs supplies the
+// certificates of HTTPS listeners and the grants that let a listener use one
+// from another namespace; nil resolves none.
+func Listeners(gw *gatewayv1.Gateway, refs *References) []Listener {
+	if refs == nil {
+		refs = &References{}
+	}
+
 	listeners := make([]Listener, len(gw.Spec.Listeners))
 	for i, l := range gw.Spec.Listeners {
-		listeners[i] = validate(l)
+		listeners[i] = validate(gw.Namespace, l, refs)
 	}
 
 	markConflicts(listeners)
@@ -51,18 +65,26 @@ func Listeners(gw *gatewayv1.Gateway) []Listener {
 	return listeners
 }
 
-func validate(l gatewayv1.Listener) Listener {
+func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listener {
 	out := Listener{Listener: l}
 
 	kinds, supported := supportedKinds[l.Protocol]
-	if !supported {
+	switch {
+	case !supported:
 		out.Conditions = append(out.Conditions, metav1.Condition{
 			Type:    string(gatewayv1.ListenerConditionAccepted),
 			Status:  metav1.ConditionFalse,
 			Reason:  string(gatewayv1.ListenerReasonUnsupportedProtocol),
 			Message: fmt.Sprintf("Protocol %s is not supported", l.Protocol),
 		})
-	} else {
+	case l.Protocol == gatewayv1.HTTPSProtocolType && (l.TLS == nil || tlsMode(l.TLS) != gatewayv1.TLSModeTerminate):
+		out.Conditions = append(out.Conditions, metav1.Condition{
+			Type:    string(gatewayv1.ListenerConditionAccepted),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(gatewayv1.ListenerReasonUnsupportedValue),
+			Message: "An HTTPS listener must set tls.mode Terminate",
+		})
+	default:
 		out.Conditions = append(out.Conditions, metav1.Condition{
 			Type:    string(gatewayv1.ListenerConditionAccepted),
 			Status:  metav1.ConditionTrue,
@@ -103,9 +125,77 @@ func validate(l gatewayv1.Listener) Listener {
 			}
 		}
 	}
+
+	if l.Protocol == gatewayv1.HTTPSProtocolType && l.TLS != nil && resolved.Status == metav1.ConditionTrue {
+		certs, failed := resolveCertificates(gwNamespace, l.TLS.CertificateRefs, refs)
+		if failed != nil {
+			resolved = *failed
+		} else {
+			out.Certificates = certs
+		}
+	}
 	out.Conditions = append(out.Conditions, resolved)
 
 	return out
+}
+
+func tlsMode(config *gatewayv1.ListenerTLSConfig) gatewayv1.TLSModeType {
+	if config.Mode == nil {
+		return gatewayv1.TLSModeTerminate
+	}
+
+	return *config.Mode
+}
+
+// resolveCertificates looks up the Secrets a listener terminates TLS with. It
+// returns the ResolvedRefs condition to report instead when one of them does
+// not resolve to a usable certificate.
+func resolveCertificates(gwNamespace string, certRefs []gatewayv1.SecretObjectReference, refs *References) ([]*corev1.Secret, *metav1.Condition) {
+	fail := func(reason gatewayv1.ListenerConditionReason, format string, args ...any) ([]*corev1.Secret, *metav1.Condition) {
+		return nil, &metav1.Condition{
+			Type:    string(gatewayv1.ListenerConditionResolvedRefs),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(reason),
+			Message: fmt.Sprintf(format, args...),
+		}
+	}
+
+	if len(certRefs) == 0 {
+		return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "An HTTPS listener needs at least one certificateRef")
+	}
+
+	certs := make([]*corev1.Secret, 0, len(certRefs))
+	for _, ref := range certRefs {
+		g, k := group(ref.Group, corev1.GroupName), kind(ref.Kind, SecretKind.Kind)
+		ns := namespace(ref.Namespace, gwNamespace)
+		key := types.NamespacedName{Namespace: ns, Name: string(ref.Name)}
+
+		if g != SecretKind.Group || k != SecretKind.Kind {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "certificateRef %s/%s %s is not a Secret", g, k, key)
+		}
+		if !refs.Permitted(GatewayKind, gwNamespace, SecretKind, ns, key.Name) {
+			return fail(gatewayv1.ListenerReasonRefNotPermitted, "No ReferenceGrant allows a Gateway in %s to use Secret %s", gwNamespace, key)
+		}
+		if !refs.SecretsReadable {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef,
+				"The operator is not allowed to read TLS Secrets; enable rbac.gatewayTLSSecrets in the chart")
+		}
+
+		secret, ok := refs.Secrets[key]
+		if !ok {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "Secret %s does not exist", key)
+		}
+		if secret.Type != corev1.SecretTypeTLS {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "Secret %s is not of type %s", key, corev1.SecretTypeTLS)
+		}
+		if _, err := tls.X509KeyPair(secret.Data[corev1.TLSCertKey], secret.Data[corev1.TLSPrivateKeyKey]); err != nil {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "Secret %s does not hold a valid certificate: %s", key, err)
+		}
+
+		certs = append(certs, secret)
+	}
+
+	return certs, nil
 }
 
 // markUnavailablePorts rejects a listener whose port Envoy cannot bind: one of

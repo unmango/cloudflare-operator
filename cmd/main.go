@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -26,13 +27,20 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -45,6 +53,7 @@ import (
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/internal/controller"
+	"github.com/unmango/cloudflare-operator/internal/gateway"
 	"github.com/unmango/cloudflare-operator/internal/xds"
 	// +kubebuilder:scaffold:imports
 )
@@ -172,8 +181,23 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
+	cfg := ctrl.GetConfigOrDie()
+
+	features, gatewayAPI, err := discoverGatewayAPI(cfg)
+	if err != nil {
+		setupLog.Error(err, "Failed to discover the Gateway API")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme,
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				// HTTPS listeners need only TLS Secrets, and caching every
+				// Secret in the cluster would hold far more than that.
+				&corev1.Secret{}: {Field: fields.OneTermEqualSelector("type", string(corev1.SecretTypeTLS))},
+			},
+		},
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -228,12 +252,14 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "ingress")
 		os.Exit(1)
 	}
-	gatewayAPI, err := gatewayAPIInstalled(mgr.GetConfig())
-	if err != nil {
-		setupLog.Error(err, "Failed to discover the Gateway API")
-		os.Exit(1)
-	}
 	if gatewayAPI {
+		if !features.SecretsReadable {
+			setupLog.Info("The operator may not list and watch TLS Secrets, "+
+				"so HTTPS listeners will not resolve their certificates",
+				"hint", "enable rbac.gatewayTLSSecrets in the chart and restart the manager",
+			)
+		}
+
 		if err := (&controller.GatewayClassReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
@@ -252,9 +278,10 @@ func main() {
 			resolver.Static = &addr
 		}
 		if err := (&controller.GatewayReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			XDS:    resolver,
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			XDS:      resolver,
+			Features: features,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create controller", "controller", "gateway")
 			os.Exit(1)
@@ -262,11 +289,30 @@ func main() {
 
 		snapshots := xds.NewCache(ctrl.Log.WithName("xds"))
 		if err := (&controller.GatewayXDSReconciler{
-			Client: mgr.GetClient(),
-			Cache:  snapshots,
+			Client:   mgr.GetClient(),
+			Cache:    snapshots,
+			Features: features,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create controller", "controller", "gateway-xds")
 			os.Exit(1)
+		}
+		if err := (&controller.RouteReconciler[*gatewayv1.HTTPRoute]{
+			Client:   mgr.GetClient(),
+			Features: features,
+			New:      func() *gatewayv1.HTTPRoute { return &gatewayv1.HTTPRoute{} },
+		}).SetupWithManager(mgr, "httproute"); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "httproute")
+			os.Exit(1)
+		}
+		if features.GRPCRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.GRPCRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.GRPCRoute { return &gatewayv1.GRPCRoute{} },
+			}).SetupWithManager(mgr, "grpcroute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "grpcroute")
+				os.Exit(1)
+			}
 		}
 		if err := mgr.Add(&xds.Server{
 			Address: xdsBindAddr,
@@ -300,24 +346,54 @@ func main() {
 	}
 }
 
-// gatewayAPIInstalled reports whether the cluster serves the Gateway API.
+// discoverGatewayAPI reports whether the cluster serves the Gateway API, and
+// what of it the Gateway controllers can use.
 //
 // Registering a controller for a kind the API server does not serve makes the
 // manager fail to start, so the Gateway controllers are wired up only when the
-// CRDs are present. Installing them later needs a restart.
-func gatewayAPIInstalled(cfg *rest.Config) (bool, error) {
-	client, err := discovery.NewDiscoveryClientForConfig(cfg)
+// CRDs are present, and the GRPCRoute controller only when that CRD is.
+// Installing them later, or granting access to Secrets, needs a restart.
+func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
+	features := gateway.Features{}
+
+	disco, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
-		return false, err
+		return features, false, err
 	}
 
-	_, err = client.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
+	resources, err := disco.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
 	if apierrors.IsNotFound(err) {
-		return false, nil
+		return features, false, nil
 	}
 	if err != nil {
-		return false, err
+		return features, false, err
+	}
+	for _, r := range resources.APIResources {
+		if r.Name == "grpcroutes" {
+			features.GRPCRoutes = true
+		}
 	}
 
-	return true, nil
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return features, false, err
+	}
+
+	features.SecretsReadable = true
+	for _, verb := range []string{"list", "watch"} {
+		review, err := clientset.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(),
+			&authorizationv1.SelfSubjectAccessReview{
+				Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+					ResourceAttributes: &authorizationv1.ResourceAttributes{Verb: verb, Resource: "secrets"},
+				},
+			}, metav1.CreateOptions{})
+		if err != nil {
+			return features, false, err
+		}
+		if !review.Status.Allowed {
+			features.SecretsReadable = false
+		}
+	}
+
+	return features, true, nil
 }

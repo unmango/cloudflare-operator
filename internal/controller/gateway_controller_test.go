@@ -2,7 +2,15 @@ package controller
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
+	"math/big"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -255,7 +263,7 @@ var _ = Describe("Gateway Controller", func() {
 
 			listeners := observed().Status.Listeners
 			Expect(listeners[0].AttachedRoutes).To(BeZero())
-			Expect(listeners[0].SupportedKinds).To(HaveLen(1))
+			Expect(listeners[0].SupportedKinds).To(HaveLen(2))
 			Expect(string(listeners[0].SupportedKinds[0].Kind)).To(Equal("HTTPRoute"))
 		})
 
@@ -556,6 +564,174 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
+	Context("When routes name the Gateway", func() {
+		var (
+			routes RouteReconciler[*gatewayv1.HTTPRoute]
+			app    *gatewayv1.HTTPRoute
+			stray  *gatewayv1.HTTPRoute
+		)
+
+		backendKey := types.NamespacedName{Name: "backend", Namespace: testNamespace}
+
+		httpRoute := func(name string, section *gatewayv1.SectionName, backend string) *gatewayv1.HTTPRoute {
+			port := gatewayv1.PortNumber(8080)
+			return &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+				Spec: gatewayv1.HTTPRouteSpec{
+					CommonRouteSpec: gatewayv1.CommonRouteSpec{
+						ParentRefs: []gatewayv1.ParentReference{{Name: gwName, SectionName: section}},
+					},
+					Rules: []gatewayv1.HTTPRouteRule{{
+						BackendRefs: []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
+							BackendObjectReference: gatewayv1.BackendObjectReference{
+								Name: gatewayv1.ObjectName(backend),
+								Port: &port,
+							},
+						}}},
+					}},
+				},
+			}
+		}
+
+		routeStatus := func(r *gatewayv1.HTTPRoute) []gatewayv1.RouteParentStatus {
+			GinkgoHelper()
+			_, err := routes.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(r)})
+			Expect(err).NotTo(HaveOccurred())
+
+			obj := &gatewayv1.HTTPRoute{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(r), obj)).To(Succeed())
+			return obj.Status.Parents
+		}
+
+		BeforeEach(func() {
+			routes = RouteReconciler[*gatewayv1.HTTPRoute]{
+				Client: k8sClient,
+				New:    func() *gatewayv1.HTTPRoute { return &gatewayv1.HTTPRoute{} },
+			}
+			createAll()
+
+			Expect(k8sClient.Create(ctx, &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{Name: backendKey.Name, Namespace: backendKey.Namespace},
+				Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+			})).To(Succeed())
+
+			app = httpRoute("app", nil, "backend")
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+			stray = httpRoute("stray", new(gatewayv1.SectionName("nope")), "missing")
+			Expect(k8sClient.Create(ctx, stray)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			deleteIfExists(ctx, client.ObjectKeyFromObject(app), &gatewayv1.HTTPRoute{})
+			deleteIfExists(ctx, client.ObjectKeyFromObject(stray), &gatewayv1.HTTPRoute{})
+			deleteIfExists(ctx, backendKey, &corev1.Service{})
+		})
+
+		It("should count the routes attached to each listener", func() {
+			reconcileOnce()
+
+			Expect(observed().Status.Listeners[0].AttachedRoutes).To(Equal(int32(1)))
+		})
+
+		It("should accept a route that attaches and resolve its backend", func() {
+			parents := routeStatus(app)
+			Expect(parents).To(HaveLen(1))
+			Expect(string(parents[0].ControllerName)).To(Equal(gateway.ControllerName))
+
+			accepted := meta.FindStatusCondition(parents[0].Conditions, string(gatewayv1.RouteConditionAccepted))
+			Expect(accepted).NotTo(BeNil())
+			Expect(accepted.Status).To(Equal(metav1.ConditionTrue))
+			Expect(accepted.ObservedGeneration).To(Equal(app.Generation))
+
+			resolved := meta.FindStatusCondition(parents[0].Conditions, string(gatewayv1.RouteConditionResolvedRefs))
+			Expect(resolved).NotTo(BeNil())
+			Expect(resolved.Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("should reject a route naming a listener the Gateway lacks", func() {
+			parents := routeStatus(stray)
+			Expect(parents).To(HaveLen(1))
+
+			accepted := meta.FindStatusCondition(parents[0].Conditions, string(gatewayv1.RouteConditionAccepted))
+			Expect(accepted.Status).To(Equal(metav1.ConditionFalse))
+			Expect(accepted.Reason).To(Equal(string(gatewayv1.RouteReasonNoMatchingParent)))
+
+			resolved := meta.FindStatusCondition(parents[0].Conditions, string(gatewayv1.RouteConditionResolvedRefs))
+			Expect(resolved.Reason).To(Equal(string(gatewayv1.RouteReasonBackendNotFound)))
+		})
+
+		It("should drop its status once the Gateway is gone", func() {
+			Expect(routeStatus(app)).To(HaveLen(1))
+			deleteIfExists(ctx, key, &gatewayv1.Gateway{})
+
+			Expect(routeStatus(app)).To(BeEmpty())
+		})
+
+		It("should translate the route's backend into a cluster", func() {
+			snapshots := xds.NewCache(logr.Discard())
+			translator := GatewayXDSReconciler{Client: k8sClient, Cache: snapshots}
+			_, err := translator.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+
+			snapshot, err := snapshots.GetSnapshot(gateway.NodeID(testNamespace, gwName))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(snapshot.GetResources("type.googleapis.com/envoy.config.cluster.v3.Cluster")).
+				To(HaveKey("default/backend/8080"))
+		})
+	})
+
+	Context("When a listener terminates TLS", func() {
+		secretKey := types.NamespacedName{Name: "gateway-test-cert", Namespace: testNamespace}
+
+		BeforeEach(func() {
+			gw.Spec.Listeners = []gatewayv1.Listener{{
+				Name:     "https",
+				Port:     443,
+				Protocol: gatewayv1.HTTPSProtocolType,
+				TLS: &gatewayv1.ListenerTLSConfig{
+					CertificateRefs: []gatewayv1.SecretObjectReference{{Name: gatewayv1.ObjectName(secretKey.Name)}},
+				},
+			}}
+			createAll()
+		})
+
+		AfterEach(func() {
+			deleteIfExists(ctx, secretKey, &corev1.Secret{})
+		})
+
+		It("should not resolve a certificate it may not read", func() {
+			reconcileOnce()
+
+			resolved := listenerCondition(gatewayv1.ListenerConditionResolvedRefs)
+			Expect(resolved.Status).To(Equal(metav1.ConditionFalse))
+			Expect(resolved.Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidCertificateRef)))
+			Expect(resolved.Message).To(ContainSubstring("rbac.gatewayTLSSecrets"))
+		})
+
+		It("should report a Secret that does not exist", func() {
+			reconciler.Features.SecretsReadable = true
+			reconcileOnce()
+
+			resolved := listenerCondition(gatewayv1.ListenerConditionResolvedRefs)
+			Expect(resolved.Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidCertificateRef)))
+			Expect(resolved.Message).To(ContainSubstring("does not exist"))
+		})
+
+		It("should resolve a valid certificate", func() {
+			certPEM, keyPEM := selfSignedCertificate("secure.example.com")
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretKey.Name, Namespace: secretKey.Namespace},
+				Type:       corev1.SecretTypeTLS,
+				Data:       map[string][]byte{corev1.TLSCertKey: certPEM, corev1.TLSPrivateKeyKey: keyPEM},
+			})).To(Succeed())
+
+			reconciler.Features.SecretsReadable = true
+			reconcileOnce()
+
+			Expect(listenerCondition(gatewayv1.ListenerConditionResolvedRefs).Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
 	Context("When translating Gateways into xDS snapshots", func() {
 		var (
 			snapshots  cache.SnapshotCache
@@ -593,3 +769,25 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 })
+
+// selfSignedCertificate returns a PEM certificate and key for host.
+func selfSignedCertificate(host string) ([]byte, []byte) {
+	GinkgoHelper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	Expect(err).NotTo(HaveOccurred())
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: host},
+		DNSNames:     []string{host},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	Expect(err).NotTo(HaveOccurred())
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	Expect(err).NotTo(HaveOccurred())
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+}

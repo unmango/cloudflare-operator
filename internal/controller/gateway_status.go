@@ -11,8 +11,9 @@ import (
 // gatewayStatus collects what one reconcile learns about a Gateway, and writes
 // it onto the status in one patch.
 type gatewayStatus struct {
-	listeners []gateway.Listener
-	addresses []gatewayv1.GatewayStatusAddress
+	listeners      []gateway.Listener
+	attachedRoutes []int32
+	addresses      []gatewayv1.GatewayStatusAddress
 
 	acceptedCondition   metav1.Condition
 	programmedCondition metav1.Condition
@@ -21,8 +22,8 @@ type gatewayStatus struct {
 	tunnel *metav1.Condition
 }
 
-func newGatewayStatus(gw *gatewayv1.Gateway) *gatewayStatus {
-	return &gatewayStatus{listeners: gateway.Listeners(gw)}
+func newGatewayStatus(m *gateway.Model) *gatewayStatus {
+	return &gatewayStatus{listeners: m.Listeners, attachedRoutes: m.AttachedRoutes}
 }
 
 func (s *gatewayStatus) accepted(status metav1.ConditionStatus, reason gatewayv1.GatewayConditionReason, message string) {
@@ -83,7 +84,7 @@ func (s *gatewayStatus) apply(gw *gatewayv1.Gateway) {
 	}
 
 	statuses := make([]gatewayv1.ListenerStatus, 0, len(s.listeners))
-	for _, l := range s.listeners {
+	for i, l := range s.listeners {
 		desired := append([]metav1.Condition{}, l.Conditions...)
 		switch {
 		case !l.Valid:
@@ -120,8 +121,7 @@ func (s *gatewayStatus) apply(gw *gatewayv1.Gateway) {
 		statuses = append(statuses, gatewayv1.ListenerStatus{
 			Name:           l.Name,
 			SupportedKinds: l.SupportedKinds,
-			// Routes are not attached yet.
-			AttachedRoutes: 0,
+			AttachedRoutes: s.attachedRoutes[i],
 			Conditions:     conditions,
 		})
 	}

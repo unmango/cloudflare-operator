@@ -24,7 +24,7 @@ var _ = Describe("TunnelIngress", func() {
 	})
 
 	It("should send the catch-all to a listener without a hostname", func() {
-		listeners := gateway.Listeners(gatewayWith(listener("http", 80, gatewayv1.HTTPProtocolType, "")))
+		listeners := gateway.Listeners(gatewayWith(listener("http", 80, gatewayv1.HTTPProtocolType, "")), nil)
 
 		Expect(gateway.TunnelIngress(nil, listeners, envoy)).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
 			rule("", "http://gw-envoy.default.svc:80"),
@@ -36,7 +36,7 @@ var _ = Describe("TunnelIngress", func() {
 			listener("wild", 80, gatewayv1.HTTPProtocolType, "*.example.com"),
 			listener("exact", 80, gatewayv1.HTTPProtocolType, "app.example.com"),
 			listener("alt", 8080, gatewayv1.HTTPProtocolType, "alt.example.com"),
-		))
+		), nil)
 		handwritten := []cfv1alpha1.CloudflareTunnelConfigIngress{
 			rule("ssh.example.com", "ssh://bastion:22"),
 			rule("", "http_status:503"),
@@ -54,7 +54,7 @@ var _ = Describe("TunnelIngress", func() {
 	It("should skip listeners that are not valid", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("tls", 443, gatewayv1.TLSProtocolType, "secure.example.com"),
-		))
+		), nil)
 
 		Expect(gateway.TunnelIngress(nil, listeners, envoy)).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
 			rule("", "http_status:404"),
@@ -65,7 +65,7 @@ var _ = Describe("TunnelIngress", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("b", 8080, gatewayv1.HTTPProtocolType, "app.example.com"),
 			listener("a", 80, gatewayv1.HTTPProtocolType, "app.example.com"),
-		))
+		), nil)
 
 		Expect(gateway.TunnelIngress(nil, listeners, envoy)).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
 			rule("app.example.com", "http://gw-envoy.default.svc:80"),
