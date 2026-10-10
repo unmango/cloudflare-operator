@@ -8,10 +8,11 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// Route is an HTTPRoute or a GRPCRoute, reduced to what attachment and
-// translation need. A GRPCRoute's matches and filters are rewritten as their
-// HTTP equivalents: gRPC is HTTP/2, a method is a path, and Envoy routes both
-// alike.
+// Route is any route kind, reduced to what attachment and translation need. A
+// GRPCRoute's matches and filters are rewritten as their HTTP equivalents: gRPC
+// is HTTP/2, a method is a path, and Envoy routes both alike. A TLSRoute,
+// TCPRoute or UDPRoute has one rule holding only backends, and only a TLSRoute
+// has hostnames.
 type Route struct {
 	Kind GroupKind
 	metav1.ObjectMeta
@@ -118,6 +119,41 @@ func FromGRPCRoute(r *gatewayv1.GRPCRoute) Route {
 			Backends: backends,
 			GRPC:     true,
 		})
+	}
+
+	return route
+}
+
+// FromTLSRoute reduces a TLSRoute.
+func FromTLSRoute(r *gatewayv1.TLSRoute) Route {
+	route := Route{
+		Kind:       TLSRouteKind,
+		ObjectMeta: r.ObjectMeta,
+		ParentRefs: r.Spec.ParentRefs,
+		Hostnames:  r.Spec.Hostnames,
+	}
+	for _, rule := range r.Spec.Rules {
+		route.Rules = append(route.Rules, Rule{Backends: rule.BackendRefs})
+	}
+
+	return route
+}
+
+// FromTCPRoute reduces a TCPRoute.
+func FromTCPRoute(r *gatewayv1.TCPRoute) Route {
+	route := Route{Kind: TCPRouteKind, ObjectMeta: r.ObjectMeta, ParentRefs: r.Spec.ParentRefs}
+	for _, rule := range r.Spec.Rules {
+		route.Rules = append(route.Rules, Rule{Backends: rule.BackendRefs})
+	}
+
+	return route
+}
+
+// FromUDPRoute reduces a UDPRoute.
+func FromUDPRoute(r *gatewayv1.UDPRoute) Route {
+	route := Route{Kind: UDPRouteKind, ObjectMeta: r.ObjectMeta, ParentRefs: r.Spec.ParentRefs}
+	for _, rule := range r.Spec.Rules {
+		route.Rules = append(route.Rules, Rule{Backends: rule.BackendRefs})
 	}
 
 	return route

@@ -314,6 +314,36 @@ func main() {
 				os.Exit(1)
 			}
 		}
+		if features.TLSRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.TLSRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.TLSRoute { return &gatewayv1.TLSRoute{} },
+			}).SetupWithManager(mgr, "tlsroute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "tlsroute")
+				os.Exit(1)
+			}
+		}
+		if features.TCPRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.TCPRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.TCPRoute { return &gatewayv1.TCPRoute{} },
+			}).SetupWithManager(mgr, "tcproute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "tcproute")
+				os.Exit(1)
+			}
+		}
+		if features.UDPRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.UDPRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.UDPRoute { return &gatewayv1.UDPRoute{} },
+			}).SetupWithManager(mgr, "udproute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "udproute")
+				os.Exit(1)
+			}
+		}
 		if err := mgr.Add(&xds.Server{
 			Address: xdsBindAddr,
 			Cache:   snapshots,
@@ -351,7 +381,8 @@ func main() {
 //
 // Registering a controller for a kind the API server does not serve makes the
 // manager fail to start, so the Gateway controllers are wired up only when the
-// CRDs are present, and the GRPCRoute controller only when that CRD is.
+// CRDs are present, and the controller of each route kind besides HTTPRoute
+// only when that kind's CRD is.
 // Installing them later, or granting access to Secrets, needs a restart.
 func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
 	features := gateway.Features{}
@@ -369,8 +400,15 @@ func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
 		return features, false, err
 	}
 	for _, r := range resources.APIResources {
-		if r.Name == "grpcroutes" {
+		switch r.Name {
+		case "grpcroutes":
 			features.GRPCRoutes = true
+		case "tlsroutes":
+			features.TLSRoutes = true
+		case "tcproutes":
+			features.TCPRoutes = true
+		case "udproutes":
+			features.UDPRoutes = true
 		}
 	}
 

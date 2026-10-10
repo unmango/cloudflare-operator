@@ -5,6 +5,9 @@ gatewayClassName: cloudflare-conformance
 conformanceProfiles:
   - GATEWAY-HTTP
   - GATEWAY-GRPC
+  - GATEWAY-TLS
+  - GATEWAY-TCP
+  - GATEWAY-UDP
 supportedFeatures:
   - Gateway
   - GatewayPort8080
@@ -13,6 +16,11 @@ supportedFeatures:
   - HTTPRouteQueryParamMatching
   - HTTPRouteResponseHeaderModification
   - GRPCRoute
+  - TLSRoute
+  - TLSRouteModeTerminate
+  - TLSRouteModeMixed
+  - TCPRoute
+  - UDPRoute
   - ReferenceGrant
 cleanupBaseResources: true
 cleanupTestResources: true

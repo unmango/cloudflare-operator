@@ -24,7 +24,7 @@ import (
 // routeObject is a route kind this controller writes status for.
 type routeObject interface {
 	client.Object
-	*gatewayv1.HTTPRoute | *gatewayv1.GRPCRoute
+	*gatewayv1.HTTPRoute | *gatewayv1.GRPCRoute | *gatewayv1.TLSRoute | *gatewayv1.TCPRoute | *gatewayv1.UDPRoute
 }
 
 // RouteReconciler reports, on each route that names a Gateway of a class this
@@ -39,7 +39,7 @@ type RouteReconciler[T routeObject] struct {
 	New func() T
 }
 
-// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes/status;grpcroutes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes/status;grpcroutes/status;tlsroutes/status;tcproutes/status;udproutes/status,verbs=get;update;patch
 
 func (r *RouteReconciler[T]) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	obj := r.New()
@@ -117,6 +117,12 @@ func routeStatusOf(obj client.Object) *gatewayv1.RouteStatus {
 	case *gatewayv1.HTTPRoute:
 		return &r.Status.RouteStatus
 	case *gatewayv1.GRPCRoute:
+		return &r.Status.RouteStatus
+	case *gatewayv1.TLSRoute:
+		return &r.Status.RouteStatus
+	case *gatewayv1.TCPRoute:
+		return &r.Status.RouteStatus
+	case *gatewayv1.UDPRoute:
 		return &r.Status.RouteStatus
 	default:
 		panic("unsupported route type")

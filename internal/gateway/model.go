@@ -142,7 +142,11 @@ func (m *Model) attach(route *Route, ref gatewayv1.ParentReference, refs *Refere
 		}
 		allowed++
 
-		if hosts := intersect(l.Hostname, route.Hostnames); len(hosts) > 0 {
+		listenerHost := l.Hostname
+		if !hasHostnames(l.Protocol) {
+			listenerHost = nil
+		}
+		if hosts := intersect(listenerHost, route.Hostnames); len(hosts) > 0 {
 			result.Hostnames[i] = hosts
 		}
 	}

@@ -17,8 +17,12 @@ import (
 // Features records what the cluster offers the Gateway controllers, discovered
 // once at startup.
 type Features struct {
-	// GRPCRoutes reports whether the GRPCRoute CRD is installed.
+	// GRPCRoutes, TLSRoutes, TCPRoutes and UDPRoutes report whether the CRD of
+	// each route kind is installed.
 	GRPCRoutes bool
+	TLSRoutes  bool
+	TCPRoutes  bool
+	UDPRoutes  bool
 
 	// SecretsReadable reports whether the operator may list and watch TLS
 	// Secrets, which HTTPS listeners need for their certificates.
@@ -120,8 +124,8 @@ func loadService(ctx context.Context, reader client.Reader, refs *References, ke
 	return nil
 }
 
-// ListRoutes reads every HTTPRoute, and every GRPCRoute when its CRD is
-// installed, in the cluster.
+// ListRoutes reads every HTTPRoute in the cluster, and every route of each
+// other kind whose CRD is installed.
 func ListRoutes(ctx context.Context, reader client.Reader, features Features) ([]Route, error) {
 	var routes []Route
 
@@ -133,16 +137,44 @@ func ListRoutes(ctx context.Context, reader client.Reader, features Features) ([
 		routes = append(routes, FromHTTPRoute(&httpRoutes.Items[i]))
 	}
 
-	if !features.GRPCRoutes {
-		return routes, nil
+	if features.GRPCRoutes {
+		list := &gatewayv1.GRPCRouteList{}
+		if err := reader.List(ctx, list); err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			routes = append(routes, FromGRPCRoute(&list.Items[i]))
+		}
 	}
 
-	grpcRoutes := &gatewayv1.GRPCRouteList{}
-	if err := reader.List(ctx, grpcRoutes); err != nil {
-		return nil, err
+	if features.TLSRoutes {
+		list := &gatewayv1.TLSRouteList{}
+		if err := reader.List(ctx, list); err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			routes = append(routes, FromTLSRoute(&list.Items[i]))
+		}
 	}
-	for i := range grpcRoutes.Items {
-		routes = append(routes, FromGRPCRoute(&grpcRoutes.Items[i]))
+
+	if features.TCPRoutes {
+		list := &gatewayv1.TCPRouteList{}
+		if err := reader.List(ctx, list); err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			routes = append(routes, FromTCPRoute(&list.Items[i]))
+		}
+	}
+
+	if features.UDPRoutes {
+		list := &gatewayv1.UDPRouteList{}
+		if err := reader.List(ctx, list); err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			routes = append(routes, FromUDPRoute(&list.Items[i]))
+		}
 	}
 
 	return routes, nil

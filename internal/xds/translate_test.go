@@ -13,9 +13,12 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	tcpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	resourcev3 "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -164,6 +167,9 @@ var _ = Describe("Snapshot", func() {
 		Expect(routes["http-80"].GetVirtualHosts()).To(BeEmpty())
 		// A Host header with a port still matches, and reaches the backend intact.
 		Expect(routes["http-80"].GetIgnorePortInHostMatching()).To(BeTrue())
+		hcm := &hcmv3.HttpConnectionManager{}
+		Expect(listeners["http-80"].GetFilterChains()[0].GetFilters()[0].GetTypedConfig().UnmarshalTo(hcm)).To(Succeed())
+		Expect(hcm.GetStripAnyHostPort()).To(BeFalse())
 	})
 
 	It("should leave out listeners that are not valid", func() {
@@ -386,5 +392,198 @@ var _ = Describe("Snapshot", func() {
 
 		Expect(build(80)).To(Equal(build(80)))
 		Expect(build(80)).NotTo(Equal(build(8080)))
+	})
+})
+
+// certName names the Secret withCert adds.
+const certName = "cert"
+
+// withCert lets refs read a TLS Secret named certName holding the given
+// certificate and key.
+func withCert(refs *gateway.References, certPEM, keyPEM []byte) {
+	refs.SecretsReadable = true
+	refs.Secrets = map[ktypes.NamespacedName]*corev1.Secret{
+		{Namespace: testNamespace, Name: certName}: {
+			Type: corev1.SecretTypeTLS,
+			Data: map[string][]byte{corev1.TLSCertKey: certPEM, corev1.TLSPrivateKeyKey: keyPEM},
+		},
+	}
+}
+
+// l4Backend refers to port 8080 of the named Service with the given weight.
+func l4Backend(name string, weight int32) gatewayv1.BackendRef {
+	return backendRef(name, weight).BackendRef
+}
+
+func l4Meta(name string, created time.Time) metav1.ObjectMeta {
+	return metav1.ObjectMeta{Name: name, Namespace: testNamespace, CreationTimestamp: metav1.NewTime(created)}
+}
+
+var parentGW = gatewayv1.CommonRouteSpec{ParentRefs: []gatewayv1.ParentReference{{Name: "gw"}}}
+
+func tlsRoute(name string, created time.Time, hosts []string, backends ...gatewayv1.BackendRef) gateway.Route {
+	r := &gatewayv1.TLSRoute{
+		ObjectMeta: l4Meta(name, created),
+		Spec: gatewayv1.TLSRouteSpec{
+			CommonRouteSpec: parentGW,
+			Rules:           []gatewayv1.TLSRouteRule{{BackendRefs: backends}},
+		},
+	}
+	for _, h := range hosts {
+		r.Spec.Hostnames = append(r.Spec.Hostnames, gatewayv1.Hostname(h))
+	}
+
+	return gateway.FromTLSRoute(r)
+}
+
+func tcpRoute(name string, created time.Time, backends ...gatewayv1.BackendRef) gateway.Route {
+	return gateway.FromTCPRoute(&gatewayv1.TCPRoute{
+		ObjectMeta: l4Meta(name, created),
+		Spec: gatewayv1.TCPRouteSpec{
+			CommonRouteSpec: parentGW,
+			Rules:           []gatewayv1.TCPRouteRule{{BackendRefs: backends}},
+		},
+	})
+}
+
+func udpRoute(name string, created time.Time, backends ...gatewayv1.BackendRef) gateway.Route {
+	return gateway.FromUDPRoute(&gatewayv1.UDPRoute{
+		ObjectMeta: l4Meta(name, created),
+		Spec: gatewayv1.UDPRouteSpec{
+			CommonRouteSpec: parentGW,
+			Rules:           []gatewayv1.UDPRouteRule{{BackendRefs: backends}},
+		},
+	})
+}
+
+func tlsListener(name string, port gatewayv1.PortNumber, hostname string, mode gatewayv1.TLSModeType) gatewayv1.Listener {
+	l := httpListener(name, port, hostname)
+	l.Protocol = gatewayv1.TLSProtocolType
+	l.TLS = &gatewayv1.ListenerTLSConfig{Mode: &mode}
+	if mode == gatewayv1.TLSModeTerminate {
+		l.TLS.CertificateRefs = []gatewayv1.SecretObjectReference{{Name: certName}}
+	}
+
+	return l
+}
+
+func l4Listener(name string, port gatewayv1.PortNumber, protocol gatewayv1.ProtocolType) gatewayv1.Listener {
+	return gatewayv1.Listener{Name: gatewayv1.SectionName(name), Port: port, Protocol: protocol}
+}
+
+// withSecondBackend adds a Service backend2 to refs, on port 8080 with one
+// ready endpoint at ip:port.
+func withSecondBackend(refs *gateway.References, ip string, port int32) *gateway.References {
+	key := ktypes.NamespacedName{Namespace: testNamespace, Name: "backend2"}
+	refs.Services[key] = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: key.Namespace},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
+	}
+	refs.Endpoints[key] = []discoveryv1.EndpointSlice{{
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Ports:       []discoveryv1.EndpointPort{{Name: new("http"), Port: new(port)}},
+		Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{ip}}},
+	}}
+
+	return refs
+}
+
+func tcpProxyOf(f *listenerv3.Filter) *tcpproxyv3.TcpProxy {
+	GinkgoHelper()
+	proxy := &tcpproxyv3.TcpProxy{}
+	Expect(f.GetTypedConfig().UnmarshalTo(proxy)).To(Succeed())
+
+	return proxy
+}
+
+var _ = Describe("Layer 4 snapshot", func() {
+	now := time.Now()
+
+	It("should give each server name on a TLS port a filter chain", func() {
+		snapshot := snapshotOf(testGateway(tlsListener("tls", 443, "", gatewayv1.TLSModePassthrough)), testRefs("10.0.0.1", 8443),
+			tlsRoute("a", now, []string{"a.example.com"}, l4Backend("backend", 1)),
+			tlsRoute("wild", now, []string{"*.example.com"}, l4Backend("backend", 1)),
+			tlsRoute("newer", now.Add(time.Minute), []string{"a.example.com"}, l4Backend("missing", 1)),
+		)
+
+		l := resources[*listenerv3.Listener](snapshot, resourcev3.ListenerType)["tls-443"]
+		Expect(l.ValidateAll()).To(Succeed())
+		Expect(l.GetAddress().GetSocketAddress().GetPortValue()).To(Equal(uint32(10443)))
+		Expect(l.GetFilterChains()).To(HaveLen(2))
+
+		byName := map[string]*listenerv3.FilterChain{}
+		for _, c := range l.GetFilterChains() {
+			byName[c.GetFilterChainMatch().GetServerNames()[0]] = c
+			Expect(c.GetTransportSocket()).To(BeNil())
+		}
+		// The older route wins the name both claim.
+		Expect(tcpProxyOf(byName["a.example.com"].GetFilters()[0]).GetCluster()).To(Equal("default/backend/8080"))
+		Expect(byName).To(HaveKey("*.example.com"))
+	})
+
+	It("should terminate TLS on a chain whose listener says so", func() {
+		certPEM, keyPEM := selfSigned("t.example.com")
+		refs := testRefs("10.0.0.1", 3000)
+		withCert(refs, certPEM, keyPEM)
+
+		snapshot := snapshotOf(testGateway(
+			tlsListener("terminate", 8443, "t.example.com", gatewayv1.TLSModeTerminate),
+			tlsListener("passthrough", 8443, "p.example.com", gatewayv1.TLSModePassthrough),
+		), refs,
+			tlsRoute("t", now, nil, l4Backend("backend", 1)),
+		)
+
+		l := resources[*listenerv3.Listener](snapshot, resourcev3.ListenerType)["tls-8443"]
+		Expect(l.ValidateAll()).To(Succeed())
+		// The route attaches to both listeners, and serves each one's name.
+		Expect(l.GetFilterChains()).To(HaveLen(2))
+		for _, c := range l.GetFilterChains() {
+			if c.GetFilterChainMatch().GetServerNames()[0] == "t.example.com" {
+				Expect(c.GetTransportSocket()).NotTo(BeNil())
+			} else {
+				Expect(c.GetTransportSocket()).To(BeNil())
+			}
+		}
+	})
+
+	It("should send a TCP port to the oldest route's backends by weight", func() {
+		snapshot := snapshotOf(testGateway(l4Listener("tcp", 9000, gatewayv1.TCPProtocolType)),
+			withSecondBackend(testRefs("10.0.0.1", 3000), "10.0.0.2", 3000),
+			tcpRoute("old", now, l4Backend("backend", 3), l4Backend("backend2", 1)),
+			tcpRoute("new", now.Add(time.Minute), l4Backend("backend2", 1)),
+		)
+
+		l := resources[*listenerv3.Listener](snapshot, resourcev3.ListenerType)["tcp-9000"]
+		Expect(l.ValidateAll()).To(Succeed())
+		weights := map[string]uint32{}
+		for _, c := range tcpProxyOf(l.GetFilterChains()[0].GetFilters()[0]).GetWeightedClusters().GetClusters() {
+			weights[c.GetName()] = c.GetWeight()
+		}
+		Expect(weights).To(Equal(map[string]uint32{"default/backend/8080": 3, "default/backend2/8080": 1}))
+	})
+
+	It("should give a UDPRoute with several backends a cluster weighted by locality", func() {
+		snapshot := snapshotOf(testGateway(
+			l4Listener("udp", 53, gatewayv1.UDPProtocolType),
+			l4Listener("tcp", 53, gatewayv1.TCPProtocolType),
+		), withSecondBackend(testRefs("10.0.0.1", 5353), "10.0.0.2", 5353),
+			udpRoute("dns", now, l4Backend("backend", 1), l4Backend("backend2", 4)),
+		)
+
+		listeners := resources[*listenerv3.Listener](snapshot, resourcev3.ListenerType)
+		// No TCPRoute is attached, so the TCP port is not bound.
+		Expect(listeners).To(HaveLen(1))
+		l := listeners["udp-53"]
+		Expect(l.ValidateAll()).To(Succeed())
+		Expect(l.GetAddress().GetSocketAddress().GetProtocol()).To(Equal(corev3.SocketAddress_UDP))
+
+		clusters := resources[*clusterv3.Cluster](snapshot, resourcev3.ClusterType)
+		Expect(clusters).To(HaveKey("udp/default/dns"))
+		Expect(clusters["udp/default/dns"].GetCommonLbConfig().GetLocalityWeightedLbConfig()).NotTo(BeNil())
+
+		assignment := resources[*endpointv3.ClusterLoadAssignment](snapshot, resourcev3.EndpointType)["udp/default/dns"]
+		Expect(assignment.GetEndpoints()).To(HaveLen(2))
+		Expect(assignment.GetEndpoints()[0].GetLoadBalancingWeight().GetValue()).To(Equal(uint32(1)))
+		Expect(assignment.GetEndpoints()[1].GetLoadBalancingWeight().GetValue()).To(Equal(uint32(4)))
 	})
 })

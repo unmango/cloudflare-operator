@@ -23,8 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
-	ktypes "k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/unmango/cloudflare-operator/internal/gateway"
@@ -192,18 +190,12 @@ var _ = Describe("Envoy", Ordered, func() {
 
 		certPEM, keyPEM := selfSigned("secure.example.com")
 		refs := testRefs("127.0.0.1", int32(addr.Port))
-		refs.SecretsReadable = true
-		refs.Secrets = map[ktypes.NamespacedName]*corev1.Secret{
-			{Namespace: testNamespace, Name: "cert"}: {
-				Type: corev1.SecretTypeTLS,
-				Data: map[string][]byte{corev1.TLSCertKey: certPEM, corev1.TLSPrivateKeyKey: keyPEM},
-			},
-		}
+		withCert(refs, certPEM, keyPEM)
 
 		port := gatewayv1.PortNumber(freePort())
 		https := gatewayv1.Listener{
 			Name: "https", Port: port, Protocol: gatewayv1.HTTPSProtocolType,
-			TLS: &gatewayv1.ListenerTLSConfig{CertificateRefs: []gatewayv1.SecretObjectReference{{Name: "cert"}}},
+			TLS: &gatewayv1.ListenerTLSConfig{CertificateRefs: []gatewayv1.SecretObjectReference{{Name: certName}}},
 		}
 		model := gateway.Build(testGateway(httpListener("http", listener, ""), https), []gateway.Route{
 			httpRoute("r", time.Now(), withRule(gatewayv1.HTTPRouteRule{
@@ -232,7 +224,171 @@ var _ = Describe("Envoy", Ordered, func() {
 			return res.StatusCode, nil
 		}, 30*time.Second, 250*time.Millisecond).Should(Equal(http.StatusTeapot))
 	})
+
+	It("should forward TCP connections to a TCPRoute's backend", func() {
+		echo := tcpEcho("tcp:")
+		port := gatewayv1.PortNumber(freePort())
+		snapshot := snapshotOf(testGateway(httpListener("http", listener, ""), l4Listener("tcp", port, gatewayv1.TCPProtocolType)),
+			testRefs("127.0.0.1", int32(echo)),
+			tcpRoute("r", time.Now(), l4Backend("backend", 1)),
+		)
+		Expect(cache.SetSnapshot(context.Background(), node, snapshot)).To(Succeed())
+
+		Eventually(func() (string, error) {
+			return roundTrip(func() (net.Conn, error) { return net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port)) })
+		}, 30*time.Second, 250*time.Millisecond).Should(Equal("tcp:ping"))
+	})
+
+	It("should pass TLS through by server name, and terminate it where the listener says", func() {
+		certPEM, keyPEM := selfSigned("pass.example.com")
+		pair, err := tls.X509KeyPair(certPEM, keyPEM)
+		Expect(err).NotTo(HaveOccurred())
+		backend := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}))
+		backend.TLS = &tls.Config{Certificates: []tls.Certificate{pair}}
+		backend.StartTLS()
+		DeferCleanup(backend.Close)
+		passPort := backend.Listener.Addr().(*net.TCPAddr).Port
+
+		termPEM, termKey := selfSigned("term.example.com")
+		echo := tcpEcho("term:")
+		refs := withSecondBackend(testRefs("127.0.0.1", int32(passPort)), "127.0.0.1", int32(echo))
+		withCert(refs, termPEM, termKey)
+
+		port := gatewayv1.PortNumber(freePort())
+		snapshot := snapshotOf(testGateway(
+			httpListener("http", listener, ""),
+			tlsListener("pass", port, "pass.example.com", gatewayv1.TLSModePassthrough),
+			tlsListener("term", port, "term.example.com", gatewayv1.TLSModeTerminate),
+		), refs,
+			tlsRoute("pass", time.Now(), []string{"pass.example.com"}, l4Backend("backend", 1)),
+			tlsRoute("term", time.Now(), []string{"term.example.com"}, l4Backend("backend2", 1)),
+		)
+		Expect(cache.SetSnapshot(context.Background(), node, snapshot)).To(Succeed())
+
+		pool := x509.NewCertPool()
+		Expect(pool.AppendCertsFromPEM(certPEM)).To(BeTrue())
+		Expect(pool.AppendCertsFromPEM(termPEM)).To(BeTrue())
+		client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs:    pool,
+			ServerName: "pass.example.com",
+		}}}
+
+		// The backend's own certificate reaches the client, so the connection
+		// was passed through.
+		Eventually(func() (int, error) {
+			res, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", port))
+			if err != nil {
+				return 0, err
+			}
+			_ = res.Body.Close()
+
+			return res.StatusCode, nil
+		}, 30*time.Second, 250*time.Millisecond).Should(Equal(http.StatusTeapot))
+
+		Expect(roundTrip(func() (net.Conn, error) {
+			return tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{RootCAs: pool, ServerName: "term.example.com"})
+		})).To(Equal("term:ping"))
+
+		_, err = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{RootCAs: pool, ServerName: "other.example.com"})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should split UDP sessions across a UDPRoute's backends by weight", func() {
+		one, two := udpEcho("one:"), udpEcho("two:")
+		port := gatewayv1.PortNumber(freePort())
+		snapshot := snapshotOf(testGateway(httpListener("http", listener, ""), l4Listener("udp", port, gatewayv1.UDPProtocolType)),
+			withSecondBackend(testRefs("127.0.0.1", int32(one)), "127.0.0.1", int32(two)),
+			udpRoute("r", time.Now(), l4Backend("backend", 1), l4Backend("backend2", 1)),
+		)
+		Expect(cache.SetSnapshot(context.Background(), node, snapshot)).To(Succeed())
+
+		// Each socket is a session of its own, so enough of them reach both.
+		seen := map[string]bool{}
+		Eventually(func() map[string]bool {
+			reply, err := roundTrip(func() (net.Conn, error) { return net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", port)) })
+			if err == nil {
+				seen[reply] = true
+			}
+
+			return seen
+		}, 30*time.Second, 50*time.Millisecond).Should(And(HaveKey("one:ping"), HaveKey("two:ping")))
+	})
 })
+
+// roundTrip writes "ping" on a new connection and returns what comes back.
+func roundTrip(dial func() (net.Conn, error)) (string, error) {
+	conn, err := dial()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		return "", err
+	}
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		return "", err
+	}
+
+	buf := make([]byte, 64)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	return string(buf[:n]), nil
+}
+
+// tcpEcho serves one reply per connection: prefix, then what it read.
+func tcpEcho(prefix string) int {
+	GinkgoHelper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(lis.Close)
+
+	go func() {
+		for {
+			conn, err := lis.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = conn.Close() }()
+				buf := make([]byte, 64)
+				n, err := conn.Read(buf)
+				if err != nil {
+					return
+				}
+				_, _ = conn.Write(append([]byte(prefix), buf[:n]...))
+			}()
+		}
+	}()
+
+	return lis.Addr().(*net.TCPAddr).Port
+}
+
+// udpEcho answers each datagram with prefix, then the datagram.
+func udpEcho(prefix string) int {
+	GinkgoHelper()
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(conn.Close)
+
+	go func() {
+		buf := make([]byte, 64)
+		for {
+			n, addr, err := conn.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			_, _ = conn.WriteTo(append([]byte(prefix), buf[:n]...), addr)
+		}
+	}()
+
+	return conn.LocalAddr().(*net.UDPAddr).Port
+}
 
 func selfSigned(host string) ([]byte, []byte) {
 	GinkgoHelper()

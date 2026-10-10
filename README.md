@@ -85,9 +85,11 @@ The manager checks for the CRDs at startup and registers its Gateway controllers
 
 Each `Gateway` of a class this operator owns gets its own Envoy proxy, a Deployment and Service in the Gateway's namespace, which the manager programs over xDS.
 The class's `CloudflareGatewayConfig` decides how traffic reaches it: `template` provisions a `CloudflareTunnel` per Gateway whose rules send each listener's hostnames to Envoy, and leaving out both `template` and `tunnelRef` serves the Gateway inside the cluster only.
-Gateways accept HTTP and HTTPS listeners, and `HTTPRoute` and `GRPCRoute` attach to them, with cross-namespace backends allowed through a `ReferenceGrant`.
-An HTTPS listener terminates TLS with a `kubernetes.io/tls` Secret, which the operator can read only once the chart's `rbac.gatewayTLSSecrets.enabled` grants it; without that grant the listener reports `InvalidCertificateRef`.
-TLS, TCP and UDP routes and a shared `tunnelRef` tunnel follow.
+Gateways accept HTTP, HTTPS, TLS, TCP and UDP listeners, and `HTTPRoute`, `GRPCRoute`, `TLSRoute`, `TCPRoute` and `UDPRoute` attach to them, with cross-namespace backends allowed through a `ReferenceGrant`.
+An HTTPS listener, or a TLS listener in `Terminate` mode, terminates TLS with a `kubernetes.io/tls` Secret, which the operator can read only once the chart's `rbac.gatewayTLSSecrets.enabled` grants it; without that grant the listener reports `InvalidCertificateRef`.
+A TLS listener in `Passthrough` mode needs no Secret: it picks a `TLSRoute` by server name and forwards the connection still encrypted.
+The tunnel carries HTTP listeners only, so TLS, TCP and UDP traffic reaches a Gateway through its Envoy Service.
+A shared `tunnelRef` tunnel follows.
 
 ```yaml
 apiVersion: cloudflare.unmango.dev/v1alpha1

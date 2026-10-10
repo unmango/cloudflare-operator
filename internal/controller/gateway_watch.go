@@ -19,7 +19,7 @@ import (
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 )
 
-// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes;grpcroutes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes;grpcroutes;tlsroutes;tcproutes;udproutes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=referencegrants,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch
@@ -46,6 +46,15 @@ func watchGatewayInputs(b *builder.Builder, reader client.Reader, features gatew
 	}
 	if features.GRPCRoutes {
 		b = b.Watches(&gatewayv1.GRPCRoute{}, routes)
+	}
+	if features.TLSRoutes {
+		b = b.Watches(&gatewayv1.TLSRoute{}, routes)
+	}
+	if features.TCPRoutes {
+		b = b.Watches(&gatewayv1.TCPRoute{}, routes)
+	}
+	if features.UDPRoutes {
+		b = b.Watches(&gatewayv1.UDPRoute{}, routes)
 	}
 	if features.SecretsReadable {
 		b = b.Watches(&corev1.Secret{}, all)
@@ -91,6 +100,12 @@ func routeOf(obj client.Object) (gateway.Route, bool) {
 		return gateway.FromHTTPRoute(r), true
 	case *gatewayv1.GRPCRoute:
 		return gateway.FromGRPCRoute(r), true
+	case *gatewayv1.TLSRoute:
+		return gateway.FromTLSRoute(r), true
+	case *gatewayv1.TCPRoute:
+		return gateway.FromTCPRoute(r), true
+	case *gatewayv1.UDPRoute:
+		return gateway.FromUDPRoute(r), true
 	default:
 		return gateway.Route{}, false
 	}

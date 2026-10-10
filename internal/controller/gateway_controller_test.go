@@ -431,7 +431,7 @@ var _ = Describe("Gateway Controller", func() {
 
 	Context("When no listener is valid", func() {
 		BeforeEach(func() {
-			gw.Spec.Listeners[0].Protocol = gatewayv1.UDPProtocolType
+			gw.Spec.Listeners[0].Protocol = "INVALID"
 			createAll()
 		})
 
@@ -452,7 +452,7 @@ var _ = Describe("Gateway Controller", func() {
 			gw.Spec.Listeners = append(gw.Spec.Listeners, gatewayv1.Listener{
 				Name:     "invalid",
 				Port:     81,
-				Protocol: gatewayv1.UDPProtocolType,
+				Protocol: "INVALID",
 			})
 			createAll()
 		})
@@ -696,6 +696,66 @@ var _ = Describe("Gateway Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(snapshot.GetResources("type.googleapis.com/envoy.config.cluster.v3.Cluster")).
 				To(HaveKey("default/backend/8080"))
+		})
+	})
+
+	Context("When a TCPRoute names a TCP listener", func() {
+		var tcp *gatewayv1.TCPRoute
+
+		BeforeEach(func() {
+			reconciler.Features = gateway.Features{TCPRoutes: true, UDPRoutes: true}
+			gw.Spec.Listeners = []gatewayv1.Listener{
+				{Name: "tcp", Port: 5353, Protocol: gatewayv1.TCPProtocolType},
+				{Name: "udp", Port: 5353, Protocol: gatewayv1.UDPProtocolType},
+			}
+			createAll()
+
+			port := gatewayv1.PortNumber(5353)
+			tcp = &gatewayv1.TCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "dns", Namespace: testNamespace},
+				Spec: gatewayv1.TCPRouteSpec{
+					CommonRouteSpec: gatewayv1.CommonRouteSpec{ParentRefs: []gatewayv1.ParentReference{{Name: gwName}}},
+					Rules: []gatewayv1.TCPRouteRule{{BackendRefs: []gatewayv1.BackendRef{{
+						BackendObjectReference: gatewayv1.BackendObjectReference{Name: "dns", Port: &port},
+					}}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, tcp)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			deleteIfExists(ctx, client.ObjectKeyFromObject(tcp), &gatewayv1.TCPRoute{})
+		})
+
+		It("should expose both transports on the Service and attach the route to the TCP listener only", func() {
+			reconcileOnce()
+
+			ports := service().Spec.Ports
+			Expect(ports).To(HaveLen(2))
+			Expect(ports[0].Protocol).To(Equal(corev1.ProtocolTCP))
+			Expect(ports[1].Protocol).To(Equal(corev1.ProtocolUDP))
+
+			listeners := observed().Status.Listeners
+			Expect(listeners[0].AttachedRoutes).To(Equal(int32(1)))
+			Expect(listeners[1].AttachedRoutes).To(Equal(int32(0)))
+		})
+
+		It("should accept the route and report its missing backend", func() {
+			routes := RouteReconciler[*gatewayv1.TCPRoute]{
+				Client:   k8sClient,
+				Features: reconciler.Features,
+				New:      func() *gatewayv1.TCPRoute { return &gatewayv1.TCPRoute{} },
+			}
+			_, err := routes.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(tcp)})
+			Expect(err).NotTo(HaveOccurred())
+
+			obj := &gatewayv1.TCPRoute{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(tcp), obj)).To(Succeed())
+			Expect(obj.Status.Parents).To(HaveLen(1))
+			conditions := obj.Status.Parents[0].Conditions
+			Expect(meta.IsStatusConditionTrue(conditions, string(gatewayv1.RouteConditionAccepted))).To(BeTrue())
+			Expect(meta.FindStatusCondition(conditions, string(gatewayv1.RouteConditionResolvedRefs)).Reason).
+				To(Equal(string(gatewayv1.RouteReasonBackendNotFound)))
 		})
 	})
 

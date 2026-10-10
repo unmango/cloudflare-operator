@@ -135,10 +135,13 @@ Envoy does the routing, because a tunnel's ingress rules match only a hostname a
 The `gateway` controller provisions, per Gateway, an Envoy Deployment and Service named by `gateway.EnvoyObjectName`, and for a class whose `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` named after the Gateway whose rules point at that Service.
 It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, so a Gateway can serve inside the cluster while its tunnel is pending.
 
-Everything a Gateway's configuration depends on is read by `gateway.Load` and turned into a `gateway.Model` by `gateway.Build`, a pure function: validated listeners, the HTTPRoutes and GRPCRoutes that name the Gateway with the listeners each attaches to, and their backends resolved to Service ports.
-The `gateway` controller writes listener status and `attachedRoutes` from it, the `httproute` and `grpcroute` controllers write each route's `status.parents` from it, and the `gateway-xds` controller translates it, so all three always agree.
+Everything a Gateway's configuration depends on is read by `gateway.Load` and turned into a `gateway.Model` by `gateway.Build`, a pure function: validated listeners, the routes of every kind that name the Gateway with the listeners each attaches to, and their backends resolved to Service ports.
+The `gateway` controller writes listener status and `attachedRoutes` from it, one route controller per kind writes each route's `status.parents` from it, and the `gateway-xds` controller translates it, so all three always agree.
 A GRPCRoute is reduced to an HTTPRoute on the way in: a method match is a path, and its backends are HTTP/2.
-The GRPCRoute controller is registered only when that CRD is installed.
+TLSRoutes, TCPRoutes and UDPRoutes are reduced to a single rule holding only backends, and translated in `internal/xds/l4.go`.
+A connection matches nothing beyond its listener and, for TLS, its server name, so when several routes claim the same connections the oldest wins.
+Envoy's UDP proxy has no weighted clusters, so a UDPRoute with several backends gets a cluster of its own with one locality per backend, weighted like the backend.
+The controller of each route kind other than HTTPRoute is registered only when that kind's CRD is installed.
 
 The `gateway-xds` controller translates each Gateway into an xDS snapshot in `internal/xds`, keyed by the node id `<namespace>/<name>`, and the manager serves it over ADS on port 18000.
 Each hostname a route serves becomes an Envoy virtual host, which gives the hostname precedence Gateway API asks for, and matches within one are ordered by match precedence.
