@@ -244,6 +244,12 @@ func intersect(listener *gatewayv1.Hostname, route []gatewayv1.Hostname) []strin
 	return out
 }
 
+// HostCovers reports whether a route serving pattern serves requests for host
+// too: "*" covers every host, and otherwise as matchesHost.
+func HostCovers(pattern, host string) bool {
+	return pattern == "*" || matchesHost(pattern, host)
+}
+
 // matchesHost reports whether pattern covers host. An exact pattern covers only
 // itself. A wildcard covers every host with at least one more label in front
 // of its suffix, and every narrower wildcard.

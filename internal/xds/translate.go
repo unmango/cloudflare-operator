@@ -264,15 +264,17 @@ func httpsFilterChain(routeName string, l gateway.Listener) (*listenerv3.FilterC
 // entry is one match of one rule of an attached route, served on one host.
 type entry struct {
 	route *gateway.AttachedRoute
+	host  string
 	rule  int
 	match int
 }
 
 // routeConfiguration holds a virtual host for each hostname the routes attached
-// to the given listeners serve. Envoy picks the virtual host with the most
-// specific domain, which is the precedence Gateway API gives hostnames across
-// routes; within one, routes are ordered by match precedence. Every request
-// that matches nothing gets a 404.
+// to the given listeners serve. Envoy picks the one virtual host with the most
+// specific domain, but Gateway API lets a request fall through to a route with
+// a less specific hostname when no rule of a more specific one matches it, so
+// each virtual host also carries the entries of every hostname that covers its
+// own, after them. Every request that matches nothing gets a 404.
 func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters map[string]*gateway.Cluster) *routev3.RouteConfiguration {
 	byHost := map[string][]entry{}
 	seen := map[string]bool{}
@@ -288,7 +290,7 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 								continue
 							}
 							seen[key] = true
-							byHost[host] = append(byHost[host], entry{route: route, rule: rule, match: match})
+							byHost[host] = append(byHost[host], entry{route: route, host: host, rule: rule, match: match})
 						}
 					}
 				}
@@ -304,11 +306,24 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 
 	config := &routev3.RouteConfiguration{Name: name}
 	for _, host := range hosts {
-		entries := byHost[host]
+		var entries []entry
+		for _, other := range hosts {
+			if gateway.HostCovers(other, host) {
+				entries = append(entries, byHost[other]...)
+			}
+		}
 		slices.SortStableFunc(entries, compareEntries)
 
 		vh := &routev3.VirtualHost{Name: host, Domains: []string{host}}
+		added := map[string]bool{}
 		for _, e := range entries {
+			// A route naming both this hostname and one that covers it would
+			// otherwise appear twice, the second time unreachable.
+			key := fmt.Sprintf("%s|%d|%d", e.route.Key(), e.rule, e.match)
+			if added[key] {
+				continue
+			}
+			added[key] = true
 			vh.Routes = append(vh.Routes, envoyRoute(e, clusters))
 		}
 		config.VirtualHosts = append(config.VirtualHosts, vh)
@@ -317,13 +332,18 @@ func routeConfiguration(name string, m *gateway.Model, listeners []int, clusters
 	return config
 }
 
-// compareEntries orders matches by Gateway API precedence: an exact path, then
-// a regular expression, then the longest prefix; a method match; the most
-// header matches; the most query matches; then the oldest route, the route
-// first by namespace and name, and the order within the route.
+// compareEntries orders matches by Gateway API precedence: the most specific
+// hostname, by its characters outside a wildcard and then by all of them; an
+// exact path, then a regular expression, then the longest prefix; a method
+// match; the most header matches; the most query matches; then the oldest
+// route, the route first by namespace and name, and the order within the route.
 func compareEntries(a, b entry) int {
 	ma := &a.route.Rules[a.rule].Matches[a.match]
 	mb := &b.route.Rules[b.rule].Matches[b.match]
+
+	exact := func(host string) int {
+		return len(strings.TrimPrefix(host, "*"))
+	}
 
 	pathRank := func(m *gatewayv1.HTTPRouteMatch) (int, int) {
 		t, v := pathOf(m)
@@ -347,6 +367,8 @@ func compareEntries(a, b entry) int {
 	}
 
 	return cmp.Or(
+		cmp.Compare(exact(b.host), exact(a.host)),
+		cmp.Compare(len(b.host), len(a.host)),
 		cmp.Compare(ta, tb),
 		cmp.Compare(la, lb),
 		cmp.Compare(method(ma), method(mb)),

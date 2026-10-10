@@ -231,6 +231,46 @@ var _ = Describe("Snapshot", func() {
 		Expect(vh.GetRoutes()[3].GetMatch().GetPrefix()).To(Equal("/"))
 	})
 
+	It("should fall through to a route with a less specific hostname", func() {
+		snapshot := snapshotOf(testGateway(httpListener("http", 80, "")), testRefs("10.0.0.1", 9000),
+			httpRoute("wild", now, withHostnames("*.example.com"), withRule(gatewayv1.HTTPRouteRule{
+				Matches:     []gatewayv1.HTTPRouteMatch{prefix("/api")},
+				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef("backend", 1)},
+			})),
+			httpRoute("web", now, withHostnames("web.example.com"), withRule(gatewayv1.HTTPRouteRule{
+				Matches:     []gatewayv1.HTTPRouteMatch{prefix("/web")},
+				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef("backend", 1)},
+			})),
+			httpRoute("any", now, withRule(gatewayv1.HTTPRouteRule{
+				Matches:     []gatewayv1.HTTPRouteMatch{exact("/health")},
+				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef("backend", 1)},
+			})),
+		)
+
+		const anyHealth = "HTTPRoute/default/any/0/0"
+
+		routes := resources[*routev3.RouteConfiguration](snapshot, resourcev3.RouteType)
+		byDomain := map[string]*routev3.VirtualHost{}
+		for _, vh := range routes["http-80"].GetVirtualHosts() {
+			byDomain[vh.GetDomains()[0]] = vh
+		}
+
+		// A request for web.example.com/api matches no rule of the route for
+		// web.example.com, so the wildcard route serves it, and an exact path
+		// on the catch-all route still comes after both hostnames.
+		Expect(routeNames(byDomain["web.example.com"])).To(Equal([]string{
+			"HTTPRoute/default/web/0/0",
+			"HTTPRoute/default/wild/0/0",
+			anyHealth,
+		}))
+		Expect(routeNames(byDomain["*.example.com"])).To(Equal([]string{
+			"HTTPRoute/default/wild/0/0",
+			anyHealth,
+		}))
+		Expect(routeNames(byDomain["*"])).To(Equal([]string{anyHealth}))
+		Expect(routes["http-80"].ValidateAll()).To(Succeed())
+	})
+
 	It("should send traffic to the ready endpoints of a Service port", func() {
 		snapshot := snapshotOf(testGateway(httpListener("http", 80, "")), testRefs("10.0.0.1", 9000),
 			httpRoute("r", now, withRule(gatewayv1.HTTPRouteRule{

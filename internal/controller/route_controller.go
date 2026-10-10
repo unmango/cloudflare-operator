@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -63,8 +64,15 @@ func (r *RouteReconciler[T]) Reconcile(ctx context.Context, req ctrl.Request) (c
 	original, _ := obj.DeepCopyObject().(client.Object)
 	status := routeStatusOf(obj)
 	status.Parents = mergeParents(status.Parents, desired, obj.GetGeneration())
+	if equality.Semantic.DeepEqual(routeStatusOf(original).Parents, status.Parents) {
+		return ctrl.Result{}, nil
+	}
 
-	return ctrl.Result{}, r.Status().Patch(ctx, obj, client.MergeFrom(original))
+	// Other controllers write their own entries into the same list, and a merge
+	// patch replaces a list whole, so a patch built from a stale read must fail
+	// rather than drop an entry written since.
+	return ctrl.Result{}, r.Status().Patch(ctx, obj,
+		client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 }
 
 // parentStatuses builds the Gateway named key and reads off the route's status

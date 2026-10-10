@@ -17,6 +17,11 @@ go mod download sigs.k8s.io/gateway-api
 crds="$(go list -m -f '{{.Dir}}' sigs.k8s.io/gateway-api)/config/crd/standard"
 kubectl apply --server-side -f "$crds"
 
+# kind labels its control-plane node, the only node, as excluded from external
+# load balancers, and cloud-provider-kind would then give the Envoy Services no
+# backends to send to.
+kubectl label nodes --all node.kubernetes.io/exclude-from-external-load-balancers-
+
 kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
 # The Gateway controllers never call the Cloudflare API without a tunnel, but
 # the chart wires the token from a Secret either way.
