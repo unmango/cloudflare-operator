@@ -821,6 +821,25 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					record("other.test")
 				})
 
+				It("should keep its records while the zone reads as missing", func() {
+					setIngress(entry(webHost, "", nil))
+					reconcileOnce()
+					record(webHost)
+
+					zoneErr = &cloudflare.Error{
+						StatusCode: http.StatusNotFound,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusNotFound},
+					}
+					reconcileOnce()
+
+					record(webHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Message", ContainSubstring("does not exist")),
+					)))
+				})
+
 				It("should leave alone a record it does not own", func() {
 					Expect(k8sClient.Create(ctx, &cfv1alpha1.DnsRecord{
 						ObjectMeta: metav1.ObjectMeta{

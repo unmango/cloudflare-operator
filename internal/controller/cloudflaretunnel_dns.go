@@ -2,9 +2,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"maps"
 	"slices"
 	"strings"
@@ -119,9 +119,9 @@ func inZone(host, zone string) bool {
 // dnsRecordName is the deterministic name of the DnsRecord a tunnel owns for
 // host, so that every reconcile converges on the same object.
 func dnsRecordName(tunnel *cfv1alpha1.CloudflareTunnel, host string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(host))
-	suffix := fmt.Sprintf("-%08x", h.Sum32())
+	// Eighty bits of the digest keep distinct hostnames from sharing a name.
+	digest := sha256.Sum256([]byte(host))
+	suffix := fmt.Sprintf("-%x", digest[:10])
 
 	// An object name is at most 253 characters.
 	prefix := tunnel.Name
@@ -156,6 +156,10 @@ func (r *CloudflareTunnelReconciler) reconcileDns(ctx context.Context, tunnel *c
 			zoneNames[zoneId] = zone.Name
 		}
 	}
+	// A zone that reads as missing may be a passing API fault, so the records
+	// already written for it are kept rather than deleted along with the DNS
+	// they serve.
+	keep := map[string]bool{}
 	for _, host := range slices.Sorted(maps.Keys(desired)) {
 		zoneId := desired[host].ZoneId
 		name, checked := zoneNames[zoneId]
@@ -163,6 +167,7 @@ func (r *CloudflareTunnelReconciler) reconcileDns(ctx context.Context, tunnel *c
 		case !checked:
 		case name == "":
 			problems = append(problems, fmt.Sprintf("hostname %s names zone %s, which does not exist", host, zoneId))
+			keep[dnsRecordName(tunnel, host)] = true
 			delete(desired, host)
 		case !inZone(host, name):
 			problems = append(problems, fmt.Sprintf("hostname %s is not in zone %s (%s)", host, name, zoneId))
@@ -176,7 +181,6 @@ func (r *CloudflareTunnelReconciler) reconcileDns(ctx context.Context, tunnel *c
 	}
 
 	result := tunnelDns{}
-	keep := map[string]bool{}
 	for _, host := range slices.Sorted(maps.Keys(desired)) {
 		settings := desired[host]
 		record := &cfv1alpha1.DnsRecord{ObjectMeta: metav1.ObjectMeta{
