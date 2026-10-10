@@ -107,8 +107,14 @@ jobs:
       - run: nix develop -c make setup-test-conformance
 
       # cloud-provider-kind gives each Gateway's Envoy Service a LoadBalancer
-      # address on the kind network, which the runner can reach.
-      - run: nix develop -c bash -c 'cloud-provider-kind > bin/cloud-provider-kind.log 2>&1 &'
+      # address on the kind network, which the runner can reach. Its own
+      # Gateway API controller and ingress are off: it would install its own
+      # copy of the CRDs over the ones the suite runs against.
+      - run: |
+          nix develop -c bash -c '
+            setsid nohup cloud-provider-kind --gateway-channel=disabled --enable-default-ingress=false \
+              > bin/cloud-provider-kind.log 2>&1 < /dev/null &
+          '
 
       - run: nix develop -c make test-conformance
 
@@ -125,8 +131,12 @@ jobs:
         run: |
           nix develop -c bash -c '
             export KUBECONFIG="$PWD/bin/cloudflare-operator-e2e.kubeconfig"
+            kubectl -n cloudflare-operator-system logs deploy/cloudflare-operator-controller-manager --tail=100 || true
             kubectl get gateways,httproutes,grpcroutes -A -o wide || true
-            kubectl -n cloudflare-operator-system logs deploy/cloudflare-operator-controller-manager --tail=300 || true
+            kubectl get services -A -o wide || true
+            kubectl get events -A --field-selector reason!=Pulled | grep -iE "loadbalancer|ensur" || true
+            docker ps -a || true
+            tail -n 100 bin/cloud-provider-kind.log || true
           '
 
       - if: always()
