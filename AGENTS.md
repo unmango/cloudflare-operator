@@ -20,6 +20,8 @@ make check       # nix flake check, which also compiles the operator
 make fmt         # nix fmt (treefmt: gofmt, nixfmt, shfmt)
 make tidy        # go mod tidy and regenerate gomod2nix.toml
 make test-e2e    # create a kind cluster and run the e2e-tagged suite
+make setup-test-conformance  # kind cluster with the operator and a conformance GatewayClass
+make test-conformance        # run the Gateway API conformance suite against it
 make kind-load   # stream the Nix-built image into the kind cluster
 make dist        # render config/default into dist/install.yaml
 make helm        # regenerate dist/chart from that
@@ -34,7 +36,7 @@ After changing `*_types.go` or any kubebuilder marker, run `make manifests gener
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
-`dist/chart` is generated too, with six exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, `templates/xds/`, and `templates/rbac/tunnel-secret-reader.yaml`.
+`dist/chart` is generated too, with seven exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, `templates/xds/`, `templates/rbac/tunnel-secret-reader.yaml`, and `templates/rbac/gateway-tls-secret-reader.yaml`.
 Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
@@ -123,16 +125,31 @@ The manager role grants no access to core Secrets or ConfigMaps; it does manage 
 The chart grants it through `rbac.tunnelSecrets.enabled`, off by default and narrowable to named resources with `rbac.tunnelSecrets.resourceNames`.
 Without it a tunnel that references a Secret or ConfigMap goes Degraded with `InvalidSpec` and never reaches the Cloudflare API; an inline value and an absent tunnel secret are unaffected.
 
+HTTPS listeners on a Gateway are the other reader, through `rbac.gatewayTLSSecrets.enabled`, also off by default.
+Envoy gets its certificates over xDS, so the manager watches them, and that takes `list` and `watch` across the cluster; the manager's cache holds only Secrets of type `kubernetes.io/tls`.
+The manager checks for the access with a `SelfSubjectAccessReview` when it starts and watches Secrets only if it has it, so granting it needs a restart; without it every HTTPS listener reports `InvalidCertificateRef`.
+
 ### Gateway API
 
 Envoy does the routing, because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matching, weighted backends and filters.
 The `gateway` controller provisions, per Gateway, an Envoy Deployment and Service named by `gateway.EnvoyObjectName`, and for a class whose `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` named after the Gateway whose rules point at that Service.
 It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, so a Gateway can serve inside the cluster while its tunnel is pending.
 
+Everything a Gateway's configuration depends on is read by `gateway.Load` and turned into a `gateway.Model` by `gateway.Build`, a pure function: validated listeners, the HTTPRoutes and GRPCRoutes that name the Gateway with the listeners each attaches to, and their backends resolved to Service ports.
+The `gateway` controller writes listener status and `attachedRoutes` from it, the `httproute` and `grpcroute` controllers write each route's `status.parents` from it, and the `gateway-xds` controller translates it, so all three always agree.
+A GRPCRoute is reduced to an HTTPRoute on the way in: a method match is a path, and its backends are HTTP/2.
+The GRPCRoute controller is registered only when that CRD is installed.
+
 The `gateway-xds` controller translates each Gateway into an xDS snapshot in `internal/xds`, keyed by the node id `<namespace>/<name>`, and the manager serves it over ADS on port 18000.
+Each hostname a route serves becomes an Envoy virtual host, which gives the hostname precedence Gateway API asks for, and matches within one are ordered by match precedence.
+Backends are EDS clusters fed from EndpointSlices, and a backend that does not resolve keeps its share of traffic, answered with a 500 through `cluster_not_found_response_code`.
 It writes nothing to the API server and runs on every replica rather than only the leader, since an Envoy can reach any replica through the Service.
 Envoy finds that Service through its bootstrap, passed inline with `--config-yaml`, and the manager finds the Service by the `app.kubernetes.io/component: xds` label in its own namespace, because kustomize and the chart name it differently; `--xds-address` overrides the lookup.
 The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; run them after changing the bootstrap or the translation.
+
+Done for the Gateway API means passing its conformance suite, which the `conformance` CI job runs against a kind cluster.
+`test/conformance` is behind the `conformance` build tag, and `hack/conformance/options.yaml` names the GatewayClass and the features the operator claims; claim a feature there only once its tests pass.
+The class's Envoy Services are LoadBalancers, which `cloud-provider-kind` gives addresses the runner can reach, so the suite talks to Envoy directly and the tunnel stays out of it.
 
 Listener ports below 1024 are bound 10000 higher inside the pod, because Envoy runs unprivileged, and the Service maps the listener port onto it.
 The helm plugin does not render `config/network-policy`, so the policy letting Envoy reach the manager lives in the hand-owned `templates/xds/`.

@@ -202,6 +202,20 @@ rbac:
     ##
     resourceNames: []
 
+  ## Read access to the TLS Secrets HTTPS listeners on a Gateway name in
+  ## tls.certificateRefs.
+  ##
+  ## Envoy receives its certificates from the manager, so the manager has to
+  ## read them. It watches them to pick up renewals, which takes list and
+  ## watch across the cluster; its cache holds only Secrets of type
+  ## kubernetes.io/tls. Without this role every HTTPS listener reports
+  ## ResolvedRefs False with InvalidCertificateRef, and HTTP listeners are
+  ## unaffected. The manager checks for the access when it starts, so changing
+  ## this needs a restart.
+  ##
+  gatewayTLSSecrets:
+    enabled: false
+
   ## Helper roles for CRD management (admin/editor/viewer)
   ##
   helpers:

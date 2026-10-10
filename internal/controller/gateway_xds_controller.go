@@ -22,7 +22,8 @@ import (
 // through the xDS Service and has to find its snapshot there.
 type GatewayXDSReconciler struct {
 	client.Client
-	Cache cachev3.SnapshotCache
+	Cache    cachev3.SnapshotCache
+	Features gateway.Features
 }
 
 func (r *GatewayXDSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -45,7 +46,12 @@ func (r *GatewayXDSReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	snapshot, err := xds.Snapshot(gateway.Listeners(gw))
+	model, refs, err := buildGateway(ctx, r.Client, gw, r.Features)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	snapshot, err := xds.Snapshot(model, refs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -56,9 +62,11 @@ func (r *GatewayXDSReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *GatewayXDSReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).
-		Watches(&gatewayv1.GatewayClass{}, gatewaysForClassHandler(mgr.GetClient())).
+		Watches(&gatewayv1.GatewayClass{}, gatewaysForClassHandler(mgr.GetClient()))
+
+	return watchGatewayInputs(b, mgr.GetClient(), r.Features, true).
 		WithOptions(controller.Options{NeedLeaderElection: new(false)}).
 		Named("gateway-xds").
 		Complete(r)

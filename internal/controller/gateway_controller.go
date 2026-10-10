@@ -57,8 +57,9 @@ type XDSAddressResolver interface {
 // Gateway's status. GatewayXDSReconciler programs the proxy.
 type GatewayReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	XDS    XDSAddressResolver
+	Scheme   *runtime.Scheme
+	XDS      XDSAddressResolver
+	Features gateway.Features
 }
 
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
@@ -91,7 +92,11 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	log.Info(msgStartingReconciliation)
 
-	status := newGatewayStatus(gw)
+	model, _, err := buildGateway(ctx, r.Client, gw, r.Features)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	status := newGatewayStatus(model)
 
 	config, accepted := r.accept(ctx, gw, class, status)
 	if !accepted {
@@ -357,7 +362,7 @@ func serviceAddresses(svc *corev1.Service) []gatewayv1.GatewayStatusAddress {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
@@ -365,7 +370,9 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Acceptance depends on the class and its parameters, which change
 		// without any edit to the Gateway.
 		Watches(&gatewayv1.GatewayClass{}, gatewaysForClassHandler(mgr.GetClient())).
-		Watches(&cfv1alpha1.CloudflareGatewayConfig{}, gatewaysForConfigHandler(mgr.GetClient())).
+		Watches(&cfv1alpha1.CloudflareGatewayConfig{}, gatewaysForConfigHandler(mgr.GetClient()))
+
+	return watchGatewayInputs(b, mgr.GetClient(), r.Features, false).
 		Named("gateway").
 		Complete(r)
 }

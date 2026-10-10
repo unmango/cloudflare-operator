@@ -85,7 +85,9 @@ The manager checks for the CRDs at startup and registers its Gateway controllers
 
 Each `Gateway` of a class this operator owns gets its own Envoy proxy, a Deployment and Service in the Gateway's namespace, which the manager programs over xDS.
 The class's `CloudflareGatewayConfig` decides how traffic reaches it: `template` provisions a `CloudflareTunnel` per Gateway whose rules send each listener's hostnames to Envoy, and leaving out both `template` and `tunnelRef` serves the Gateway inside the cluster only.
-Gateways accept HTTP listeners for now; routes, the other listener protocols, and a shared `tunnelRef` tunnel follow.
+Gateways accept HTTP and HTTPS listeners, and `HTTPRoute` and `GRPCRoute` attach to them, with cross-namespace backends allowed through a `ReferenceGrant`.
+An HTTPS listener terminates TLS with a `kubernetes.io/tls` Secret, which the operator can read only once the chart's `rbac.gatewayTLSSecrets.enabled` grants it; without that grant the listener reports `InvalidCertificateRef`.
+TLS, TCP and UDP routes and a shared `tunnelRef` tunnel follow.
 
 ```yaml
 apiVersion: cloudflare.unmango.dev/v1alpha1

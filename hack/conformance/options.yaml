@@ -1,0 +1,26 @@
+# Options for the Gateway API conformance suite, read by test/conformance
+# through --conformance-options-file. A feature listed here is one the operator
+# claims; the suite runs every test whose features are all claimed.
+gatewayClassName: cloudflare-conformance
+conformanceProfiles:
+  - GATEWAY-HTTP
+  - GATEWAY-GRPC
+supportedFeatures:
+  - Gateway
+  - GatewayPort8080
+  - HTTPRoute
+  - HTTPRouteMethodMatching
+  - HTTPRouteQueryParamMatching
+  - HTTPRouteResponseHeaderModification
+  - GRPCRoute
+  - ReferenceGrant
+cleanupBaseResources: true
+cleanupTestResources: true
+debug: false
+implementation:
+  organization: unmango
+  project: cloudflare-operator
+  url: https://github.com/unmango/cloudflare-operator
+  version: main
+  contact:
+    - "@UnstoppableMango"

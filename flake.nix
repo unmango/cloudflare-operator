@@ -57,6 +57,7 @@
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
+              cloud-provider-kind
               cloudflared
               ginkgo
               gnumake

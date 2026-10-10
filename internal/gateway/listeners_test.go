@@ -35,7 +35,7 @@ func condition(l gateway.Listener, t gatewayv1.ListenerConditionType) *metav1.Co
 
 var _ = Describe("Listeners", func() {
 	It("should accept an HTTP listener and support HTTPRoute on it", func() {
-		listeners := gateway.Listeners(gatewayWith(listener("http", 80, gatewayv1.HTTPProtocolType, "")))
+		listeners := gateway.Listeners(gatewayWith(listener("http", 80, gatewayv1.HTTPProtocolType, "")), nil)
 
 		Expect(listeners).To(HaveLen(1))
 		l := listeners[0]
@@ -43,14 +43,15 @@ var _ = Describe("Listeners", func() {
 		Expect(condition(l, gatewayv1.ListenerConditionAccepted).Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition(l, gatewayv1.ListenerConditionResolvedRefs).Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition(l, gatewayv1.ListenerConditionConflicted).Status).To(Equal(metav1.ConditionFalse))
-		Expect(l.SupportedKinds).To(HaveLen(1))
+		Expect(l.SupportedKinds).To(HaveLen(2))
 		Expect(string(l.SupportedKinds[0].Kind)).To(Equal("HTTPRoute"))
+		Expect(string(l.SupportedKinds[1].Kind)).To(Equal("GRPCRoute"))
 		Expect(string(*l.SupportedKinds[0].Group)).To(Equal(gatewayv1.GroupName))
 	})
 
 	DescribeTable("should not accept a protocol that is not implemented yet",
 		func(protocol gatewayv1.ProtocolType) {
-			l := gateway.Listeners(gatewayWith(listener("l", 443, protocol, "")))[0]
+			l := gateway.Listeners(gatewayWith(listener("l", 443, protocol, "")), nil)[0]
 
 			Expect(l.Valid).To(BeFalse())
 			accepted := condition(l, gatewayv1.ListenerConditionAccepted)
@@ -58,7 +59,6 @@ var _ = Describe("Listeners", func() {
 			Expect(accepted.Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedProtocol)))
 			Expect(l.SupportedKinds).To(BeEmpty())
 		},
-		Entry("HTTPS", gatewayv1.HTTPSProtocolType),
 		Entry("TLS", gatewayv1.TLSProtocolType),
 		Entry("TCP", gatewayv1.TCPProtocolType),
 		Entry("UDP", gatewayv1.UDPProtocolType),
@@ -73,7 +73,7 @@ var _ = Describe("Listeners", func() {
 			{Group: &core, Kind: "Service"},
 		}}
 
-		out := gateway.Listeners(gatewayWith(l))[0]
+		out := gateway.Listeners(gatewayWith(l), nil)[0]
 
 		Expect(out.Valid).To(BeFalse())
 		resolved := condition(out, gatewayv1.ListenerConditionResolvedRefs)
@@ -90,7 +90,7 @@ var _ = Describe("Listeners", func() {
 			listener("a", 80, gatewayv1.HTTPProtocolType, "example.com"),
 			listener("b", 80, gatewayv1.HTTPProtocolType, "example.com"),
 			listener("c", 80, gatewayv1.HTTPProtocolType, "other.example.com"),
-		))
+		), nil)
 
 		for _, l := range listeners[:2] {
 			conflicted := condition(l, gatewayv1.ListenerConditionConflicted)
@@ -105,7 +105,7 @@ var _ = Describe("Listeners", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("a", 80, gatewayv1.HTTPProtocolType, ""),
 			listener("b", 80, gatewayv1.HTTPProtocolType, ""),
-		))
+		), nil)
 
 		Expect(listeners[0].Valid).To(BeFalse())
 		Expect(listeners[1].Valid).To(BeFalse())
@@ -115,7 +115,7 @@ var _ = Describe("Listeners", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("http", 8080, gatewayv1.HTTPProtocolType, ""),
 			listener("tcp", 8080, gatewayv1.TCPProtocolType, ""),
-		))
+		), nil)
 
 		conflicted := condition(listeners[0], gatewayv1.ListenerConditionConflicted)
 		Expect(conflicted.Status).To(Equal(metav1.ConditionTrue))
@@ -127,14 +127,14 @@ var _ = Describe("Listeners", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("tcp", 53, gatewayv1.TCPProtocolType, ""),
 			listener("udp", 53, gatewayv1.UDPProtocolType, ""),
-		))
+		), nil)
 
 		Expect(condition(listeners[0], gatewayv1.ListenerConditionConflicted).Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition(listeners[1], gatewayv1.ListenerConditionConflicted).Status).To(Equal(metav1.ConditionFalse))
 	})
 
 	It("should reject a port Envoy reserves", func() {
-		l := gateway.Listeners(gatewayWith(listener("admin", 19001, gatewayv1.HTTPProtocolType, "")))[0]
+		l := gateway.Listeners(gatewayWith(listener("admin", 19001, gatewayv1.HTTPProtocolType, "")), nil)[0]
 
 		Expect(l.Valid).To(BeFalse())
 		Expect(condition(l, gatewayv1.ListenerConditionAccepted).Reason).To(Equal(string(gatewayv1.ListenerReasonPortUnavailable)))
@@ -144,7 +144,7 @@ var _ = Describe("Listeners", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("http", 80, gatewayv1.HTTPProtocolType, ""),
 			listener("high", 10080, gatewayv1.HTTPProtocolType, ""),
-		))
+		), nil)
 
 		Expect(listeners[0].Valid).To(BeFalse())
 		Expect(condition(listeners[0], gatewayv1.ListenerConditionAccepted).Reason).To(Equal(string(gatewayv1.ListenerReasonPortUnavailable)))

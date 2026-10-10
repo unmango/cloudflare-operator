@@ -1,0 +1,24 @@
+# The GatewayClass the conformance suite runs against. Its Envoy Services are
+# LoadBalancers so that cloud-provider-kind gives each Gateway an address the
+# suite, running on the host, can reach. No tunnel: conformance covers Envoy,
+# and the tunnel is covered by the envtest and e2e suites.
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareGatewayConfig
+metadata:
+  name: conformance
+  namespace: cloudflare-operator-system
+spec:
+  envoy:
+    serviceType: LoadBalancer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cloudflare-conformance
+spec:
+  controllerName: cloudflare.unmango.dev/gateway-controller
+  parametersRef:
+    group: cloudflare.unmango.dev
+    kind: CloudflareGatewayConfig
+    name: conformance
+    namespace: cloudflare-operator-system
