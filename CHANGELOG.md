@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/unmango/cloudflare-operator/compare/v0.4.0...v0.5.0) (2026-10-10)
+
+
+### Features
+
+* **gateway:** provision an Envoy proxy per Gateway and program it over xDS ([#254](https://github.com/unmango/cloudflare-operator/issues/254)) ([bf084f1](https://github.com/unmango/cloudflare-operator/commit/bf084f1ca2130093de25a76b8d837129a993f52a))
+
+
+### Bug Fixes
+
+* **renovate:** reference shared presets by name ([#242](https://github.com/unmango/cloudflare-operator/issues/242)) ([3503499](https://github.com/unmango/cloudflare-operator/commit/3503499bdf38dee55fcca82e8af7b09aa9f5e39b)), closes [#241](https://github.com/unmango/cloudflare-operator/issues/241)
+
 ## [0.4.0](https://github.com/unmango/cloudflare-operator/compare/v0.3.1...v0.4.0) (2026-09-20)
 
 
