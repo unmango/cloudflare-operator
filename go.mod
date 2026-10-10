@@ -3,7 +3,7 @@ module github.com/unmango/cloudflare-operator
 go 1.26.1
 
 require (
-	github.com/cloudflare/cloudflare-go/v7 v7.10.0
+	github.com/cloudflare/cloudflare-go/v7 v7.12.0
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0
 	github.com/go-logr/logr v1.4.4
