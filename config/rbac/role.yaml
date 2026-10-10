@@ -116,6 +116,9 @@ rules:
   - gateways/status
   - grpcroutes/status
   - httproutes/status
+  - tcproutes/status
+  - tlsroutes/status
+  - udproutes/status
   verbs:
   - get
   - patch
@@ -127,6 +130,9 @@ rules:
   - grpcroutes
   - httproutes
   - referencegrants
+  - tcproutes
+  - tlsroutes
+  - udproutes
   verbs:
   - get
   - list

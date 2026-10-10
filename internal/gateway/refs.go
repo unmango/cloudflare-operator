@@ -42,6 +42,9 @@ type GroupKind struct {
 const (
 	KindHTTPRoute gatewayv1.Kind = "HTTPRoute"
 	KindGRPCRoute gatewayv1.Kind = "GRPCRoute"
+	KindTLSRoute  gatewayv1.Kind = "TLSRoute"
+	KindTCPRoute  gatewayv1.Kind = "TCPRoute"
+	KindUDPRoute  gatewayv1.Kind = "UDPRoute"
 )
 
 // Kinds that appear in references.
@@ -49,6 +52,9 @@ var (
 	GatewayKind   = GroupKind{Group: gatewayv1.GroupName, Kind: "Gateway"}
 	HTTPRouteKind = GroupKind{Group: gatewayv1.GroupName, Kind: string(KindHTTPRoute)}
 	GRPCRouteKind = GroupKind{Group: gatewayv1.GroupName, Kind: string(KindGRPCRoute)}
+	TLSRouteKind  = GroupKind{Group: gatewayv1.GroupName, Kind: string(KindTLSRoute)}
+	TCPRouteKind  = GroupKind{Group: gatewayv1.GroupName, Kind: string(KindTCPRoute)}
+	UDPRouteKind  = GroupKind{Group: gatewayv1.GroupName, Kind: string(KindUDPRoute)}
 	SecretKind    = GroupKind{Group: corev1.GroupName, Kind: "Secret"}
 	ServiceKind   = GroupKind{Group: corev1.GroupName, Kind: "Service"}
 )

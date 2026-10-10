@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -26,7 +26,6 @@ import (
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	tlsinspectorv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/listener/tls_inspector/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -66,24 +65,45 @@ func Snapshot(m *gateway.Model, refs *gateway.References) (*cachev3.Snapshot, er
 	return snapshot, nil
 }
 
+// connectTimeout bounds how long Envoy waits to connect to a backend.
+var connectTimeout = durationpb.New(5 * time.Second)
+
+// portKey is a port and the layer 4 protocol it is bound for. TCP and UDP
+// listeners may share a port number.
+type portKey struct {
+	port      gatewayv1.PortNumber
+	transport corev3.SocketAddress_Protocol
+}
+
+func keyOf(l gateway.Listener) portKey {
+	if l.Protocol == gatewayv1.UDPProtocolType {
+		return portKey{port: l.Port, transport: corev3.SocketAddress_UDP}
+	}
+
+	return portKey{port: l.Port, transport: corev3.SocketAddress_TCP}
+}
+
 // translate groups the valid listeners by port. An HTTP port becomes one Envoy
 // listener with one route configuration shared by the Gateway listeners on it,
 // since nothing but the Host header tells their traffic apart. An HTTPS port
 // gets a filter chain per Gateway listener, chosen by SNI, each with a route
-// configuration of its own.
+// configuration of its own. A TLS port gets a filter chain per server name, and
+// a TCP or UDP port forwards everything to one route's backends.
 func translate(m *gateway.Model, refs *gateway.References) (map[resourcev3.Type][]types.Resource, error) {
-	byPort := map[gatewayv1.PortNumber][]int{}
+	byPort := map[portKey][]int{}
 	for i, l := range m.Listeners {
 		if l.Valid {
-			byPort[l.Port] = append(byPort[l.Port], i)
+			byPort[keyOf(l)] = append(byPort[keyOf(l)], i)
 		}
 	}
 
-	ports := make([]gatewayv1.PortNumber, 0, len(byPort))
+	ports := make([]portKey, 0, len(byPort))
 	for port := range byPort {
 		ports = append(ports, port)
 	}
-	slices.Sort(ports)
+	slices.SortFunc(ports, func(a, b portKey) int {
+		return cmp.Or(cmp.Compare(a.port, b.port), cmp.Compare(a.transport, b.transport))
+	})
 
 	resources := map[resourcev3.Type][]types.Resource{
 		resourcev3.ListenerType: {},
@@ -92,9 +112,10 @@ func translate(m *gateway.Model, refs *gateway.References) (map[resourcev3.Type]
 		resourcev3.EndpointType: {},
 	}
 	clusters := map[string]*gateway.Cluster{}
+	weighted := map[string]*weightedCluster{}
 
-	for _, port := range ports {
-		indexes := byPort[port]
+	for _, key := range ports {
+		indexes, port := byPort[key], key.port
 
 		var (
 			listener *listenerv3.Listener
@@ -122,13 +143,30 @@ func translate(m *gateway.Model, refs *gateway.References) (map[resourcev3.Type]
 				chains = append(chains, chain)
 			}
 			listener, err = httpsListener(name, port, chains)
+		case gatewayv1.TLSProtocolType:
+			listener, err = tlsListener(fmt.Sprintf("tls-%d", port), port, m, indexes, clusters)
+		case gatewayv1.TCPProtocolType:
+			listener, err = tcpListener(fmt.Sprintf("tcp-%d", port), port, m, indexes[0], clusters)
+		case gatewayv1.UDPProtocolType:
+			listener, err = udpListener(fmt.Sprintf("udp-%d", port), port, m, indexes[0], clusters, weighted)
 		default:
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		resources[resourcev3.ListenerType] = append(resources[resourcev3.ListenerType], listener)
+		if listener != nil {
+			resources[resourcev3.ListenerType] = append(resources[resourcev3.ListenerType], listener)
+		}
+	}
+
+	// A weighted cluster reads the endpoints of its backends directly, so they
+	// need no clusters of their own.
+	weightedNames := slices.Sorted(maps.Keys(weighted))
+	for _, name := range weightedNames {
+		c, assignment := weightedClusterResources(weighted[name], refs)
+		resources[resourcev3.ClusterType] = append(resources[resourcev3.ClusterType], c)
+		resources[resourcev3.EndpointType] = append(resources[resourcev3.EndpointType], assignment)
 	}
 
 	names := make([]string, 0, len(clusters))
@@ -223,20 +261,7 @@ func httpsFilterChain(routeName string, l gateway.Listener) (*listenerv3.FilterC
 		return nil, err
 	}
 
-	certificates := make([]*tlsv3.TlsCertificate, 0, len(l.Certificates))
-	for _, secret := range l.Certificates {
-		certificates = append(certificates, &tlsv3.TlsCertificate{
-			CertificateChain: &corev3.DataSource{Specifier: &corev3.DataSource_InlineBytes{InlineBytes: secret.Data[corev1.TLSCertKey]}},
-			PrivateKey:       &corev3.DataSource{Specifier: &corev3.DataSource_InlineBytes{InlineBytes: secret.Data[corev1.TLSPrivateKeyKey]}},
-		})
-	}
-
-	tlsContext, err := anypb.New(&tlsv3.DownstreamTlsContext{
-		CommonTlsContext: &tlsv3.CommonTlsContext{
-			TlsCertificates: certificates,
-			AlpnProtocols:   []string{"h2", "http/1.1"},
-		},
-	})
+	socket, err := downstreamTLS(l.Certificates, []string{"h2", "http/1.1"})
 	if err != nil {
 		return nil, err
 	}
@@ -247,10 +272,7 @@ func httpsFilterChain(routeName string, l gateway.Listener) (*listenerv3.FilterC
 			Name:       httpConnectionManagerFilter,
 			ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: manager},
 		}},
-		TransportSocket: &corev3.TransportSocket{
-			Name:       "envoy.transport_sockets.tls",
-			ConfigType: &corev3.TransportSocket_TypedConfig{TypedConfig: tlsContext},
-		},
+		TransportSocket: socket,
 	}
 	if l.Hostname != nil && *l.Hostname != "" {
 		chain.FilterChainMatch = &listenerv3.FilterChainMatch{ServerNames: []string{string(*l.Hostname)}}
@@ -710,7 +732,7 @@ func directResponse(status uint32) *routev3.Route_DirectResponse {
 func cluster(c *gateway.Cluster) (*clusterv3.Cluster, error) {
 	out := &clusterv3.Cluster{
 		Name:                 c.Name,
-		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ConnectTimeout:       connectTimeout,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_EDS},
 		EdsClusterConfig:     &clusterv3.Cluster_EdsClusterConfig{EdsConfig: adsConfigSource()},
 	}

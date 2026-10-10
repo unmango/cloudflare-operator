@@ -154,27 +154,38 @@ func mutateEnvoyDeployment(deploy *appsv1.Deployment, gw *gatewayv1.Gateway, set
 	}
 }
 
-// envoyServicePorts lists one port per distinct port among the valid listeners.
-// A port's name carries its protocol, which is how tools that read appProtocol
-// conventions from names tell HTTP from the rest.
+// envoyServicePorts lists one port per distinct port and transport among the
+// valid listeners. A port's name carries its protocol, which is how tools that
+// read appProtocol conventions from names tell HTTP from the rest.
 func envoyServicePorts(listeners []gateway.Listener) []corev1.ServicePort {
 	var ports []corev1.ServicePort
-	seen := map[gatewayv1.PortNumber]bool{}
+	seen := map[servicePortKey]bool{}
 	for _, l := range listeners {
-		if !l.Valid || seen[l.Port] {
+		protocol := corev1.ProtocolTCP
+		if l.Protocol == gatewayv1.UDPProtocolType {
+			protocol = corev1.ProtocolUDP
+		}
+		key := servicePortKey{port: l.Port, protocol: protocol}
+		if !l.Valid || seen[key] {
 			continue
 		}
-		seen[l.Port] = true
+		seen[key] = true
 
 		ports = append(ports, corev1.ServicePort{
 			Name:       fmt.Sprintf("%s-%d", strings.ToLower(string(l.Protocol)), l.Port),
-			Protocol:   corev1.ProtocolTCP,
+			Protocol:   protocol,
 			Port:       l.Port,
 			TargetPort: intstr.FromInt32(gateway.ContainerPort(l.Port)),
 		})
 	}
 
 	return ports
+}
+
+// servicePortKey identifies a Service port: TCP and UDP may share a number.
+type servicePortKey struct {
+	port     int32
+	protocol corev1.Protocol
 }
 
 // mutateEnvoyService writes the desired state of the Service in front of the
@@ -190,14 +201,14 @@ func mutateEnvoyService(svc *corev1.Service, gw *gatewayv1.Gateway, settings env
 	// A node port is allocated by the API server. Writing ports without the one
 	// it already allocated would release it and allocate another on every
 	// update, so existing allocations are carried over.
-	allocated := map[int32]int32{}
+	allocated := map[servicePortKey]int32{}
 	for _, p := range svc.Spec.Ports {
-		allocated[p.Port] = p.NodePort
+		allocated[servicePortKey{port: p.Port, protocol: p.Protocol}] = p.NodePort
 	}
 	desired := make([]corev1.ServicePort, len(ports))
 	for i, p := range ports {
 		if settings.ServiceType != corev1.ServiceTypeClusterIP {
-			p.NodePort = allocated[p.Port]
+			p.NodePort = allocated[servicePortKey{port: p.Port, protocol: p.Protocol}]
 		}
 		desired[i] = p
 	}

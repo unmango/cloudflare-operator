@@ -49,20 +49,60 @@ var _ = Describe("Listeners", func() {
 		Expect(string(*l.SupportedKinds[0].Group)).To(Equal(gatewayv1.GroupName))
 	})
 
-	DescribeTable("should not accept a protocol that is not implemented yet",
-		func(protocol gatewayv1.ProtocolType) {
-			l := gateway.Listeners(gatewayWith(listener("l", 443, protocol, "")), nil)[0]
+	It("should not accept a protocol it does not know", func() {
+		l := gateway.Listeners(gatewayWith(listener("l", 443, "INVALID", "")), nil)[0]
 
-			Expect(l.Valid).To(BeFalse())
-			accepted := condition(l, gatewayv1.ListenerConditionAccepted)
-			Expect(accepted.Status).To(Equal(metav1.ConditionFalse))
-			Expect(accepted.Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedProtocol)))
-			Expect(l.SupportedKinds).To(BeEmpty())
+		Expect(l.Valid).To(BeFalse())
+		accepted := condition(l, gatewayv1.ListenerConditionAccepted)
+		Expect(accepted.Status).To(Equal(metav1.ConditionFalse))
+		Expect(accepted.Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedProtocol)))
+		Expect(l.SupportedKinds).To(BeEmpty())
+	})
+
+	DescribeTable("should support one route kind on a layer 4 listener",
+		func(protocol gatewayv1.ProtocolType, kind string) {
+			l := listener("l", 443, protocol, "")
+			if protocol == gatewayv1.TLSProtocolType {
+				l.TLS = &gatewayv1.ListenerTLSConfig{Mode: new(gatewayv1.TLSModePassthrough)}
+			}
+
+			out := gateway.Listeners(gatewayWith(l), nil)[0]
+
+			Expect(out.Valid).To(BeTrue())
+			Expect(out.SupportedKinds).To(HaveLen(1))
+			Expect(string(out.SupportedKinds[0].Kind)).To(Equal(kind))
 		},
-		Entry("TLS", gatewayv1.TLSProtocolType),
-		Entry("TCP", gatewayv1.TCPProtocolType),
-		Entry("UDP", gatewayv1.UDPProtocolType),
+		Entry("TLS", gatewayv1.TLSProtocolType, "TLSRoute"),
+		Entry("TCP", gatewayv1.TCPProtocolType, "TCPRoute"),
+		Entry("UDP", gatewayv1.UDPProtocolType, "UDPRoute"),
 	)
+
+	It("should not accept a TLS listener without tls", func() {
+		l := gateway.Listeners(gatewayWith(listener("tls", 443, gatewayv1.TLSProtocolType, "")), nil)[0]
+
+		Expect(l.Valid).To(BeFalse())
+		Expect(condition(l, gatewayv1.ListenerConditionAccepted).Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedValue)))
+	})
+
+	It("should need certificates for a TLS listener that terminates", func() {
+		l := listener("tls", 443, gatewayv1.TLSProtocolType, "")
+		l.TLS = &gatewayv1.ListenerTLSConfig{Mode: new(gatewayv1.TLSModeTerminate)}
+
+		out := gateway.Listeners(gatewayWith(l), nil)[0]
+
+		Expect(out.Valid).To(BeFalse())
+		Expect(condition(out, gatewayv1.ListenerConditionResolvedRefs).Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidCertificateRef)))
+	})
+
+	It("should mark two TCP listeners on one port as conflicted whatever their hostnames", func() {
+		listeners := gateway.Listeners(gatewayWith(
+			listener("a", 9000, gatewayv1.TCPProtocolType, "a.example.com"),
+			listener("b", 9000, gatewayv1.TCPProtocolType, "b.example.com"),
+		), nil)
+
+		Expect(listeners[0].Valid).To(BeFalse())
+		Expect(listeners[1].Valid).To(BeFalse())
+	})
 
 	It("should keep the supported kinds of allowedRoutes and reject the rest", func() {
 		l := listener("http", 80, gatewayv1.HTTPProtocolType, "")

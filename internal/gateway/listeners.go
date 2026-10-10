@@ -16,6 +16,9 @@ import (
 var supportedKinds = map[gatewayv1.ProtocolType][]gatewayv1.Kind{
 	gatewayv1.HTTPProtocolType:  {KindHTTPRoute, KindGRPCRoute},
 	gatewayv1.HTTPSProtocolType: {KindHTTPRoute, KindGRPCRoute},
+	gatewayv1.TLSProtocolType:   {KindTLSRoute},
+	gatewayv1.TCPProtocolType:   {KindTCPRoute},
+	gatewayv1.UDPProtocolType:   {KindUDPRoute},
 }
 
 // Listener is one Gateway listener after validation.
@@ -30,8 +33,8 @@ type Listener struct {
 	// the data plane, so the controller adds it.
 	Conditions []metav1.Condition
 
-	// Certificates are the Secrets an HTTPS listener terminates TLS with, once
-	// they resolve.
+	// Certificates are the Secrets an HTTPS listener, or a TLS listener in
+	// Terminate mode, terminates TLS with, once they resolve.
 	Certificates []*corev1.Secret
 
 	// Valid reports whether the listener can be programmed: it is accepted, its
@@ -84,6 +87,13 @@ func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listen
 			Reason:  string(gatewayv1.ListenerReasonUnsupportedValue),
 			Message: "An HTTPS listener must set tls.mode Terminate",
 		})
+	case l.Protocol == gatewayv1.TLSProtocolType && l.TLS == nil:
+		out.Conditions = append(out.Conditions, metav1.Condition{
+			Type:    string(gatewayv1.ListenerConditionAccepted),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(gatewayv1.ListenerReasonUnsupportedValue),
+			Message: "A TLS listener must set tls",
+		})
 	default:
 		out.Conditions = append(out.Conditions, metav1.Condition{
 			Type:    string(gatewayv1.ListenerConditionAccepted),
@@ -126,7 +136,7 @@ func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listen
 		}
 	}
 
-	if l.Protocol == gatewayv1.HTTPSProtocolType && l.TLS != nil && resolved.Status == metav1.ConditionTrue {
+	if Terminates(l) && resolved.Status == metav1.ConditionTrue {
 		certs, failed := resolveCertificates(gwNamespace, l.TLS.CertificateRefs, refs)
 		if failed != nil {
 			resolved = *failed
@@ -137,6 +147,18 @@ func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listen
 	out.Conditions = append(out.Conditions, resolved)
 
 	return out
+}
+
+// Terminates reports whether Envoy terminates TLS for the listener: an HTTPS
+// listener, or a TLS listener in Terminate mode. A TLS listener in Passthrough
+// mode forwards the encrypted stream as it arrives.
+func Terminates(l gatewayv1.Listener) bool {
+	switch l.Protocol {
+	case gatewayv1.HTTPSProtocolType, gatewayv1.TLSProtocolType:
+		return l.TLS != nil && tlsMode(l.TLS) == gatewayv1.TLSModeTerminate
+	default:
+		return false
+	}
 }
 
 func tlsMode(config *gatewayv1.ListenerTLSConfig) gatewayv1.TLSModeType {
@@ -161,7 +183,7 @@ func resolveCertificates(gwNamespace string, certRefs []gatewayv1.SecretObjectRe
 	}
 
 	if len(certRefs) == 0 {
-		return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "An HTTPS listener needs at least one certificateRef")
+		return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "A listener that terminates TLS needs at least one certificateRef")
 	}
 
 	certs := make([]*corev1.Secret, 0, len(certRefs))
@@ -271,7 +293,16 @@ func markConflicts(listeners []Listener) {
 				}
 				break
 			}
-			if hostname(a.Hostname) == hostname(b.Hostname) {
+			// A TCP or UDP listener has nothing to tell connections apart by,
+			// so its hostname does not count.
+			if !hasHostnames(a.Protocol) {
+				conflict = metav1.Condition{
+					Type:    string(gatewayv1.ListenerConditionConflicted),
+					Status:  metav1.ConditionTrue,
+					Reason:  string(gatewayv1.ListenerReasonHostnameConflict),
+					Message: fmt.Sprintf("Listener %s also serves %s on port %d", b.Name, b.Protocol, b.Port),
+				}
+			} else if hostname(a.Hostname) == hostname(b.Hostname) {
 				conflict = metav1.Condition{
 					Type:    string(gatewayv1.ListenerConditionConflicted),
 					Status:  metav1.ConditionTrue,
@@ -283,6 +314,12 @@ func markConflicts(listeners []Listener) {
 
 		a.Conditions = append(a.Conditions, conflict)
 	}
+}
+
+// hasHostnames reports whether listeners of protocol p can tell traffic apart
+// by hostname: by the Host header, or by SNI.
+func hasHostnames(p gatewayv1.ProtocolType) bool {
+	return p != gatewayv1.TCPProtocolType && p != gatewayv1.UDPProtocolType
 }
 
 func hostname(h *gatewayv1.Hostname) string {
