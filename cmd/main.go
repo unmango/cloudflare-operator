@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -44,6 +45,7 @@ import (
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/internal/controller"
+	"github.com/unmango/cloudflare-operator/internal/xds"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,6 +74,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var xdsBindAddr, xdsAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -89,6 +92,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&xdsBindAddr, "xds-bind-address", fmt.Sprintf(":%d", xds.DefaultPort),
+		"The address the xDS server, which programs the Envoy proxies serving Gateways, binds to.")
+	flag.StringVar(&xdsAddr, "xds-address", "",
+		"The host:port Envoy proxies dial to reach the xDS server. "+
+			"Leave empty to use the Service labelled "+xds.ComponentLabel+"="+xds.ComponentValue+" in the manager's namespace.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -231,6 +239,41 @@ func main() {
 			Scheme: mgr.GetScheme(),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create controller", "controller", "gatewayclass")
+			os.Exit(1)
+		}
+
+		resolver := &xds.Resolver{Reader: mgr.GetClient()}
+		if xdsAddr != "" {
+			addr, err := xds.ParseAddress(xdsAddr)
+			if err != nil {
+				setupLog.Error(err, "Invalid --xds-address", "value", xdsAddr)
+				os.Exit(1)
+			}
+			resolver.Static = &addr
+		}
+		if err := (&controller.GatewayReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			XDS:    resolver,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gateway")
+			os.Exit(1)
+		}
+
+		snapshots := xds.NewCache(ctrl.Log.WithName("xds"))
+		if err := (&controller.GatewayXDSReconciler{
+			Client: mgr.GetClient(),
+			Cache:  snapshots,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gateway-xds")
+			os.Exit(1)
+		}
+		if err := mgr.Add(&xds.Server{
+			Address: xdsBindAddr,
+			Cache:   snapshots,
+			Log:     ctrl.Log.WithName("xds"),
+		}); err != nil {
+			setupLog.Error(err, "Failed to add the xDS server")
 			os.Exit(1)
 		}
 	} else {

@@ -152,6 +152,9 @@ const testHostname = "example.com"
 // testCatchAllService is the service specs give the trailing catch-all ingress rule.
 const testCatchAllService = "http_status:404"
 
+// testAccountId is the Cloudflare account specs create tunnels in.
+const testAccountId = "test-account"
+
 // testZoneId is the zone specs create DNS records in.
 const testZoneId = "test-zone-id"
 

@@ -43,6 +43,94 @@ spec:
           spec:
             description: spec defines the desired state of CloudflareGatewayConfig
             properties:
+              envoy:
+                description: Envoy configures the proxy that serves each Gateway of
+                  this class.
+                properties:
+                  image:
+                    description: |-
+                      Image is the Envoy container image. It must match the xDS API the operator
+                      speaks, so override it only to mirror the default into another registry.
+                    type: string
+                  replicas:
+                    default: 1
+                    description: Replicas is the number of Envoy pods.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  resources:
+                    description: |-
+                      Resources of the Envoy container. Defaults to a 50m CPU and 64Mi memory
+                      request with a 512Mi memory limit.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  serviceType:
+                    default: ClusterIP
+                    description: |-
+                      ServiceType is the type of the Service in front of the proxy. cloudflared
+                      reaches it from inside the cluster, so ClusterIP is enough behind a tunnel.
+                      LoadBalancer gives the Gateway an address outside the cluster as well.
+                    enum:
+                    - ClusterIP
+                    - NodePort
+                    - LoadBalancer
+                    type: string
+                type: object
               template:
                 description: |-
                   Template describes the CloudflareTunnel provisioned for each Gateway of this
@@ -64,8 +152,10 @@ spec:
                     type: object
                   spec:
                     description: |-
-                      Spec of the provisioned tunnel. Route-derived rules are assembled at push
-                      time, so spec.config holds only rules written by hand.
+                      Spec of the provisioned tunnel. Its configuration is always pushed to
+                      Cloudflare, whatever configSource says, because the operator writes the
+                      rules that send the Gateway's traffic to Envoy. Rules in spec.config are
+                      kept ahead of them, and a catch-all among them is replaced.
                     properties:
                       accountId:
                         description: Cloudflare account ID.
@@ -10027,8 +10117,8 @@ spec:
                 type: object
             type: object
             x-kubernetes-validations:
-            - message: exactly one of spec.tunnelRef and spec.template must be set
-              rule: has(self.tunnelRef) != has(self.template)
+            - message: at most one of spec.tunnelRef and spec.template may be set
+              rule: '!(has(self.tunnelRef) && has(self.template))'
           status:
             description: status defines the observed state of CloudflareGatewayConfig
             properties:

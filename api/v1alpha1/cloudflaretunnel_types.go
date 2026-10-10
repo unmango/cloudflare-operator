@@ -136,10 +136,14 @@ type CloudflareTunnelOriginRequestAccess struct {
 
 // Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
 type CloudflareTunnelOriginRequest struct {
+	// Access is omitzero rather than omitempty, which never omits a struct: an
+	// unset access block would otherwise serialize with a null audTag and fail
+	// the CRD's required check, so no rule could be written without one.
+
 	// For all L7 requests to this hostname, cloudflared will validate each request's Cf-Access-Jwt-Assertion request header.
 	//
 	// +optional
-	Access CloudflareTunnelOriginRequestAccess `json:"access,omitempty"`
+	Access CloudflareTunnelOriginRequestAccess `json:"access,omitzero"`
 
 	// Path to the certificate authority (CA) for the certificate of your origin.
 	// This option should be used only if your certificate is not signed by Cloudflare.

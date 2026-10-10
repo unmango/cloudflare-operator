@@ -68,7 +68,10 @@ spec:
         # :latest tag must not send kubelet looking for a registry.
         imagePullPolicy: IfNotPresent
         name: manager
-        ports: []
+        ports:
+        - name: xds
+          containerPort: 18000
+          protocol: TCP
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false

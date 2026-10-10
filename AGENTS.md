@@ -5,6 +5,7 @@ Guidance for AI agents working in this repository.
 A Kubernetes operator for Cloudflare, scaffolded with kubebuilder and built with Nix.
 It manages three resources in the `cloudflare.unmango.dev` group: `CloudflareTunnel` creates and reconciles a Cloudflare tunnel through the API, `Cloudflared` runs the `cloudflared` daemon for a tunnel as a DaemonSet or Deployment, and `DnsRecord` manages a single DNS record in a zone.
 A fourth controller watches core `Ingress` objects and creates a `CloudflareTunnel` for any Ingress whose class is `cloudflare`.
+The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, with a `CloudflareTunnel` in front of it.
 
 ## Commands
 
@@ -33,7 +34,7 @@ After changing `*_types.go` or any kubebuilder marker, run `make manifests gener
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
-`dist/chart` is generated too, with five exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, and `templates/rbac/tunnel-secret-reader.yaml`.
+`dist/chart` is generated too, with six exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, `templates/xds/`, and `templates/rbac/tunnel-secret-reader.yaml`.
 Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
@@ -117,10 +118,24 @@ The SDK reads `CLOUDFLARE_API_TOKEN` from the environment, and the tunnel contro
 The Helm chart wires it from a Secret the user already owns, through `cloudflare.auth.apiTokenRef`, and never creates a Secret of its own.
 `config/manager/manager.yaml` supplies nothing, so a kustomize install has no credentials until someone sets them; that path is for development.
 
-The manager role grants no access to core Secrets or ConfigMaps.
+The manager role grants no access to core Secrets or ConfigMaps; it does manage Services, for the Envoy proxies it provisions.
 `spec.tunnelSecret.valueFrom` is the one thing that reads them, and it does so through `CloudflareTunnelReconciler.Sources`, an uncached reader, so `get` alone is enough and no controller watches Secrets.
 The chart grants it through `rbac.tunnelSecrets.enabled`, off by default and narrowable to named resources with `rbac.tunnelSecrets.resourceNames`.
 Without it a tunnel that references a Secret or ConfigMap goes Degraded with `InvalidSpec` and never reaches the Cloudflare API; an inline value and an absent tunnel secret are unaffected.
+
+### Gateway API
+
+Envoy does the routing, because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matching, weighted backends and filters.
+The `gateway` controller provisions, per Gateway, an Envoy Deployment and Service named by `gateway.EnvoyObjectName`, and for a class whose `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` named after the Gateway whose rules point at that Service.
+It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, so a Gateway can serve inside the cluster while its tunnel is pending.
+
+The `gateway-xds` controller translates each Gateway into an xDS snapshot in `internal/xds`, keyed by the node id `<namespace>/<name>`, and the manager serves it over ADS on port 18000.
+It writes nothing to the API server and runs on every replica rather than only the leader, since an Envoy can reach any replica through the Service.
+Envoy finds that Service through its bootstrap, passed inline with `--config-yaml`, and the manager finds the Service by the `app.kubernetes.io/component: xds` label in its own namespace, because kustomize and the chart name it differently; `--xds-address` overrides the lookup.
+The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; run them after changing the bootstrap or the translation.
+
+Listener ports below 1024 are bound 10000 higher inside the pod, because Envoy runs unprivileged, and the Service maps the listener port onto it.
+The helm plugin does not render `config/network-policy`, so the policy letting Envoy reach the manager lives in the hand-owned `templates/xds/`.
 
 ### Reconciliation
 

@@ -274,21 +274,19 @@ var _ = Describe("GatewayClass Controller", func() {
 
 	It("should reject a config setting both tunnelRef and template", func() {
 		config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
-			Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: "test-account"},
+			Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: testAccountId},
 		}
 
 		err := k8sClient.Create(ctx, config)
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one of spec.tunnelRef and spec.template"))
+		Expect(err.Error()).To(ContainSubstring("at most one of spec.tunnelRef and spec.template"))
 	})
 
-	It("should reject a config setting neither tunnelRef nor template", func() {
+	// Neither serves the class's Gateways inside the cluster only.
+	It("should accept a config setting neither tunnelRef nor template", func() {
 		config.Spec.TunnelRef = nil
 
-		err := k8sClient.Create(ctx, config)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one of spec.tunnelRef and spec.template"))
+		Expect(k8sClient.Create(ctx, config)).To(Succeed())
 	})
 })

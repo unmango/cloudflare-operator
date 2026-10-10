@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -72,4 +73,50 @@ func gatewayClassesForConfig(reader client.Reader) handler.MapFunc {
 
 		return requests
 	}
+}
+
+// gatewaysForClassHandler maps a GatewayClass to every Gateway naming it, so a
+// class becoming accepted, or changing its parameters, reaches its Gateways.
+func gatewaysForClassHandler(reader client.Reader) handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		return gatewaysForClasses(ctx, reader, obj.GetName())
+	})
+}
+
+// gatewaysForConfigHandler maps a CloudflareGatewayConfig to every Gateway whose
+// class names it, through the classes gatewayClassesForConfig finds.
+func gatewaysForConfigHandler(reader client.Reader) handler.EventHandler {
+	classesFor := gatewayClassesForConfig(reader)
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		requests := classesFor(ctx, obj)
+		classes := make([]string, 0, len(requests))
+		for _, req := range requests {
+			classes = append(classes, req.Name)
+		}
+
+		return gatewaysForClasses(ctx, reader, classes...)
+	})
+}
+
+func gatewaysForClasses(ctx context.Context, reader client.Reader, classes ...string) []reconcile.Request {
+	if len(classes) == 0 {
+		return nil
+	}
+
+	gateways := &gatewayv1.GatewayList{}
+	if err := reader.List(ctx, gateways); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list Gateways", "classes", classes)
+		return nil
+	}
+
+	// Filtered in memory rather than through an index, as in finalize: the list
+	// is served from the cache.
+	requests := []reconcile.Request{}
+	for _, gw := range gateways.Items {
+		if slices.Contains(classes, string(gw.Spec.GatewayClassName)) {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&gw)})
+		}
+	}
+
+	return requests
 }

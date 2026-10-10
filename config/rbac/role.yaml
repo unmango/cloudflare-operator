@@ -12,6 +12,18 @@ rules:
   - create
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - apps
   resources:
   - daemonsets
@@ -78,12 +90,14 @@ rules:
   - gateway.networking.k8s.io
   resources:
   - gatewayclasses/finalizers
+  - gateways/finalizers
   verbs:
   - update
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
   - gatewayclasses/status
+  - gateways/status
   verbs:
   - get
   - patch
