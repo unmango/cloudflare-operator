@@ -16,6 +16,7 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	resourcev3 "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -164,6 +165,9 @@ var _ = Describe("Snapshot", func() {
 		Expect(routes["http-80"].GetVirtualHosts()).To(BeEmpty())
 		// A Host header with a port still matches, and reaches the backend intact.
 		Expect(routes["http-80"].GetIgnorePortInHostMatching()).To(BeTrue())
+		hcm := &hcmv3.HttpConnectionManager{}
+		Expect(listeners["http-80"].GetFilterChains()[0].GetFilters()[0].GetTypedConfig().UnmarshalTo(hcm)).To(Succeed())
+		Expect(hcm.GetStripAnyHostPort()).To(BeFalse())
 	})
 
 	It("should leave out listeners that are not valid", func() {
