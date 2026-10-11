@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/unmango/cloudflare-operator/compare/v0.6.0...v0.7.0) (2026-10-11)
+
+
+### Features
+
+* **dns:** create a tunnel's DNS records and let DnsRecord name a tunnel ([#266](https://github.com/unmango/cloudflare-operator/issues/266)) ([ebfd2b9](https://github.com/unmango/cloudflare-operator/commit/ebfd2b9c36eb76e3728e8954d77d6abbdb283ecd))
+* **gateway:** route TLSRoute, TCPRoute and UDPRoute through Envoy ([#263](https://github.com/unmango/cloudflare-operator/issues/263)) ([665a95f](https://github.com/unmango/cloudflare-operator/commit/665a95fb6bcc86426011bd071896bff4fe025995))
+
 ## [0.6.0](https://github.com/unmango/cloudflare-operator/compare/v0.5.0...v0.6.0) (2026-10-10)
 
 
