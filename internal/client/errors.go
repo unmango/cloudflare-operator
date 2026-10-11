@@ -27,6 +27,10 @@ func IsConflict(err error) bool {
 	return IsStatusCode(err, http.StatusConflict)
 }
 
+func IsForbidden(err error) bool {
+	return IsStatusCode(err, http.StatusForbidden)
+}
+
 func IsNotFound(err error) bool {
 	return IsStatusCode(err, http.StatusNotFound)
 }

@@ -73,6 +73,7 @@ type CloudflareTunnelReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -477,6 +478,13 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		}
 	}
 
+	// Problems with the records are written in the same status patch as the
+	// rest, so the Degraded condition does not flip within one reconcile.
+	dns, err := r.reconcileDns(ctx, tunnel, id)
+	if err != nil {
+		return fmt.Errorf("reconciling DNS records: %w", err)
+	}
+
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
@@ -499,6 +507,13 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 				Reason:  reasonInvalidSpec,
 				Message: ingressErr,
 			})
+		case dns.problem() != "":
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  reasonInvalidSpec,
+				Message: dns.problem(),
+			})
 		default:
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
@@ -516,6 +531,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.RemoteConfig = remoteConfig
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
+		dns.apply(obj)
 	}); err != nil {
 		return err
 	}
@@ -613,6 +629,8 @@ func (r *CloudflareTunnelReconciler) mapConfigSrc(src cfv1alpha1.CloudflareTunne
 func (r *CloudflareTunnelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.CloudflareTunnel{}).
+		// A record's status says whether it is ready, which the tunnel reports.
+		Owns(&cfv1alpha1.DnsRecord{}).
 		Named("cloudflaretunnel").
 		Complete(r)
 }

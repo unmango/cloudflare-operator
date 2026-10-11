@@ -289,6 +289,16 @@ type CERTRecord struct {
 	Type string `json:"type,omitempty"`
 }
 
+// DnsRecordTunnelReference names a CloudflareTunnel in the record's namespace.
+type DnsRecordTunnelReference struct {
+	// Name of the CloudflareTunnel.
+	//
+	// +kubebuilder:validation:MinLength:=1
+	// +required
+	Name string `json:"name"`
+}
+
+// +kubebuilder:validation:XValidation:rule="!(has(self.content) && has(self.tunnelRef))",message="content and tunnelRef are mutually exclusive"
 type CNAMERecord struct {
 	// Comments or notes about the DNS record. This field has no effect on DNS responses.
 	//
@@ -299,6 +309,13 @@ type CNAMERecord struct {
 	//
 	// +optional
 	Content string `json:"content,omitempty"`
+
+	// The CloudflareTunnel the record points at. The content becomes
+	// <status.id>.cfargotunnel.com once the tunnel has an id, and nothing is
+	// written to Cloudflare before then.
+	//
+	// +optional
+	TunnelRef *DnsRecordTunnelReference `json:"tunnelRef,omitempty"`
 
 	// DNS record name (or @ for the zone apex) in Punycode.
 	//

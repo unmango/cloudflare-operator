@@ -42,6 +42,12 @@ spec:
     - jsonPath: .status.instances
       name: Instances
       type: string
+    - jsonPath: .status.dnsRecords
+      name: DNS
+      type: integer
+    - jsonPath: .status.dnsRecordsReady
+      name: DNS Ready
+      type: integer
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -9809,6 +9815,17 @@ spec:
                 description: Timestamp of when the resource was created.
                 format: date-time
                 type: string
+              dnsRecords:
+                description: |-
+                  Number of hostnames in spec.config.ingress that resolve a DNS zone, each of
+                  which gets a DnsRecord owned by this tunnel.
+                format: int32
+                type: integer
+              dnsRecordsReady:
+                description: Number of those DnsRecords that Cloudflare holds pointing
+                  at this tunnel.
+                format: int32
+                type: integer
               id:
                 description: UUID of the tunnel.
                 type: string

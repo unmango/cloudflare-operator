@@ -16,6 +16,7 @@ import (
 	dns "github.com/cloudflare/cloudflare-go/v7/dns"
 	shared "github.com/cloudflare/cloudflare-go/v7/shared"
 	zero_trust "github.com/cloudflare/cloudflare-go/v7/zero_trust"
+	zones "github.com/cloudflare/cloudflare-go/v7/zones"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -161,6 +162,21 @@ func (m *MockClient) GetTunnelToken(ctx context.Context, tunnelId string, params
 func (mr *MockClientMockRecorder) GetTunnelToken(ctx, tunnelId, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTunnelToken", reflect.TypeOf((*MockClient)(nil).GetTunnelToken), ctx, tunnelId, params)
+}
+
+// GetZone mocks base method.
+func (m *MockClient) GetZone(ctx context.Context, params zones.ZoneGetParams) (*zones.Zone, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetZone", ctx, params)
+	ret0, _ := ret[0].(*zones.Zone)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetZone indicates an expected call of GetZone.
+func (mr *MockClientMockRecorder) GetZone(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetZone", reflect.TypeOf((*MockClient)(nil).GetZone), ctx, params)
 }
 
 // ListDnsRecords mocks base method.

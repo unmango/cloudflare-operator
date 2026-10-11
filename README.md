@@ -89,6 +89,7 @@ Gateways accept HTTP, HTTPS, TLS, TCP and UDP listeners, and `HTTPRoute`, `GRPCR
 An HTTPS listener, or a TLS listener in `Terminate` mode, terminates TLS with a `kubernetes.io/tls` Secret, which the operator can read only once the chart's `rbac.gatewayTLSSecrets.enabled` grants it; without that grant the listener reports `InvalidCertificateRef`.
 A TLS listener in `Passthrough` mode needs no Secret: it picks a `TLSRoute` by server name and forwards the connection still encrypted.
 The tunnel carries HTTP listeners only, so TLS, TCP and UDP traffic reaches a Gateway through its Envoy Service.
+Setting `dns.zoneId` in the template gives every listener hostname a CNAME to the Gateway's tunnel, as described under [DNS](#dns).
 A shared `tunnelRef` tunnel follows.
 
 ```yaml
@@ -101,6 +102,8 @@ spec:
   template:
     spec:
       accountId: <cloudflare-account-id>
+      dns:
+        zoneId: <cloudflare-zone-id>
       cloudflared:
         selector:
           matchLabels:
@@ -159,6 +162,36 @@ spec:
 ```
 
 More examples are in [`config/samples`](config/samples).
+
+### DNS
+
+A tunnel whose `spec.dns.zoneId` is set owns a `DnsRecord` for each hostname in `spec.config.ingress`, a CNAME to `<status.id>.cfargotunnel.com`.
+An ingress entry's own `dns` overrides the tunnel's field by field, so one hostname can drop out of the proxy or move to another zone.
+Records follow the config: a hostname removed from it, or left without a zone, loses its record.
+`status.dnsRecords` and `status.dnsRecordsReady` count the records the tunnel wants and those Cloudflare holds, and the `DnsReady` condition is True once they match.
+
+A hostname is skipped, and the tunnel reports `Degraded`, when its entries resolve to different DNS settings, when it lies outside the zone, or when a `DnsRecord` the tunnel does not own already has the record's name.
+The zone check needs the token to read the zone; a token scoped to DNS alone skips it, and Cloudflare rejects a misplaced record on the `DnsRecord` instead.
+
+A standalone `DnsRecord` can point at a tunnel too, through `tunnelRef` in place of `content`:
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: DnsRecord
+metadata:
+  name: app
+spec:
+  zoneId: <cloudflare-zone-id>
+  record:
+    cnameRecord:
+      name: app.example.com
+      tunnelRef:
+        name: example
+      proxied: true
+      ttl: 1
+```
+
+Nothing is written to Cloudflare until the tunnel, in the record's namespace, has an id.
 
 ## Development
 

@@ -46,3 +46,8 @@ func resolveDns(tunnel, entry *cfv1alpha1.CloudflareTunnelDns) (resolvedDns, boo
 
 	return resolved, resolved.ZoneId != ""
 }
+
+// tunnelTarget is the hostname a CNAME points at to route through a tunnel.
+func tunnelTarget(id string) string {
+	return id + ".cfargotunnel.com"
+}

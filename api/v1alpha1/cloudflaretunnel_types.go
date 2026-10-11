@@ -423,6 +423,17 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	Id *string `json:"id,omitempty" format:"uuid"`
 
+	// Number of hostnames in spec.config.ingress that resolve a DNS zone, each of
+	// which gets a DnsRecord owned by this tunnel.
+	//
+	// +optional
+	DnsRecords int32 `json:"dnsRecords,omitempty"`
+
+	// Number of those DnsRecords that Cloudflare holds pointing at this tunnel.
+	//
+	// +optional
+	DnsRecordsReady int32 `json:"dnsRecordsReady,omitempty"`
+
 	// Total number of cloudflared instances targeted by this tunnel (their labels match the selector).
 	//
 	// +optional
@@ -463,6 +474,8 @@ type CloudflareTunnelStatus struct {
 // +kubebuilder:printcolumn:name="Active At",type=string,JSONPath=".status.connsActiveAt"
 // +kubebuilder:printcolumn:name="Inactive At",type=string,JSONPath=".status.connsInactiveAt"
 // +kubebuilder:printcolumn:name="Instances",type=string,JSONPath=".status.instances"
+// +kubebuilder:printcolumn:name="DNS",type=integer,JSONPath=".status.dnsRecords"
+// +kubebuilder:printcolumn:name="DNS Ready",type=integer,JSONPath=".status.dnsRecordsReady"
 
 // CloudflareTunnel is the Schema for the cloudflaretunnels API.
 type CloudflareTunnel struct {
