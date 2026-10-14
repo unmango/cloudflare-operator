@@ -22,17 +22,19 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	authorizationv1 "k8s.io/api/authorization/v1"
-	corev1 "k8s.io/api/core/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
@@ -54,6 +56,7 @@ import (
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/internal/controller"
 	"github.com/unmango/cloudflare-operator/internal/gateway"
+	"github.com/unmango/cloudflare-operator/internal/secrets"
 	"github.com/unmango/cloudflare-operator/internal/xds"
 	// +kubebuilder:scaffold:imports
 )
@@ -189,13 +192,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	var secretRole *rbacv1.ClusterRole
+	var secretSubject rbacv1.Subject
+	if gatewayAPI {
+		secretRole, secretSubject, err = discoverSecretAccess(cfg)
+		if err != nil {
+			setupLog.Error(err, "Failed to discover access to TLS Secrets")
+			os.Exit(1)
+		}
+	}
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				// HTTPS listeners need only TLS Secrets, and caching every
-				// Secret in the cluster would hold far more than that.
-				&corev1.Secret{}: {Field: fields.OneTermEqualSelector("type", string(corev1.SecretTypeTLS))},
+				// Only the RoleBindings that let the operator read TLS
+				// Secrets, rather than every RoleBinding in the cluster.
+				&rbacv1.RoleBinding{}: {Label: secretAccessSelector},
 			},
 		},
 		Metrics:                metricsServerOptions,
@@ -253,11 +266,39 @@ func main() {
 		os.Exit(1)
 	}
 	if gatewayAPI {
-		if !features.SecretsReadable {
-			setupLog.Info("The operator may not list and watch TLS Secrets, "+
+		if secretRole == nil {
+			setupLog.Info("Found no ClusterRole to read TLS Secrets with, "+
 				"so HTTPS listeners will not resolve their certificates",
-				"hint", "enable rbac.gatewayTLSSecrets in the chart and restart the manager",
+				"label", secretReaderLabel+"="+secretReaderValue,
+				"hint", "install the operator with the Helm chart, which ships the role, and restart the manager",
 			)
+		} else {
+			features.Secrets = &secrets.Access{
+				Config:     cfg,
+				HTTPClient: mgr.GetHTTPClient(),
+				Mapper:     mgr.GetRESTMapper(),
+				Scheme:     mgr.GetScheme(),
+				Log:        ctrl.Log.WithName("secrets"),
+			}
+			if err := mgr.Add(features.Secrets); err != nil {
+				setupLog.Error(err, "Failed to add the TLS Secret watcher")
+				os.Exit(1)
+			}
+			if err := (&controller.GatewaySecretWatchReconciler{
+				Client: mgr.GetClient(),
+				Access: features.Secrets,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "gateway-secret-watch")
+				os.Exit(1)
+			}
+			if err := (&controller.GatewaySecretAccessReconciler{
+				Client:  mgr.GetClient(),
+				Role:    secretRole,
+				Subject: secretSubject,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "gateway-secret-access")
+				os.Exit(1)
+			}
 		}
 
 		if err := (&controller.GatewayClassReconciler{
@@ -383,7 +424,7 @@ func main() {
 // manager fail to start, so the Gateway controllers are wired up only when the
 // CRDs are present, and the controller of each route kind besides HTTPRoute
 // only when that kind's CRD is.
-// Installing them later, or granting access to Secrets, needs a restart.
+// Installing them later needs a restart.
 func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
 	features := gateway.Features{}
 
@@ -412,26 +453,70 @@ func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
 		}
 	}
 
+	return features, true, nil
+}
+
+// The ClusterRole the operator binds, in each namespace Gateways take listener
+// certificates from, to read TLS Secrets there. The chart names it after the
+// release, so the manager finds it by label, as it does the xDS Service.
+const (
+	secretReaderLabel = "app.kubernetes.io/component"
+	secretReaderValue = "gateway-tls-secret-reader"
+)
+
+// secretAccessSelector matches the RoleBindings the operator creates with that
+// role.
+var secretAccessSelector = func() labels.Selector {
+	req, err := labels.NewRequirement(controller.SecretAccessLabel, selection.Exists, nil)
+	if err != nil {
+		panic(err)
+	}
+	return labels.NewSelector().Add(*req)
+}()
+
+// discoverSecretAccess finds the ClusterRole granting read access to Secrets,
+// which the operator may bind but holds no access through itself, and the
+// identity to bind it to. It returns a nil role when there is no such role or
+// the operator may not look for one.
+func discoverSecretAccess(cfg *rest.Config) (*rbacv1.ClusterRole, rbacv1.Subject, error) {
+	ctx := context.Background()
+	subject := rbacv1.Subject{}
+
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return features, false, err
+		return nil, subject, err
 	}
 
-	features.SecretsReadable = true
-	for _, verb := range []string{"list", "watch"} {
-		review, err := clientset.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(),
-			&authorizationv1.SelfSubjectAccessReview{
-				Spec: authorizationv1.SelfSubjectAccessReviewSpec{
-					ResourceAttributes: &authorizationv1.ResourceAttributes{Verb: verb, Resource: "secrets"},
-				},
-			}, metav1.CreateOptions{})
-		if err != nil {
-			return features, false, err
-		}
-		if !review.Status.Allowed {
-			features.SecretsReadable = false
-		}
+	roles, err := clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{
+		LabelSelector: secretReaderLabel + "=" + secretReaderValue,
+	})
+	if apierrors.IsForbidden(err) {
+		return nil, subject, nil
+	}
+	if err != nil {
+		return nil, subject, err
+	}
+	switch len(roles.Items) {
+	case 0:
+		return nil, subject, nil
+	case 1:
+	default:
+		return nil, subject, fmt.Errorf("found %d ClusterRoles labelled %s=%s, expected at most one",
+			len(roles.Items), secretReaderLabel, secretReaderValue)
 	}
 
-	return features, true, nil
+	review, err := clientset.AuthenticationV1().SelfSubjectReviews().Create(ctx,
+		&authenticationv1.SelfSubjectReview{}, metav1.CreateOptions{})
+	if err != nil {
+		return nil, subject, fmt.Errorf("finding the operator's own identity: %w", err)
+	}
+
+	username := review.Status.UserInfo.Username
+	if parts := strings.Split(username, ":"); len(parts) == 4 && parts[0] == "system" && parts[1] == "serviceaccount" {
+		subject = rbacv1.Subject{Kind: rbacv1.ServiceAccountKind, Namespace: parts[2], Name: parts[3]}
+	} else {
+		subject = rbacv1.Subject{Kind: rbacv1.UserKind, APIGroup: rbacv1.GroupName, Name: username}
+	}
+
+	return &roles.Items[0], subject, nil
 }

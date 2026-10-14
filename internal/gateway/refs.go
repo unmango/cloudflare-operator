@@ -5,6 +5,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
@@ -25,11 +26,10 @@ type References struct {
 	Services  map[types.NamespacedName]*corev1.Service
 	Endpoints map[types.NamespacedName][]discoveryv1.EndpointSlice
 
-	// Secrets are the listener certificates. SecretsReadable is false when the
-	// operator has not been granted access to Secrets, in which case Secrets is
-	// empty and no certificate resolves.
-	Secrets         map[types.NamespacedName]*corev1.Secret
-	SecretsReadable bool
+	// Secrets are the listener certificates. Unreadable holds, by the name of
+	// each certificate the operator could not read, the reason it could not.
+	Secrets    map[types.NamespacedName]*corev1.Secret
+	Unreadable map[types.NamespacedName]string
 }
 
 // GroupKind names a kind of object in a reference.
@@ -95,6 +95,30 @@ func (r *References) Permitted(from GroupKind, fromNamespace string, to GroupKin
 	}
 
 	return false
+}
+
+// CertificateNamespaces lists the namespaces gw may take listener certificates
+// from: those of the Secrets its listeners name in certificateRefs, where the
+// reference is in gw's own namespace or a ReferenceGrant permits it.
+func CertificateNamespaces(gw *gatewayv1.Gateway, refs *References) sets.Set[string] {
+	namespaces := sets.New[string]()
+	for _, l := range gw.Spec.Listeners {
+		if l.TLS == nil {
+			continue
+		}
+		for _, ref := range l.TLS.CertificateRefs {
+			if group(ref.Group, corev1.GroupName) != SecretKind.Group || kind(ref.Kind, SecretKind.Kind) != SecretKind.Kind {
+				continue
+			}
+
+			ns := namespace(ref.Namespace, gw.Namespace)
+			if refs.Permitted(GatewayKind, gw.Namespace, SecretKind, ns, string(ref.Name)) {
+				namespaces.Insert(ns)
+			}
+		}
+	}
+
+	return namespaces
 }
 
 func (r *References) namespaceLabels(name string) labels.Set {

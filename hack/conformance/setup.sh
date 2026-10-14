@@ -35,7 +35,6 @@ helm upgrade --install cloudflare-operator "$root/dist/chart" \
   --set manager.image.repository=cloudflare-operator \
   --set manager.image.tag=latest \
   --set cloudflare.auth.apiTokenRef.name=cloudflare-credentials \
-  --set rbac.gatewayTLSSecrets.enabled=true \
   --wait --timeout 5m
 
 kubectl apply -f "$root/hack/conformance/gatewayclass.yaml"

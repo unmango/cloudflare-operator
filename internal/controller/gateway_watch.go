@@ -56,8 +56,8 @@ func watchGatewayInputs(b *builder.Builder, reader client.Reader, features gatew
 	if features.UDPRoutes {
 		b = b.Watches(&gatewayv1.UDPRoute{}, routes)
 	}
-	if features.SecretsReadable {
-		b = b.Watches(&corev1.Secret{}, all)
+	if features.Secrets != nil {
+		b = b.WatchesRawSource(features.Secrets.Source(all))
 	}
 
 	return b

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -12,6 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	"github.com/unmango/cloudflare-operator/internal/secrets"
 )
 
 // Features records what the cluster offers the Gateway controllers, discovered
@@ -24,9 +27,10 @@ type Features struct {
 	TCPRoutes  bool
 	UDPRoutes  bool
 
-	// SecretsReadable reports whether the operator may list and watch TLS
-	// Secrets, which HTTPS listeners need for their certificates.
-	SecretsReadable bool
+	// Secrets reads the TLS Secrets listeners terminate TLS with. It is nil
+	// when the operator found no ClusterRole to read them with, and then no
+	// certificate resolves.
+	Secrets *secrets.Access
 }
 
 // Load reads what Build needs for gw: the routes that name it, and the
@@ -40,11 +44,11 @@ func Load(ctx context.Context, reader client.Reader, gw *gatewayv1.Gateway, feat
 	routes = filterRoutes(routes, gw)
 
 	refs := &References{
-		Namespaces:      map[string]labels.Set{},
-		Services:        map[types.NamespacedName]*corev1.Service{},
-		Endpoints:       map[types.NamespacedName][]discoveryv1.EndpointSlice{},
-		Secrets:         map[types.NamespacedName]*corev1.Secret{},
-		SecretsReadable: features.SecretsReadable,
+		Namespaces: map[string]labels.Set{},
+		Services:   map[types.NamespacedName]*corev1.Service{},
+		Endpoints:  map[types.NamespacedName][]discoveryv1.EndpointSlice{},
+		Secrets:    map[types.NamespacedName]*corev1.Secret{},
+		Unreadable: map[types.NamespacedName]string{},
 	}
 
 	namespaces := &corev1.NamespaceList{}
@@ -76,25 +80,37 @@ func Load(ctx context.Context, reader client.Reader, gw *gatewayv1.Gateway, feat
 		}
 	}
 
-	if features.SecretsReadable {
-		for _, l := range gw.Spec.Listeners {
-			if l.TLS == nil {
+	for _, l := range gw.Spec.Listeners {
+		if l.TLS == nil {
+			continue
+		}
+		for _, ref := range l.TLS.CertificateRefs {
+			if group(ref.Group, corev1.GroupName) != SecretKind.Group || kind(ref.Kind, SecretKind.Kind) != SecretKind.Kind {
 				continue
 			}
-			for _, ref := range l.TLS.CertificateRefs {
-				if group(ref.Group, corev1.GroupName) != SecretKind.Group || kind(ref.Kind, SecretKind.Kind) != SecretKind.Kind {
-					continue
-				}
 
-				key := types.NamespacedName{Namespace: namespace(ref.Namespace, gw.Namespace), Name: string(ref.Name)}
-				secret := &corev1.Secret{}
-				if err := reader.Get(ctx, key, secret); apierrors.IsNotFound(err) {
-					continue
-				} else if err != nil {
-					return nil, nil, err
-				}
-				refs.Secrets[key] = secret
+			key := types.NamespacedName{Namespace: namespace(ref.Namespace, gw.Namespace), Name: string(ref.Name)}
+			if !refs.Permitted(GatewayKind, gw.Namespace, SecretKind, key.Namespace, key.Name) {
+				continue
 			}
+			if features.Secrets == nil {
+				refs.Unreadable[key] = "The operator has no ClusterRole to read TLS Secrets with; " +
+					"install it with the Helm chart, which ships one"
+				continue
+			}
+
+			secret, err := features.Secrets.Get(ctx, key)
+			var unavailable *secrets.UnavailableError
+			switch {
+			case errors.As(err, &unavailable):
+				refs.Unreadable[key] = unavailable.Reason
+				continue
+			case apierrors.IsNotFound(err):
+				continue
+			case err != nil:
+				return nil, nil, err
+			}
+			refs.Secrets[key] = secret
 		}
 	}
 
