@@ -123,7 +123,10 @@ func (r *GatewaySecretAccessReconciler) bind(ctx context.Context, ns string) err
 
 	err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(binding), binding)
 	if err == nil && binding.RoleRef != roleRef {
-		// roleRef is immutable, so a binding to another role is replaced.
+		// roleRef is immutable, so a binding to another role is replaced. The
+		// chart's admission policy refuses that delete, since the binding is
+		// not one the operator made, and the error says which binding is in
+		// the way.
 		if err := r.Delete(ctx, binding); client.IgnoreNotFound(err) != nil {
 			return err
 		}

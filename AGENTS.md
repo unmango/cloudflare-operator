@@ -128,6 +128,7 @@ Without it a tunnel that references a Secret or ConfigMap goes Degraded with `In
 HTTPS listeners on a Gateway are the other reader, and their access follows the Gateway API's own trust model rather than a chart value.
 The chart ships a ClusterRole that reads Secrets, labelled `app.kubernetes.io/component: gateway-tls-secret-reader` and bound by nothing, and lets the manager `bind` it but not hold it.
 The `gateway-secret-access` controller binds it with a RoleBinding in each namespace a Gateway of ours may take certificates from: the Gateway's own, and any whose ReferenceGrants let a Gateway name a Secret there; it deletes the bindings of namespaces that drop out.
+A ValidatingAdmissionPolicy in the same template holds the manager to that one binding: every RoleBinding it creates, updates or deletes must reference the reader role, and name only its own service account.
 `secrets.Access`, fed by the `gateway-secret-watch` controller on every replica, runs one cache of `kubernetes.io/tls` Secrets per such namespace, because a cluster-wide cache would never sync.
 The manager finds the role by its label when it starts, so a kustomize install, which has no such role, leaves every HTTPS listener reporting `InvalidCertificateRef`.
 
