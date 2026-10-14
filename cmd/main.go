@@ -292,9 +292,10 @@ func main() {
 				os.Exit(1)
 			}
 			if err := (&controller.GatewaySecretAccessReconciler{
-				Client:  mgr.GetClient(),
-				Role:    secretRole,
-				Subject: secretSubject,
+				Client:    mgr.GetClient(),
+				Role:      secretRole,
+				Subject:   secretSubject,
+				APIReader: mgr.GetAPIReader(),
 			}).SetupWithManager(mgr); err != nil {
 				setupLog.Error(err, "Failed to create controller", "controller", "gateway-secret-access")
 				os.Exit(1)

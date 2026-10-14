@@ -75,6 +75,11 @@ type GatewaySecretAccessReconciler struct {
 
 	// Subject is the identity the operator runs as.
 	Subject rbacv1.Subject
+
+	// APIReader reads RoleBindings uncached. The manager caches only the
+	// labelled ones, and a binding of the same name without the label would
+	// otherwise look absent and never be taken over.
+	APIReader client.Reader
 }
 
 func (r *GatewaySecretAccessReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
@@ -116,7 +121,7 @@ func (r *GatewaySecretAccessReconciler) bind(ctx context.Context, ns string) err
 	}
 	roleRef := rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: r.Role.Name}
 
-	err := r.Get(ctx, client.ObjectKeyFromObject(binding), binding)
+	err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(binding), binding)
 	if err == nil && binding.RoleRef != roleRef {
 		// roleRef is immutable, so a binding to another role is replaced.
 		if err := r.Delete(ctx, binding); client.IgnoreNotFound(err) != nil {
@@ -145,7 +150,7 @@ func (r *GatewaySecretAccessReconciler) bind(ctx context.Context, ns string) err
 
 	if create {
 		logf.FromContext(ctx).Info("Granting access to Secrets", "namespace", ns)
-		return client.IgnoreAlreadyExists(r.Create(ctx, binding))
+		return r.Create(ctx, binding)
 	}
 
 	return r.Update(ctx, binding)

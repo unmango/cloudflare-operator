@@ -106,7 +106,7 @@ var _ = Describe("Gateway Secret access", func() {
 			},
 		}
 
-		reconciler = GatewaySecretAccessReconciler{Client: k8sClient, Role: role, Subject: subject}
+		reconciler = GatewaySecretAccessReconciler{Client: k8sClient, Role: role, Subject: subject, APIReader: k8sClient}
 	})
 
 	AfterEach(func() {
@@ -158,6 +158,21 @@ var _ = Describe("Gateway Secret access", func() {
 		reconcileOnce()
 
 		Expect(bindingNamespaces()).To(ConsistOf(testNamespace))
+	})
+
+	It("should take over a binding of the same name it did not label", func() {
+		Expect(k8sClient.Create(ctx, &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: testNamespace},
+			RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "view"},
+		})).To(Succeed())
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		reconcileOnce()
+
+		binding := &rbacv1.RoleBinding{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: roleName, Namespace: testNamespace}, binding)).To(Succeed())
+		Expect(binding.RoleRef.Name).To(Equal(roleName))
+		Expect(binding.Labels).To(HaveKeyWithValue(SecretAccessLabel, roleName))
+		Expect(binding.Subjects).To(ConsistOf(subject))
 	})
 
 	It("should ignore Gateways of classes it does not own", func() {
