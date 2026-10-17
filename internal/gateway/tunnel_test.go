@@ -167,3 +167,27 @@ var _ = Describe("TunnelHostnames", func() {
 		Expect(gateway.TunnelHostnames(gw)).To(Equal(map[gatewayv1.SectionName]string{"db": dbHostname, "c": "*.example.com"}))
 	})
 })
+
+var _ = Describe("TunnelRoutes", func() {
+	const comment = "Envoy for Gateway default/web"
+
+	It("should route each cluster IP as a single host", func() {
+		Expect(gateway.TunnelRoutes(nil, []string{"10.96.0.10", "fd00::a"}, comment)).To(Equal([]cfv1alpha1.CloudflareTunnelRoute{
+			{Network: "10.96.0.10/32", Comment: comment},
+			{Network: "fd00::a/128", Comment: comment},
+		}))
+	})
+
+	It("should keep hand-written routes and not repeat one", func() {
+		handwritten := []cfv1alpha1.CloudflareTunnelRoute{
+			{Network: "192.168.0.0/16"},
+			{Network: "10.96.0.10/32", Comment: "mine"},
+		}
+
+		Expect(gateway.TunnelRoutes(handwritten, []string{"10.96.0.10"}, comment)).To(Equal(handwritten))
+	})
+
+	It("should skip a cluster IP that does not parse", func() {
+		Expect(gateway.TunnelRoutes(nil, []string{"None"}, comment)).To(BeEmpty())
+	})
+})

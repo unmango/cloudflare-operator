@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -232,9 +233,21 @@ func (r *GatewayReconciler) provisionTunnel(ctx context.Context, gw *gatewayv1.G
 		return nil
 	}
 
+	// A WARP client reaches Envoy at its Service's cluster IPs. A Service not
+	// created yet has none, and gets its routes on a later pass.
+	var clusterIPs []string
+	svc := &corev1.Service{}
+	err := r.Get(ctx, types.NamespacedName{Name: gateway.EnvoyObjectName(gw), Namespace: gw.Namespace}, svc)
+	switch {
+	case err == nil:
+		clusterIPs = svc.Spec.ClusterIPs
+	case !apierrors.IsNotFound(err):
+		return err
+	}
+
 	template := config.Spec.Template
 	tunnel := &cfv1alpha1.CloudflareTunnel{ObjectMeta: metav1.ObjectMeta{Name: gw.Name, Namespace: gw.Namespace}}
-	err := r.ensureControlled(ctx, gw, tunnel, func() {
+	err = r.ensureControlled(ctx, gw, tunnel, func() {
 		tunnel.Labels = mergeOwned(tunnel.Labels, template.ObjectMeta.Labels)
 		tunnel.Annotations = mergeOwned(tunnel.Annotations, template.ObjectMeta.Annotations)
 
@@ -249,6 +262,10 @@ func (r *GatewayReconciler) provisionTunnel(ctx context.Context, gw *gatewayv1.G
 			handwritten = spec.Config.Ingress
 		}
 		spec.Config.Ingress = gateway.TunnelIngress(handwritten, status.listeners, gateway.TunnelHostnames(gw), envoyHost)
+		if warp := spec.Config.WarpRouting; warp != nil && warp.Enable {
+			spec.Routes = gateway.TunnelRoutes(spec.Routes, clusterIPs,
+				fmt.Sprintf("Envoy for Gateway %s/%s", gw.Namespace, gw.Name))
+		}
 		tunnel.Spec = *spec
 	})
 	if errors.Is(err, errNotControlled) {

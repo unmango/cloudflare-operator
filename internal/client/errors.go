@@ -23,6 +23,16 @@ func IgnoreStatusCode(err error, code int) error {
 	}
 }
 
+// IsClientError reports whether the API rejected the request itself, which
+// repeating it unchanged will not fix.
+func IsClientError(err error) bool {
+	if apiError, ok := errors.AsType[*cloudflare.Error](err); ok {
+		return apiError.StatusCode >= 400 && apiError.StatusCode < 500
+	} else {
+		return false
+	}
+}
+
 func IsConflict(err error) bool {
 	return IsStatusCode(err, http.StatusConflict)
 }

@@ -314,6 +314,26 @@ type CloudflareTunnelConfig struct {
 	WarpRouting *CloudflareTunnelWarpRouting `json:"warpRouting,omitempty"`
 }
 
+// A private network a tunnel routes to WARP clients.
+type CloudflareTunnelRoute struct {
+	// The private network, in CIDR notation, such as 10.96.0.10/32.
+	//
+	// +kubebuilder:validation:MinLength:=1
+	// +required
+	Network string `json:"network"`
+
+	// A description of the route.
+	//
+	// +optional
+	Comment string `json:"comment,omitempty"`
+
+	// The virtual network the route belongs to. When unset, Cloudflare uses the
+	// account's default virtual network.
+	//
+	// +optional
+	VirtualNetworkId string `json:"virtualNetworkId,omitempty"`
+}
+
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
 // https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
 //
@@ -377,6 +397,16 @@ type CloudflareTunnelSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
+	// Private networks routed through this tunnel to WARP clients. The tunnel owns
+	// every route that points at it: a route Cloudflare holds for this tunnel and
+	// this list omits is deleted. WARP clients reach a network only when
+	// spec.config.warpRouting is enabled.
+	//
+	// +listType=map
+	// +listMapKey=network
+	// +optional
+	Routes []CloudflareTunnelRoute `json:"routes,omitempty"`
+
 	// Sets the password required to run a locally-managed tunnel. Must decode to at least
 	// 32 bytes and be encoded as a base64 string. When unset, Cloudflare generates one.
 	//
@@ -433,6 +463,11 @@ type CloudflareTunnelStatus struct {
 	//
 	// +optional
 	DnsRecordsReady int32 `json:"dnsRecordsReady,omitempty"`
+
+	// Number of spec.routes that Cloudflare holds pointing at this tunnel.
+	//
+	// +optional
+	RoutesReady int32 `json:"routesReady,omitempty"`
 
 	// Total number of cloudflared instances targeted by this tunnel (their labels match the selector).
 	//

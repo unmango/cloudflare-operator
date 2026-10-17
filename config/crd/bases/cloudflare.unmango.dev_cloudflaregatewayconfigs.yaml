@@ -9994,6 +9994,35 @@ spec:
                       name:
                         description: A user-friendly name for a tunnel.
                         type: string
+                      routes:
+                        description: |-
+                          Private networks routed through this tunnel to WARP clients. The tunnel owns
+                          every route that points at it: a route Cloudflare holds for this tunnel and
+                          this list omits is deleted. WARP clients reach a network only when
+                          spec.config.warpRouting is enabled.
+                        items:
+                          description: A private network a tunnel routes to WARP clients.
+                          properties:
+                            comment:
+                              description: A description of the route.
+                              type: string
+                            network:
+                              description: The private network, in CIDR notation,
+                                such as 10.96.0.10/32.
+                              minLength: 1
+                              type: string
+                            virtualNetworkId:
+                              description: |-
+                                The virtual network the route belongs to. When unset, Cloudflare uses the
+                                account's default virtual network.
+                              type: string
+                          required:
+                          - network
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - network
+                        x-kubernetes-list-type: map
                       tunnelSecret:
                         description: |-
                           Sets the password required to run a locally-managed tunnel. Must decode to at least

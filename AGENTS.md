@@ -161,10 +161,12 @@ Passing it shows the bundled Envoy routes correctly, not that traffic arriving t
 
 A provisioned tunnel reaches Envoy for HTTP, TLS and TCP listeners, and `gateway.TunnelIngress` writes its rules.
 An HTTP listener's hostname goes to `http://`, and a TLS listener's hostname, or the one a `tcp.tunnel.cloudflare.unmango.dev/<listener>` annotation gives a TCP listener, goes to `tcp://`, which clients reach with `cloudflared access tcp`.
-HTTPS and UDP listeners get no rule, and a GRPCRoute on an HTTP listener does not work through the tunnel: Cloudflare carries gRPC and UDP through a tunnel only to WARP clients over private network routing, which the operator does not configure yet.
-So the Envoy translation of HTTPS listeners, UDP listeners, GRPCRoutes and UDPRoutes is reachable only through Envoy's own Service, which bypasses Cloudflare.
+HTTPS and UDP listeners get no rule, and a GRPCRoute on an HTTP listener does not work through a public hostname: Cloudflare carries gRPC and UDP through a tunnel only to WARP clients over private network routing.
+So the Envoy translation of HTTPS listeners, UDP listeners, GRPCRoutes and UDPRoutes is reachable only through Envoy's own Service, which bypasses Cloudflare, unless WARP routing reaches it.
 A Gateway with neither `template` nor `tunnelRef` is reachable the same way, and exists for testing the translation.
 Neither counts as a supported feature: the operator supports what reaches Envoy through a tunnel, so do not describe the rest as supported in docs, release notes or PR descriptions.
+When the template enables `config.warpRouting`, `gateway.TunnelRoutes` adds a host route for each of the Envoy Service's cluster IPs to the tunnel's `spec.routes`, so WARP clients reach every listener at that address; the Service is read before the tunnel is written, and a Service that does not exist yet gets its routes on a later pass.
+That path is unverified through Cloudflare, so it adds nothing to the supported set until it has been.
 
 Listener ports below 1024 are bound 10000 higher inside the pod, because Envoy runs unprivileged, and the Service maps the listener port onto it.
 The helm plugin does not render `config/network-policy`, so the policy letting Envoy reach the manager lives in the hand-owned `templates/xds/`.
@@ -178,6 +180,9 @@ Tests that assert on a converged state have to reconcile more than once.
 A `CloudflareTunnel` whose create returns 409 adopts the one non-deleted tunnel with that name; several matches leave it Degraded.
 
 All three resource controllers add a finalizer so the Cloudflare-side object is deleted before the Kubernetes object goes away.
+
+A `CloudflareTunnel` owns every private network route that points at it, the `spec.routes` it lists and any created elsewhere: it creates the missing ones, deletes the rest, and deletes all of them before the tunnel.
+A route Cloudflare refuses, such as a network another tunnel already routes, leaves the tunnel Degraded rather than retrying.
 
 A `CloudflareTunnel` whose `spec.dns` resolves a zone owns one `DnsRecord` per routed hostname, named `<tunnel>-<first 80 bits of the hostname's sha256>`, and deletes the ones whose hostname left the config.
 Those records name the tunnel through `cnameRecord.tunnelRef` rather than carrying its id, and the `DnsRecord` controller resolves the content and watches tunnels to re-resolve it.
