@@ -83,21 +83,37 @@ Any other install of the same version works equally well.
 
 The manager checks for the CRDs at startup and registers its Gateway controllers only when they are present, so installing them later needs a restart.
 
-Each `Gateway` of a class this operator owns gets its own Envoy proxy, a Deployment and Service in the Gateway's namespace, which the manager programs over xDS.
-The class's `CloudflareGatewayConfig` decides how traffic reaches it: `template` provisions a `CloudflareTunnel` per Gateway whose rules send each listener's hostnames to Envoy, and leaving out both `template` and `tunnelRef` serves the Gateway inside the cluster only.
-Gateways accept HTTP, HTTPS, TLS, TCP and UDP listeners, and `HTTPRoute`, `GRPCRoute`, `TLSRoute`, `TCPRoute` and `UDPRoute` attach to them, with cross-namespace backends allowed through a `ReferenceGrant`.
-An HTTPS listener, or a TLS listener in `Terminate` mode, terminates TLS with a `kubernetes.io/tls` Secret in the Gateway's namespace, or in another namespace whose `ReferenceGrant` lets the Gateway use it.
-The operator holds no standing access to Secrets: it grants itself read access with a RoleBinding in exactly those namespaces, and removes it when no Gateway needs them.
-A TLS listener in `Passthrough` mode needs no Secret: it picks a `TLSRoute` by server name and forwards the connection still encrypted.
-The tunnel carries HTTP, TLS and TCP listeners.
+A `Gateway` of a class this operator owns is served through a Cloudflare tunnel.
+The class's `CloudflareGatewayConfig` sets `template`, and the operator provisions a `CloudflareTunnel` per Gateway in front of an Envoy proxy it runs in the Gateway's namespace and programs over xDS.
+Envoy is there because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matches, weighted backends and filters.
+
+Only these reach a Gateway through Cloudflare, and only these are supported:
+
+| Listener | Route | Client |
+| --- | --- | --- |
+| `HTTP` | `HTTPRoute` | Any HTTP client, at the listener's hostname |
+| `TLS`, `Passthrough` or `Terminate` | `TLSRoute` | `cloudflared access tcp` |
+| `TCP`, named by annotation | `TCPRoute` | `cloudflared access tcp` |
+
+HTTPS and UDP listeners, `GRPCRoute` and `UDPRoute` are not supported.
+Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, and the operator does not configure WARP routing.
+The Gateway's status does not reject them yet, but no tunnel rule reaches them, so none of their traffic passes through Cloudflare.
+
 An HTTP listener's hostname is served on the public internet as usual.
-A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy still picks a `TLSRoute` by server name.
+A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy picks a `TLSRoute` by server name.
 `cloudflared` only forwards bytes and does not set that name, so the TLS client must send the listener's hostname as its server name while dialing the local port, for example `openssl s_client -connect localhost:<port> -servername <hostname>` or `curl --connect-to <hostname>:443:localhost:<port> https://<hostname>/`.
 A TCP listener has no hostname, so the Gateway names one with an annotation, `tcp.tunnel.cloudflare.unmango.dev/<listener>: <hostname>`, and clients reach it the same way.
 When an HTTP and a TLS listener share a hostname, the tunnel sends it to the HTTP listener.
-HTTPS and UDP listeners, and gRPC, reach a Gateway only through its Envoy Service, because Cloudflare carries gRPC and UDP through a tunnel only to WARP clients.
+
+A TLS listener in `Passthrough` mode forwards the connection still encrypted.
+One in `Terminate` mode terminates TLS with a `kubernetes.io/tls` Secret in the Gateway's namespace, or in another namespace whose `ReferenceGrant` lets the Gateway use it.
+The operator holds no standing access to Secrets: it grants itself read access with a RoleBinding in exactly those namespaces, and removes it when no Gateway needs them.
+Routes reach backends in other namespaces through a `ReferenceGrant` as well.
 Setting `dns.zoneId` in the template gives every listener hostname a CNAME to the Gateway's tunnel, as described under [DNS](#dns).
-A shared `tunnelRef` tunnel follows.
+
+A shared tunnel through `tunnelRef` is not wired up yet.
+A class with neither `template` nor `tunnelRef` leaves Envoy reachable only through its own Service, which bypasses Cloudflare entirely.
+That is how the Envoy translation is tested, and it is not a supported way to run a Gateway.
 
 ```yaml
 apiVersion: cloudflare.unmango.dev/v1alpha1
