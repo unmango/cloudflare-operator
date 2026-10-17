@@ -469,6 +469,39 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
+	Context("When a tunnel reaches TLS and TCP listeners", func() {
+		BeforeEach(func() {
+			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
+				Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: testAccountId},
+			}
+			gw.Annotations = map[string]string{"tcp.tunnel.cloudflare.unmango.dev/db": "db." + testHostname}
+			gw.Spec.Listeners = []gatewayv1.Listener{{
+				Name:     "tls",
+				Port:     443,
+				Protocol: gatewayv1.TLSProtocolType,
+				Hostname: new(gatewayv1.Hostname("secure." + testHostname)),
+				TLS:      &gatewayv1.ListenerTLSConfig{Mode: new(gatewayv1.TLSModePassthrough)},
+			}, {
+				Name:     "db",
+				Port:     5432,
+				Protocol: gatewayv1.TCPProtocolType,
+			}}
+			createAll()
+		})
+
+		It("should send their hostnames to Envoy over tcp://", func() {
+			reconcileOnce()
+
+			t := &cfv1alpha1.CloudflareTunnel{}
+			Expect(k8sClient.Get(ctx, key, t)).To(Succeed())
+			Expect(t.Spec.Config.Ingress).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
+				{Hostname: "secure." + testHostname, Service: "tcp://web-envoy.default.svc:443"},
+				{Hostname: "db." + testHostname, Service: "tcp://web-envoy.default.svc:5432"},
+				{Service: "http_status:404"},
+			}))
+		})
+	})
+
 	Context("When the class provisions a tunnel per Gateway", func() {
 		BeforeEach(func() {
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{

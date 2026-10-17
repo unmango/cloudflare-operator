@@ -89,7 +89,12 @@ Gateways accept HTTP, HTTPS, TLS, TCP and UDP listeners, and `HTTPRoute`, `GRPCR
 An HTTPS listener, or a TLS listener in `Terminate` mode, terminates TLS with a `kubernetes.io/tls` Secret in the Gateway's namespace, or in another namespace whose `ReferenceGrant` lets the Gateway use it.
 The operator holds no standing access to Secrets: it grants itself read access with a RoleBinding in exactly those namespaces, and removes it when no Gateway needs them.
 A TLS listener in `Passthrough` mode needs no Secret: it picks a `TLSRoute` by server name and forwards the connection still encrypted.
-The tunnel carries HTTP listeners only, so TLS, TCP and UDP traffic reaches a Gateway through its Envoy Service.
+The tunnel carries HTTP, TLS and TCP listeners.
+An HTTP listener's hostname is served on the public internet as usual.
+A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy still picks a `TLSRoute` by server name.
+A TCP listener has no hostname, so the Gateway names one with an annotation, `tcp.tunnel.cloudflare.unmango.dev/<listener>: <hostname>`, and clients reach it the same way.
+When an HTTP and a TLS listener share a hostname, the tunnel sends it to the HTTP listener.
+HTTPS and UDP listeners, and gRPC, reach a Gateway only through its Envoy Service, because Cloudflare carries gRPC and UDP through a tunnel only to WARP clients.
 Setting `dns.zoneId` in the template gives every listener hostname a CNAME to the Gateway's tunnel, as described under [DNS](#dns).
 A shared `tunnelRef` tunnel follows.
 

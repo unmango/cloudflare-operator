@@ -248,7 +248,7 @@ func (r *GatewayReconciler) provisionTunnel(ctx context.Context, gw *gatewayv1.G
 		} else {
 			handwritten = spec.Config.Ingress
 		}
-		spec.Config.Ingress = gateway.TunnelIngress(handwritten, status.listeners, envoyHost)
+		spec.Config.Ingress = gateway.TunnelIngress(handwritten, status.listeners, gateway.TunnelHostnames(gw), envoyHost)
 		tunnel.Spec = *spec
 	})
 	if errors.Is(err, errNotControlled) {
