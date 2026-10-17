@@ -92,6 +92,7 @@ A TLS listener in `Passthrough` mode needs no Secret: it picks a `TLSRoute` by s
 The tunnel carries HTTP, TLS and TCP listeners.
 An HTTP listener's hostname is served on the public internet as usual.
 A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy still picks a `TLSRoute` by server name.
+`cloudflared` only forwards bytes and does not set that name, so the TLS client must send the listener's hostname as its server name while dialing the local port, for example `openssl s_client -connect localhost:<port> -servername <hostname>` or `curl --connect-to <hostname>:443:localhost:<port> https://<hostname>/`.
 A TCP listener has no hostname, so the Gateway names one with an annotation, `tcp.tunnel.cloudflare.unmango.dev/<listener>: <hostname>`, and clients reach it the same way.
 When an HTTP and a TLS listener share a hostname, the tunnel sends it to the HTTP listener.
 HTTPS and UDP listeners, and gRPC, reach a Gateway only through its Envoy Service, because Cloudflare carries gRPC and UDP through a tunnel only to WARP clients.

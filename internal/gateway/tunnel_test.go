@@ -145,9 +145,12 @@ var _ = Describe("TunnelHostnames", func() {
 		gw.Annotations = map[string]string{
 			"tcp.tunnel.cloudflare.unmango.dev/db": dbHostname,
 			"tcp.tunnel.cloudflare.unmango.dev/":   "ignored.example.com",
+			"tcp.tunnel.cloudflare.unmango.dev/a":  "*",
+			"tcp.tunnel.cloudflare.unmango.dev/b":  "not a hostname",
+			"tcp.tunnel.cloudflare.unmango.dev/c":  "*.example.com",
 			"example.com/db":                       "other.example.com",
 		}
 
-		Expect(gateway.TunnelHostnames(gw)).To(Equal(map[gatewayv1.SectionName]string{"db": dbHostname}))
+		Expect(gateway.TunnelHostnames(gw)).To(Equal(map[gatewayv1.SectionName]string{"db": dbHostname, "c": "*.example.com"}))
 	})
 })

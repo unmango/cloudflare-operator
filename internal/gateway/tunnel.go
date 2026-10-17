@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/validation"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
@@ -20,13 +21,20 @@ const notFoundService = "http_status:404"
 const TunnelHostnamePrefix = "tcp.tunnel.cloudflare.unmango.dev/"
 
 // TunnelHostnames reads the public hostnames gw's annotations give its TCP
-// listeners, keyed by listener name.
+// listeners, keyed by listener name. A value that is not a hostname, or a
+// wildcard one such as *.example.com, is ignored: cloudflared refuses the whole
+// configuration over a malformed or bare * rule that is not last.
 func TunnelHostnames(gw *gatewayv1.Gateway) map[gatewayv1.SectionName]string {
 	hostnames := map[gatewayv1.SectionName]string{}
 	for key, value := range gw.Annotations {
-		if name, ok := strings.CutPrefix(key, TunnelHostnamePrefix); ok && name != "" && value != "" {
-			hostnames[gatewayv1.SectionName(name)] = value
+		name, ok := strings.CutPrefix(key, TunnelHostnamePrefix)
+		if !ok || name == "" {
+			continue
 		}
+		if len(validation.IsDNS1123Subdomain(value)) > 0 && len(validation.IsWildcardDNS1123Subdomain(value)) > 0 {
+			continue
+		}
+		hostnames[gatewayv1.SectionName(name)] = value
 	}
 
 	return hostnames
