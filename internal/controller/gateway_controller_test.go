@@ -17,9 +17,11 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -29,6 +31,7 @@ import (
 
 	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/gateway"
+	"github.com/unmango/cloudflare-operator/internal/secrets"
 	"github.com/unmango/cloudflare-operator/internal/xds"
 )
 
@@ -778,17 +781,48 @@ var _ = Describe("Gateway Controller", func() {
 			deleteIfExists(ctx, secretKey, &corev1.Secret{})
 		})
 
-		It("should not resolve a certificate it may not read", func() {
+		// startAccess lets the reconciler read TLS Secrets in namespaces.
+		startAccess := func(namespaces ...string) *secrets.Access {
+			GinkgoHelper()
+			access := &secrets.Access{Config: cfg, Scheme: k8sClient.Scheme(), Log: logr.Discard()}
+			accessCtx, stop := context.WithCancel(ctx)
+			DeferCleanup(stop)
+			go func() {
+				defer GinkgoRecover()
+				Expect(access.Start(accessCtx)).To(Succeed())
+			}()
+			Expect(access.SetNamespaces(ctx, sets.New(namespaces...))).To(Succeed())
+			for _, ns := range namespaces {
+				Eventually(func() error {
+					_, err := access.Get(ctx, types.NamespacedName{Namespace: ns, Name: "probe"})
+					return err
+				}).Should(Satisfy(apierrors.IsNotFound))
+			}
+			reconciler.Features.Secrets = access
+
+			return access
+		}
+
+		It("should not resolve a certificate without a role to read it with", func() {
 			reconcileOnce()
 
 			resolved := listenerCondition(gatewayv1.ListenerConditionResolvedRefs)
 			Expect(resolved.Status).To(Equal(metav1.ConditionFalse))
 			Expect(resolved.Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidCertificateRef)))
-			Expect(resolved.Message).To(ContainSubstring("rbac.gatewayTLSSecrets"))
+			Expect(resolved.Message).To(ContainSubstring("no ClusterRole"))
+		})
+
+		It("should not resolve a certificate in a namespace it does not watch", func() {
+			startAccess()
+			reconcileOnce()
+
+			resolved := listenerCondition(gatewayv1.ListenerConditionResolvedRefs)
+			Expect(resolved.Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidCertificateRef)))
+			Expect(resolved.Message).To(ContainSubstring("not watching Secrets in namespace " + testNamespace))
 		})
 
 		It("should report a Secret that does not exist", func() {
-			reconciler.Features.SecretsReadable = true
+			startAccess(testNamespace)
 			reconcileOnce()
 
 			resolved := listenerCondition(gatewayv1.ListenerConditionResolvedRefs)
@@ -797,14 +831,18 @@ var _ = Describe("Gateway Controller", func() {
 		})
 
 		It("should resolve a valid certificate", func() {
+			access := startAccess(testNamespace)
 			certPEM, keyPEM := selfSignedCertificate("secure.example.com")
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretKey.Name, Namespace: secretKey.Namespace},
 				Type:       corev1.SecretTypeTLS,
 				Data:       map[string][]byte{corev1.TLSCertKey: certPEM, corev1.TLSPrivateKeyKey: keyPEM},
 			})).To(Succeed())
+			Eventually(func() error {
+				_, err := access.Get(ctx, secretKey)
+				return err
+			}).Should(Succeed())
 
-			reconciler.Features.SecretsReadable = true
 			reconcileOnce()
 
 			Expect(listenerCondition(gatewayv1.ListenerConditionResolvedRefs).Status).To(Equal(metav1.ConditionTrue))

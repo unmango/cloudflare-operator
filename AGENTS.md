@@ -125,9 +125,12 @@ The manager role grants no access to core Secrets or ConfigMaps; it does manage 
 The chart grants it through `rbac.tunnelSecrets.enabled`, off by default and narrowable to named resources with `rbac.tunnelSecrets.resourceNames`.
 Without it a tunnel that references a Secret or ConfigMap goes Degraded with `InvalidSpec` and never reaches the Cloudflare API; an inline value and an absent tunnel secret are unaffected.
 
-HTTPS listeners on a Gateway are the other reader, through `rbac.gatewayTLSSecrets.enabled`, also off by default.
-Envoy gets its certificates over xDS, so the manager watches them, and that takes `list` and `watch` across the cluster; the manager's cache holds only Secrets of type `kubernetes.io/tls`.
-The manager checks for the access with a `SelfSubjectAccessReview` when it starts and watches Secrets only if it has it, so granting it needs a restart; without it every HTTPS listener reports `InvalidCertificateRef`.
+HTTPS listeners on a Gateway are the other reader, and their access follows the Gateway API's own trust model rather than a chart value.
+The chart ships a ClusterRole that reads Secrets, labelled `app.kubernetes.io/component: gateway-tls-secret-reader` and bound by nothing, and lets the manager `bind` it but not hold it.
+The `gateway-secret-access` controller binds it with a RoleBinding in each namespace a Gateway of ours may take certificates from: the Gateway's own, and any whose ReferenceGrants let a Gateway name a Secret there; it deletes the bindings of namespaces that drop out.
+A ValidatingAdmissionPolicy in the same template holds the manager to that one binding: every RoleBinding it creates, updates or deletes must reference the reader role, and name only its own service account.
+`secrets.Access`, fed by the `gateway-secret-watch` controller on every replica, runs one cache of `kubernetes.io/tls` Secrets per such namespace, because a cluster-wide cache would never sync.
+The manager finds the role by its label when it starts, so a kustomize install, which has no such role, leaves every HTTPS listener reporting `InvalidCertificateRef`.
 
 ### Gateway API
 

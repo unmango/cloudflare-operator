@@ -198,9 +198,8 @@ func resolveCertificates(gwNamespace string, certRefs []gatewayv1.SecretObjectRe
 		if !refs.Permitted(GatewayKind, gwNamespace, SecretKind, ns, key.Name) {
 			return fail(gatewayv1.ListenerReasonRefNotPermitted, "No ReferenceGrant allows a Gateway in %s to use Secret %s", gwNamespace, key)
 		}
-		if !refs.SecretsReadable {
-			return fail(gatewayv1.ListenerReasonInvalidCertificateRef,
-				"The operator is not allowed to read TLS Secrets; enable rbac.gatewayTLSSecrets in the chart")
+		if reason, ok := refs.Unreadable[key]; ok {
+			return fail(gatewayv1.ListenerReasonInvalidCertificateRef, "Secret %s cannot be read: %s", key, reason)
 		}
 
 		secret, ok := refs.Secrets[key]

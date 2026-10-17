@@ -401,7 +401,6 @@ const certName = "cert"
 // withCert lets refs read a TLS Secret named certName holding the given
 // certificate and key.
 func withCert(refs *gateway.References, certPEM, keyPEM []byte) {
-	refs.SecretsReadable = true
 	refs.Secrets = map[ktypes.NamespacedName]*corev1.Secret{
 		{Namespace: testNamespace, Name: certName}: {
 			Type: corev1.SecretTypeTLS,
