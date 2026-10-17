@@ -5,7 +5,8 @@ Guidance for AI agents working in this repository.
 A Kubernetes operator for Cloudflare, scaffolded with kubebuilder and built with Nix.
 It manages three resources in the `cloudflare.unmango.dev` group: `CloudflareTunnel` creates and reconciles a Cloudflare tunnel through the API, `Cloudflared` runs the `cloudflared` daemon for a tunnel as a DaemonSet or Deployment, and `DnsRecord` manages a single DNS record in a zone.
 A fourth controller watches core `Ingress` objects and creates a `CloudflareTunnel` for any Ingress whose class is `cloudflare`.
-The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, and, when the class's `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` in front of it; with neither `template` nor `tunnelRef` the Gateway serves only inside the cluster.
+The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, and, when the class's `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` in front of it.
+Only HTTP, TLS and TCP listeners, with HTTPRoutes, TLSRoutes and TCPRoutes, reach a Gateway through Cloudflare, and only those are supported; see [Gateway API](#gateway-api).
 
 ## Commands
 
@@ -136,7 +137,7 @@ The manager finds the role by its label when it starts, so a kustomize install, 
 
 Envoy does the routing, because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matching, weighted backends and filters.
 The `gateway` controller provisions, per Gateway, an Envoy Deployment and Service named by `gateway.EnvoyObjectName`, and for a class whose `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` named after the Gateway whose rules point at that Service.
-It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, so a Gateway can serve inside the cluster while its tunnel is pending.
+It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, separately.
 
 Everything a Gateway's configuration depends on is read by `gateway.Load` and turned into a `gateway.Model` by `gateway.Build`, a pure function: validated listeners, the routes of every kind that name the Gateway with the listeners each attaches to, and their backends resolved to Service ports.
 The `gateway` controller writes listener status and `attachedRoutes` from it, one route controller per kind writes each route's `status.parents` from it, and the `gateway-xds` controller translates it, so all three always agree.
@@ -153,9 +154,17 @@ It writes nothing to the API server and runs on every replica rather than only t
 Envoy finds that Service through its bootstrap, passed inline with `--config-yaml`, and the manager finds the Service by the `app.kubernetes.io/component: xds` label in its own namespace, because kustomize and the chart name it differently; `--xds-address` overrides the lookup.
 The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; run them after changing the bootstrap or the translation.
 
-Done for the Gateway API means passing its conformance suite, which the `conformance` CI job runs against a kind cluster.
-`test/conformance` is behind the `conformance` build tag, and `hack/conformance/options.yaml` names the GatewayClass and the features the operator claims; claim a feature there only once its tests pass.
-The class's Envoy Services are LoadBalancers, which `cloud-provider-kind` gives addresses the runner can reach, so the suite talks to Envoy directly and the tunnel stays out of it.
+The `conformance` CI job runs the Gateway API conformance suite against a kind cluster, as a regression test of the Envoy translation and not as a conformance claim.
+The class's Envoy Services are LoadBalancers, which `cloud-provider-kind` gives addresses the runner can reach, so the suite talks to Envoy directly and never goes through Cloudflare.
+Passing it shows the bundled Envoy routes correctly, not that traffic arriving through a tunnel does, so do not describe the operator as conformant on the strength of it, in docs, release notes or a submitted report.
+`test/conformance` is behind the `conformance` build tag, and `hack/conformance/options.yaml` names the GatewayClass and the features the suite exercises; list a feature there only once its tests pass.
+
+A provisioned tunnel reaches Envoy for HTTP, TLS and TCP listeners, and `gateway.TunnelIngress` writes its rules.
+An HTTP listener's hostname goes to `http://`, and a TLS listener's hostname, or the one a `tcp.tunnel.cloudflare.unmango.dev/<listener>` annotation gives a TCP listener, goes to `tcp://`, which clients reach with `cloudflared access tcp`.
+HTTPS and UDP listeners get no rule, and a GRPCRoute on an HTTP listener does not work through the tunnel: Cloudflare carries gRPC and UDP through a tunnel only to WARP clients over private network routing, which the operator does not configure yet.
+So the Envoy translation of HTTPS listeners, UDP listeners, GRPCRoutes and UDPRoutes is reachable only through Envoy's own Service, which bypasses Cloudflare.
+A Gateway with neither `template` nor `tunnelRef` is reachable the same way, and exists for testing the translation.
+Neither counts as a supported feature: the operator supports what reaches Envoy through a tunnel, so do not describe the rest as supported in docs, release notes or PR descriptions.
 
 Listener ports below 1024 are bound 10000 higher inside the pod, because Envoy runs unprivileged, and the Service maps the listener port onto it.
 The helm plugin does not render `config/network-policy`, so the policy letting Envoy reach the manager lives in the hand-owned `templates/xds/`.
