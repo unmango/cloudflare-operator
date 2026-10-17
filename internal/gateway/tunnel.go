@@ -123,6 +123,12 @@ func TunnelIngress(handwritten []cfv1alpha1.CloudflareTunnelConfigIngress, liste
 		route(host, fmt.Sprintf("tcp://%s:%d", envoyHost, l.Port))
 	}
 
+	// cloudflared takes the first rule that matches, so a wildcard covering
+	// another, *.example.com over *.db.example.com, has to come after it.
+	slices.SortStableFunc(wildcard, func(a, b cfv1alpha1.CloudflareTunnelConfigIngress) int {
+		return len(b.Hostname) - len(a.Hostname)
+	})
+
 	rules = append(rules, exact...)
 	rules = append(rules, wildcard...)
 

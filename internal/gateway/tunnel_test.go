@@ -127,6 +127,19 @@ var _ = Describe("TunnelIngress", func() {
 		}))
 	})
 
+	It("should put a narrower wildcard ahead of one that covers it", func() {
+		listeners := gateway.Listeners(gatewayWith(
+			listener("web", 80, gatewayv1.HTTPProtocolType, "*.example.com"),
+			passthrough("db", 5432, "*.db.example.com"),
+		), nil)
+
+		Expect(gateway.TunnelIngress(nil, listeners, nil, envoy)).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
+			rule("*.db.example.com", "tcp://"+envoy+":5432"),
+			rule("*.example.com", "http://"+envoy+":80"),
+			rule("", "http_status:404"),
+		}))
+	})
+
 	It("should give a UDP listener no rule", func() {
 		listeners := gateway.Listeners(gatewayWith(
 			listener("dns", 53, gatewayv1.UDPProtocolType, ""),
