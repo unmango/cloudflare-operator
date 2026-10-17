@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/unmango/cloudflare-operator/compare/v0.8.0...v0.9.0) (2026-10-17)
+
+
+### Features
+
+* **gateway:** carry TLS and TCP listeners through the tunnel ([#274](https://github.com/unmango/cloudflare-operator/issues/274)) ([5db408f](https://github.com/unmango/cloudflare-operator/commit/5db408fba4c5f799e3819baafc3ce6384c2aa4b1))
+
 ## [0.8.0](https://github.com/unmango/cloudflare-operator/compare/v0.7.0...v0.8.0) (2026-10-17)
 
 
