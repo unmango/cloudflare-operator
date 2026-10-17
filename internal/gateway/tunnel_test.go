@@ -10,6 +10,8 @@ import (
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 )
 
+const dbHostname = "db.example.com"
+
 var _ = Describe("TunnelIngress", func() {
 	const envoy = "gw-envoy.default.svc"
 
@@ -105,10 +107,10 @@ var _ = Describe("TunnelIngress", func() {
 			listener("db", 5432, gatewayv1.TCPProtocolType, ""),
 			listener("cache", 6379, gatewayv1.TCPProtocolType, ""),
 		), nil)
-		hostnames := map[gatewayv1.SectionName]string{"db": "db.example.com"}
+		hostnames := map[gatewayv1.SectionName]string{"db": dbHostname}
 
 		Expect(gateway.TunnelIngress(nil, listeners, hostnames, envoy)).To(Equal([]cfv1alpha1.CloudflareTunnelConfigIngress{
-			rule("db.example.com", "tcp://gw-envoy.default.svc:5432"),
+			rule(dbHostname, "tcp://gw-envoy.default.svc:5432"),
 			rule("", "http_status:404"),
 		}))
 	})
@@ -141,11 +143,11 @@ var _ = Describe("TunnelHostnames", func() {
 	It("should read listener hostnames from the Gateway's annotations", func() {
 		gw := gatewayWith()
 		gw.Annotations = map[string]string{
-			"tcp.tunnel.cloudflare.unmango.dev/db": "db.example.com",
+			"tcp.tunnel.cloudflare.unmango.dev/db": dbHostname,
 			"tcp.tunnel.cloudflare.unmango.dev/":   "ignored.example.com",
 			"example.com/db":                       "other.example.com",
 		}
 
-		Expect(gateway.TunnelHostnames(gw)).To(Equal(map[gatewayv1.SectionName]string{"db": "db.example.com"}))
+		Expect(gateway.TunnelHostnames(gw)).To(Equal(map[gatewayv1.SectionName]string{"db": dbHostname}))
 	})
 })
