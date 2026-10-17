@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/unmango/cloudflare-operator/compare/v0.7.0...v0.8.0) (2026-10-17)
+
+
+### Features
+
+* **gateway:** grant TLS Secret access per namespace through ReferenceGrants ([#271](https://github.com/unmango/cloudflare-operator/issues/271)) ([b23b732](https://github.com/unmango/cloudflare-operator/commit/b23b732ab73354376e5b5db560986f03899290c5))
+
 ## [0.7.0](https://github.com/unmango/cloudflare-operator/compare/v0.6.0...v0.7.0) (2026-10-11)
 
 
