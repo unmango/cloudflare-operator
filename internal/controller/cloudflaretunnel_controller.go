@@ -91,50 +91,7 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !tunnel.DeletionTimestamp.IsZero() {
-		// A malformed selector cannot have selected anything, and owner
-		// references cascade the delete regardless, so it must not hold the
-		// finalizer hostage.
-		if selector, err := tunnelSelector(tunnel); tunnel.Spec.Cloudflared != nil && err == nil {
-			log.Info("Listing cloudflareds")
-			cloudflareds, err := r.listCloudflareds(ctx, tunnel.Namespace, selector)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-
-			log.Info("Found cloudflareds", "items", cloudflareds.Items)
-			if len(cloudflareds.Items) > 0 {
-				if err := r.deleteCloudflareds(ctx, tunnel, cloudflareds); err != nil {
-					return ctrl.Result{}, err
-				} else {
-					log.Info("Successfully deleted owned Cloudflareds")
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-				}
-			}
-		}
-
-		if tunnel.Status.Id == nil {
-			// The tunnel was never created on the Cloudflare side, so there is
-			// nothing to clean up. Release the finalizer or the object is stuck.
-			log.Info("No tunnel id, releasing the finalizer")
-			return ctrl.Result{}, patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-				_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
-			})
-		}
-
-		log.V(2).Info("Deleting tunnel from the cloudflare API")
-		if err := r.deleteTunnel(ctx, *tunnel.Status.Id, tunnel); err != nil {
-			log.Error(err, "Failed to delete cloudflare tunnel", "id", *tunnel.Status.Id)
-			return ctrl.Result{}, err
-		}
-
-		if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
-			_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		log.Info("Successfully deleted cloudflare tunnel")
-		return ctrl.Result{}, nil
+		return r.finalize(ctx, tunnel)
 	}
 
 	if len(tunnel.Status.Conditions) == 0 {
@@ -287,6 +244,63 @@ func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
+	return ctrl.Result{}, nil
+}
+
+// finalize deletes what the tunnel owns, then the tunnel itself, before
+// releasing the finalizer.
+func (r *CloudflareTunnelReconciler) finalize(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	// A malformed selector cannot have selected anything, and owner
+	// references cascade the delete regardless, so it must not hold the
+	// finalizer hostage.
+	if selector, err := tunnelSelector(tunnel); tunnel.Spec.Cloudflared != nil && err == nil {
+		log.Info("Listing cloudflareds")
+		cloudflareds, err := r.listCloudflareds(ctx, tunnel.Namespace, selector)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Found cloudflareds", "items", cloudflareds.Items)
+		if len(cloudflareds.Items) > 0 {
+			if err := r.deleteCloudflareds(ctx, tunnel, cloudflareds); err != nil {
+				return ctrl.Result{}, err
+			} else {
+				log.Info("Successfully deleted owned Cloudflareds")
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			}
+		}
+	}
+
+	if tunnel.Status.Id == nil {
+		// The tunnel was never created on the Cloudflare side, so there is
+		// nothing to clean up. Release the finalizer or the object is stuck.
+		log.Info("No tunnel id, releasing the finalizer")
+		return ctrl.Result{}, patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+			_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
+		})
+	}
+
+	log.V(2).Info("Deleting the tunnel's routes from the cloudflare API")
+	if err := r.deleteRoutes(ctx, tunnel, *tunnel.Status.Id); err != nil {
+		log.Error(err, "Failed to delete the tunnel's routes", "id", *tunnel.Status.Id)
+		return ctrl.Result{}, err
+	}
+
+	log.V(2).Info("Deleting tunnel from the cloudflare API")
+	if err := r.deleteTunnel(ctx, *tunnel.Status.Id, tunnel); err != nil {
+		log.Error(err, "Failed to delete cloudflare tunnel", "id", *tunnel.Status.Id)
+		return ctrl.Result{}, err
+	}
+
+	if err := patch(ctx, r, tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
+		_ = controllerutil.RemoveFinalizer(obj, cloudflareTunnelFinalizer)
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Successfully deleted cloudflare tunnel")
 	return ctrl.Result{}, nil
 }
 
@@ -485,6 +499,11 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		return fmt.Errorf("reconciling DNS records: %w", err)
 	}
 
+	routes, err := r.reconcileRoutes(ctx, tunnel, id)
+	if err != nil {
+		return fmt.Errorf("reconciling routes: %w", err)
+	}
+
 	if err := patchSubResource(ctx, r.Status(), tunnel, func(obj *cfv1alpha1.CloudflareTunnel) {
 		_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 			Type:    typeProgressingCloudflareTunnel,
@@ -514,6 +533,13 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 				Reason:  reasonInvalidSpec,
 				Message: dns.problem(),
 			})
+		case routes.problem() != "":
+			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+				Type:    typeDegradedCloudflareTunnel,
+				Status:  metav1.ConditionTrue,
+				Reason:  reasonInvalidSpec,
+				Message: routes.problem(),
+			})
 		default:
 			_ = meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 				Type:    typeDegradedCloudflareTunnel,
@@ -532,6 +558,7 @@ func (r *CloudflareTunnelReconciler) updateTunnel(ctx context.Context, id string
 		obj.Status.Status = cfv1alpha1.CloudflareTunnelHealth(res.Status)
 		obj.Status.Type = cfv1alpha1.CloudflareTunnelType(res.TunType)
 		dns.apply(obj)
+		obj.Status.RoutesReady = routes.ready
 	}); err != nil {
 		return err
 	}

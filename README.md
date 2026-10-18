@@ -96,8 +96,13 @@ Only these reach a Gateway through Cloudflare, and only these are supported:
 | `TCP`, named by annotation | `TCPRoute` | `cloudflared access tcp` |
 
 HTTPS and UDP listeners, `GRPCRoute` and `UDPRoute` are not supported.
-Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, and the operator does not configure WARP routing.
+Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, over private network routing.
 The Gateway's status does not reject them yet, but no tunnel rule reaches them, so none of their traffic passes through Cloudflare.
+
+Enabling `config.warpRouting` in the template routes the Envoy Service's cluster IPs through the tunnel as private network routes, so a WARP client enrolled in the account can reach every listener at the cluster IP and listener port.
+The operator configures no DNS for WARP clients, so they dial the address, or resolve the hostname through a resolver policy of their own.
+This path has not been verified end to end through Cloudflare, so gRPC and UDP stay off the supported list until it has.
+Managing those routes needs the token to edit the account's Cloudflare Tunnel settings, which covers private network routes; a tunnel whose `spec.routes` is set reports `Degraded` when the token lacks it, and one with no routes is unaffected.
 
 An HTTP listener's hostname is served on the public internet as usual.
 A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy picks a `TLSRoute` by server name.

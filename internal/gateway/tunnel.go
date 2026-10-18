@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 
@@ -133,4 +134,28 @@ func TunnelIngress(handwritten []cfv1alpha1.CloudflareTunnelConfigIngress, liste
 	rules = append(rules, wildcard...)
 
 	return append(rules, cfv1alpha1.CloudflareTunnelConfigIngress{Service: catchAll})
+}
+
+// TunnelRoutes assembles the private network routes of a tunnel provisioned for
+// a Gateway whose template enables WARP routing: the hand-written routes, then
+// one host route per cluster IP of the Service in front of Envoy, so a WARP
+// client reaches every listener, gRPC and UDP included, at that address. An
+// address a hand-written route already covers exactly is not repeated, since
+// the tunnel keys its routes by network.
+func TunnelRoutes(handwritten []cfv1alpha1.CloudflareTunnelRoute, clusterIPs []string, comment string) []cfv1alpha1.CloudflareTunnelRoute {
+	routes := slices.Clone(handwritten)
+	for _, ip := range clusterIPs {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			continue
+		}
+
+		network := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if slices.ContainsFunc(routes, func(r cfv1alpha1.CloudflareTunnelRoute) bool { return r.Network == network }) {
+			continue
+		}
+		routes = append(routes, cfv1alpha1.CloudflareTunnelRoute{Network: network, Comment: comment})
+	}
+
+	return routes
 }
