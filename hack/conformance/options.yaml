@@ -1,6 +1,8 @@
 # Options for the Gateway API conformance suite, read by test/conformance
-# through --conformance-options-file. A feature listed here is one the operator
-# claims; the suite runs every test whose features are all claimed.
+# through --conformance-options-file. The suite runs every test whose features
+# are all listed here. It talks to Envoy directly, never through Cloudflare, so
+# a listed feature is one whose Envoy translation it exercises, not one the
+# operator claims; README.md says what is supported.
 gatewayClassName: cloudflare-conformance
 conformanceProfiles:
   - GATEWAY-HTTP

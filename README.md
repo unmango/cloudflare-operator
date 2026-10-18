@@ -97,9 +97,9 @@ Only these reach a Gateway through Cloudflare, and only these are supported:
 
 HTTPS and UDP listeners, `GRPCRoute` and `UDPRoute` are not supported.
 Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, over private network routing.
-The Gateway's status does not reject them yet, but no tunnel rule reaches them, so none of their traffic passes through Cloudflare.
+No tunnel rule reaches them, so the operator rejects them: such a listener reports `Accepted: False` with reason `UnsupportedProtocol`, and an HTTP listener does not list `GRPCRoute` among its supported kinds.
 
-Enabling `config.warpRouting` in the template routes the Envoy Service's cluster IPs through the tunnel as private network routes, so a WARP client enrolled in the account can reach every listener at the cluster IP and listener port.
+Enabling `config.warpRouting` in the template routes the Envoy Service's cluster IPs through the tunnel as private network routes, so a WARP client enrolled in the account can reach every listener at the cluster IP and listener port, and the operator then accepts those listeners and routes.
 The operator configures no DNS for WARP clients, so they dial the address, or resolve the hostname through a resolver policy of their own.
 This path has not been verified end to end through Cloudflare, so gRPC and UDP stay off the supported list until it has.
 Managing those routes needs the token to edit the account's Cloudflare Tunnel settings, which covers private network routes; a tunnel whose `spec.routes` is set reports `Degraded` when the token lacks it, and one with no routes is unaffected.
@@ -117,8 +117,7 @@ Routes reach backends in other namespaces through a `ReferenceGrant` as well.
 Setting `dns.zoneId` in the template gives every listener hostname a CNAME to the Gateway's tunnel, as described under [DNS](#dns).
 
 A shared tunnel through `tunnelRef` is not wired up yet.
-A class with neither `template` nor `tunnelRef` leaves Envoy reachable only through its own Service, which bypasses Cloudflare entirely.
-That is how the Envoy translation is tested, and it is not a supported way to run a Gateway.
+A `CloudflareGatewayConfig` must set exactly one of `template` and `tunnelRef`; with neither, nothing would reach its Gateways through Cloudflare, so the API server refuses it.
 
 ```yaml
 apiVersion: cloudflare.unmango.dev/v1alpha1

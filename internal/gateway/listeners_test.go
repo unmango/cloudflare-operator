@@ -43,11 +43,45 @@ var _ = Describe("Listeners", func() {
 		Expect(condition(l, gatewayv1.ListenerConditionAccepted).Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition(l, gatewayv1.ListenerConditionResolvedRefs).Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition(l, gatewayv1.ListenerConditionConflicted).Status).To(Equal(metav1.ConditionFalse))
-		Expect(l.SupportedKinds).To(HaveLen(2))
+		Expect(l.SupportedKinds).To(HaveLen(1))
 		Expect(string(l.SupportedKinds[0].Kind)).To(Equal("HTTPRoute"))
-		Expect(string(l.SupportedKinds[1].Kind)).To(Equal("GRPCRoute"))
 		Expect(string(*l.SupportedKinds[0].Group)).To(Equal(gatewayv1.GroupName))
 	})
+
+	It("should support GRPCRoute on an HTTP listener only when WARP clients reach it", func() {
+		l := gateway.Listeners(gatewayWith(listener("http", 80, gatewayv1.HTTPProtocolType, "")), &gateway.References{WarpRouting: true})[0]
+
+		Expect(l.SupportedKinds).To(HaveLen(2))
+		Expect(string(l.SupportedKinds[1].Kind)).To(Equal("GRPCRoute"))
+	})
+
+	It("should say GRPCRoute needs WARP routing when a listener asks for it without", func() {
+		l := listener("http", 80, gatewayv1.HTTPProtocolType, "")
+		l.AllowedRoutes = &gatewayv1.AllowedRoutes{Kinds: []gatewayv1.RouteGroupKind{{Kind: "GRPCRoute"}}}
+
+		resolved := condition(gateway.Listeners(gatewayWith(l), nil)[0], gatewayv1.ListenerConditionResolvedRefs)
+
+		Expect(resolved.Reason).To(Equal(string(gatewayv1.ListenerReasonInvalidRouteKinds)))
+		Expect(resolved.Message).To(ContainSubstring("warpRouting"))
+	})
+
+	DescribeTable("should accept a listener only WARP clients reach only when the class routes them",
+		func(protocol gatewayv1.ProtocolType) {
+			l := listener("l", 443, protocol, "")
+			if protocol == gatewayv1.HTTPSProtocolType {
+				l.TLS = &gatewayv1.ListenerTLSConfig{Mode: new(gatewayv1.TLSModeTerminate)}
+			}
+
+			accepted := condition(gateway.Listeners(gatewayWith(l), nil)[0], gatewayv1.ListenerConditionAccepted)
+			Expect(accepted.Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedProtocol)))
+			Expect(accepted.Message).To(ContainSubstring("warpRouting"))
+
+			accepted = condition(gateway.Listeners(gatewayWith(l), &gateway.References{WarpRouting: true})[0], gatewayv1.ListenerConditionAccepted)
+			Expect(accepted.Status).To(Equal(metav1.ConditionTrue))
+		},
+		Entry("HTTPS", gatewayv1.HTTPSProtocolType),
+		Entry("UDP", gatewayv1.UDPProtocolType),
+	)
 
 	It("should not accept a protocol it does not know", func() {
 		l := gateway.Listeners(gatewayWith(listener("l", 443, "INVALID", "")), nil)[0]
@@ -66,7 +100,7 @@ var _ = Describe("Listeners", func() {
 				l.TLS = &gatewayv1.ListenerTLSConfig{Mode: new(gatewayv1.TLSModePassthrough)}
 			}
 
-			out := gateway.Listeners(gatewayWith(l), nil)[0]
+			out := gateway.Listeners(gatewayWith(l), &gateway.References{WarpRouting: protocol == gatewayv1.UDPProtocolType})[0]
 
 			Expect(out.Valid).To(BeTrue())
 			Expect(out.SupportedKinds).To(HaveLen(1))
