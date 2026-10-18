@@ -47,9 +47,11 @@ func testGateway(ls ...gatewayv1.Listener) *gatewayv1.Gateway {
 }
 
 // testRefs holds one Service, backend, on port 8080, with one ready endpoint.
+// WARP clients reach the Gateway, so every listener protocol is accepted.
 func testRefs(ip string, port int32) *gateway.References {
 	key := ktypes.NamespacedName{Namespace: testNamespace, Name: "backend"}
 	return &gateway.References{
+		WarpRouting: true,
 		Services: map[ktypes.NamespacedName]*corev1.Service{
 			key: {
 				ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: key.Namespace},

@@ -24,12 +24,11 @@ import (
 
 // CloudflareGatewayConfigSpec defines the desired state of CloudflareGatewayConfig.
 //
-// At most one of tunnelRef and template is set. tunnelRef attaches every Gateway
+// Exactly one of tunnelRef and template is set. tunnelRef attaches every Gateway
 // of the class to one existing tunnel; template gives each Gateway its own.
-// With neither, a Gateway is served by its Envoy proxy inside the cluster only,
-// which suits a private Gateway and the Gateway API conformance suite.
+// Without either, nothing would reach a Gateway through Cloudflare.
 //
-// +kubebuilder:validation:XValidation:rule="!(has(self.tunnelRef) && has(self.template))",message="at most one of spec.tunnelRef and spec.template may be set"
+// +kubebuilder:validation:XValidation:rule="has(self.tunnelRef) != has(self.template)",message="exactly one of spec.tunnelRef and spec.template must be set"
 type CloudflareGatewayConfigSpec struct {
 	// TunnelRef locates the CloudflareTunnel that Gateways of this class attach to.
 	//

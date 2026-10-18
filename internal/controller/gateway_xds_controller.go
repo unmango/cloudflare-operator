@@ -12,6 +12,7 @@ import (
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	resourcev3 "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 	"github.com/unmango/cloudflare-operator/internal/xds"
 )
@@ -64,7 +65,9 @@ func (r *GatewayXDSReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *GatewayXDSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).
-		Watches(&gatewayv1.GatewayClass{}, gatewaysForClassHandler(mgr.GetClient()))
+		Watches(&gatewayv1.GatewayClass{}, gatewaysForClassHandler(mgr.GetClient())).
+		// warpRouting decides which listeners Envoy serves.
+		Watches(&cfv1alpha1.CloudflareGatewayConfig{}, gatewaysForConfigHandler(mgr.GetClient()))
 
 	return watchGatewayInputs(b, mgr.GetClient(), r.Features, true).
 		WithOptions(controller.Options{NeedLeaderElection: new(false)}).

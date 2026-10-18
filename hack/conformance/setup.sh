@@ -23,8 +23,8 @@ kubectl apply --server-side -f "$crds"
 kubectl label nodes --all node.kubernetes.io/exclude-from-external-load-balancers-
 
 kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
-# The Gateway controllers never call the Cloudflare API without a tunnel, but
-# the chart wires the token from a Secret either way.
+# The conformance class provisions a tunnel per Gateway, and with this token
+# none is ever created; the suite reaches each Envoy at its LoadBalancer.
 kubectl create secret generic cloudflare-credentials \
   --namespace "$namespace" \
   --from-literal=CLOUDFLARE_API_TOKEN=dummy \

@@ -11,15 +11,28 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// supportedKinds lists, per listener protocol, the route kinds a listener of
-// that protocol accepts. A protocol absent from the map is not implemented yet.
-var supportedKinds = map[gatewayv1.ProtocolType][]gatewayv1.Kind{
+// tunnelKinds lists, per listener protocol, the route kinds a listener of that
+// protocol accepts when only the tunnel's public hostnames reach the Gateway.
+// Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, and
+// the tunnel has no rule for HTTPS, so those are absent.
+var tunnelKinds = map[gatewayv1.ProtocolType][]gatewayv1.Kind{
+	gatewayv1.HTTPProtocolType: {KindHTTPRoute},
+	gatewayv1.TLSProtocolType:  {KindTLSRoute},
+	gatewayv1.TCPProtocolType:  {KindTCPRoute},
+}
+
+// warpKinds lists them when WARP clients reach Envoy too, which they do on
+// every protocol Envoy serves.
+var warpKinds = map[gatewayv1.ProtocolType][]gatewayv1.Kind{
 	gatewayv1.HTTPProtocolType:  {KindHTTPRoute, KindGRPCRoute},
 	gatewayv1.HTTPSProtocolType: {KindHTTPRoute, KindGRPCRoute},
 	gatewayv1.TLSProtocolType:   {KindTLSRoute},
 	gatewayv1.TCPProtocolType:   {KindTCPRoute},
 	gatewayv1.UDPProtocolType:   {KindUDPRoute},
 }
+
+// unreachable explains a protocol or route kind that only WARP routing carries.
+const unreachable = "does not reach the Gateway through Cloudflare unless the class's tunnel template enables warpRouting"
 
 // Listener is one Gateway listener after validation.
 type Listener struct {
@@ -71,14 +84,23 @@ func Listeners(gw *gatewayv1.Gateway, refs *References) []Listener {
 func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listener {
 	out := Listener{Listener: l}
 
+	supportedKinds := tunnelKinds
+	if refs.WarpRouting {
+		supportedKinds = warpKinds
+	}
+
 	kinds, supported := supportedKinds[l.Protocol]
 	switch {
 	case !supported:
+		message := fmt.Sprintf("Protocol %s is not supported", l.Protocol)
+		if _, warp := warpKinds[l.Protocol]; warp {
+			message = fmt.Sprintf("Protocol %s %s", l.Protocol, unreachable)
+		}
 		out.Conditions = append(out.Conditions, metav1.Condition{
 			Type:    string(gatewayv1.ListenerConditionAccepted),
 			Status:  metav1.ConditionFalse,
 			Reason:  string(gatewayv1.ListenerReasonUnsupportedProtocol),
-			Message: fmt.Sprintf("Protocol %s is not supported", l.Protocol),
+			Message: message,
 		})
 	case l.Protocol == gatewayv1.HTTPSProtocolType && (l.TLS == nil || tlsMode(l.TLS) != gatewayv1.TLSModeTerminate):
 		out.Conditions = append(out.Conditions, metav1.Condition{
@@ -131,7 +153,7 @@ func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listen
 				Type:    string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:  metav1.ConditionFalse,
 				Reason:  string(gatewayv1.ListenerReasonInvalidRouteKinds),
-				Message: fmt.Sprintf("Route kinds not supported on a %s listener: %v", l.Protocol, invalid),
+				Message: invalidKindsMessage(l.Protocol, invalid),
 			}
 		}
 	}
@@ -147,6 +169,19 @@ func validate(gwNamespace string, l gatewayv1.Listener, refs *References) Listen
 	out.Conditions = append(out.Conditions, resolved)
 
 	return out
+}
+
+// invalidKindsMessage explains route kinds a listener cannot accept, and says
+// so when WARP routing would let it.
+func invalidKindsMessage(protocol gatewayv1.ProtocolType, invalid []string) string {
+	message := fmt.Sprintf("Route kinds not supported on a %s listener: %v", protocol, invalid)
+	for _, kind := range warpKinds[protocol] {
+		if slices.Contains(invalid, groupKindString(routeGroupKind(kind))) && !slices.Contains(tunnelKinds[protocol], kind) {
+			return fmt.Sprintf("%s; %s %s", message, kind, unreachable)
+		}
+	}
+
+	return message
 }
 
 // Terminates reports whether Envoy terminates TLS for the listener: an HTTPS

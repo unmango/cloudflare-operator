@@ -30,6 +30,11 @@ type References struct {
 	// each certificate the operator could not read, the reason it could not.
 	Secrets    map[types.NamespacedName]*corev1.Secret
 	Unreadable map[types.NamespacedName]string
+
+	// WarpRouting reports whether the Gateway's class routes WARP clients to
+	// Envoy. Without it only HTTP, TLS and TCP listeners, and the routes of
+	// those kinds, reach the Gateway through Cloudflare.
+	WarpRouting bool
 }
 
 // GroupKind names a kind of object in a reference.

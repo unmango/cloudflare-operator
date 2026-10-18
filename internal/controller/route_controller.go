@@ -18,6 +18,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	"github.com/unmango/cloudflare-operator/internal/gateway"
 )
 
@@ -183,6 +184,8 @@ func (r *RouteReconciler[T]) SetupWithManager(mgr ctrl.Manager, name string) err
 			})
 		})).
 		Watches(&gatewayv1.GatewayClass{}, all).
+		// warpRouting decides which route kinds a listener accepts.
+		Watches(&cfv1alpha1.CloudflareGatewayConfig{}, all).
 		Watches(&gatewayv1beta1.ReferenceGrant{}, all).
 		Watches(&corev1.Namespace{}, all).
 		// A Service appearing or losing a port changes whether a backend

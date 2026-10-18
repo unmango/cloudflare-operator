@@ -65,6 +65,19 @@ func Load(ctx context.Context, reader client.Reader, gw *gatewayv1.Gateway, feat
 	}
 	refs.Grants = grants.Items
 
+	class := &gatewayv1.GatewayClass{}
+	if err := reader.Get(ctx, client.ObjectKey{Name: string(gw.Spec.GatewayClassName)}, class); client.IgnoreNotFound(err) != nil {
+		return nil, nil, err
+	} else if err == nil {
+		// A class whose parameters do not resolve accepts no Gateway, so how
+		// its listeners would be reached does not matter.
+		config, err := Resolve(ctx, reader, class)
+		if err != nil && !IsParametersError(err) {
+			return nil, nil, err
+		}
+		refs.WarpRouting = WarpRouting(config)
+	}
+
 	for _, route := range routes {
 		for _, rule := range route.Rules {
 			for _, ref := range rule.Backends {

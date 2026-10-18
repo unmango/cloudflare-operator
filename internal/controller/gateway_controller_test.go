@@ -144,6 +144,9 @@ var _ = Describe("Gateway Controller", func() {
 
 		config = &cfv1alpha1.CloudflareGatewayConfig{
 			ObjectMeta: metav1.ObjectMeta{Name: "gateway-test-params", Namespace: testNamespace},
+			Spec: cfv1alpha1.CloudflareGatewayConfigSpec{
+				TunnelRef: &cfv1alpha1.CloudflareGatewayTunnelReference{Name: "shared", Namespace: testNamespace},
+			},
 		}
 		ns := gatewayv1.Namespace(testNamespace)
 		class = &gatewayv1.GatewayClass{
@@ -208,7 +211,7 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
-	Context("When the class serves Gateways inside the cluster only", func() {
+	Context("When the class names a tunnel", func() {
 		BeforeEach(createAll)
 
 		It("should provision Envoy for the Gateway", func() {
@@ -246,7 +249,6 @@ var _ = Describe("Gateway Controller", func() {
 
 			Expect(listenerCondition(gatewayv1.ListenerConditionAccepted).Status).To(Equal(metav1.ConditionTrue))
 			Expect(listenerCondition(gatewayv1.ListenerConditionProgrammed).Status).To(Equal(metav1.ConditionFalse))
-			Expect(meta.FindStatusCondition(observed().Status.Conditions, conditionTunnelProgrammed)).To(BeNil())
 		})
 
 		It("should program the Gateway once Envoy is available", func() {
@@ -266,7 +268,7 @@ var _ = Describe("Gateway Controller", func() {
 
 			listeners := observed().Status.Listeners
 			Expect(listeners[0].AttachedRoutes).To(BeZero())
-			Expect(listeners[0].SupportedKinds).To(HaveLen(2))
+			Expect(listeners[0].SupportedKinds).To(HaveLen(1))
 			Expect(string(listeners[0].SupportedKinds[0].Kind)).To(Equal("HTTPRoute"))
 		})
 
@@ -471,6 +473,7 @@ var _ = Describe("Gateway Controller", func() {
 
 	Context("When a tunnel reaches TLS and TCP listeners", func() {
 		BeforeEach(func() {
+			config.Spec.TunnelRef = nil
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
 				Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: testAccountId},
 			}
@@ -504,6 +507,7 @@ var _ = Describe("Gateway Controller", func() {
 
 	Context("When a tunnel routes WARP clients to Envoy", func() {
 		BeforeEach(func() {
+			config.Spec.TunnelRef = nil
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
 				Spec: cfv1alpha1.CloudflareTunnelSpec{
 					AccountId: testAccountId,
@@ -533,6 +537,7 @@ var _ = Describe("Gateway Controller", func() {
 
 	Context("When the class provisions a tunnel per Gateway", func() {
 		BeforeEach(func() {
+			config.Spec.TunnelRef = nil
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
 				ObjectMeta: cfv1alpha1.CloudflareGatewayTunnelTemplateMeta{Labels: map[string]string{"team": "web"}},
 				Spec: cfv1alpha1.CloudflareTunnelSpec{
@@ -612,6 +617,7 @@ var _ = Describe("Gateway Controller", func() {
 
 	Context("When a tunnel by the Gateway's name already exists", func() {
 		BeforeEach(func() {
+			config.Spec.TunnelRef = nil
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
 				Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: testAccountId},
 			}
@@ -764,11 +770,49 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
+	Context("When a listener is reached only by WARP clients", func() {
+		BeforeEach(func() {
+			gw.Spec.Listeners = []gatewayv1.Listener{{Name: "udp", Port: 53, Protocol: gatewayv1.UDPProtocolType}}
+		})
+
+		It("should reject it while the class does not enable warpRouting", func() {
+			createAll()
+			reconcileOnce()
+
+			accepted := listenerCondition(gatewayv1.ListenerConditionAccepted)
+			Expect(accepted.Status).To(Equal(metav1.ConditionFalse))
+			Expect(accepted.Reason).To(Equal(string(gatewayv1.ListenerReasonUnsupportedProtocol)))
+			Expect(accepted.Message).To(ContainSubstring("warpRouting"))
+		})
+
+		It("should accept it once the class's tunnel template enables warpRouting", func() {
+			config.Spec.TunnelRef = nil
+			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
+				Spec: cfv1alpha1.CloudflareTunnelSpec{
+					AccountId: testAccountId,
+					Config:    &cfv1alpha1.CloudflareTunnelConfig{WarpRouting: &cfv1alpha1.CloudflareTunnelWarpRouting{Enable: true}},
+				},
+			}
+			createAll()
+			reconcileOnce()
+
+			Expect(listenerCondition(gatewayv1.ListenerConditionAccepted).Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
 	Context("When a TCPRoute names a TCP listener", func() {
 		var tcp *gatewayv1.TCPRoute
 
 		BeforeEach(func() {
 			reconciler.Features = gateway.Features{TCPRoutes: true, UDPRoutes: true}
+			// A UDP listener is reached only by WARP clients.
+			config.Spec.TunnelRef = nil
+			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
+				Spec: cfv1alpha1.CloudflareTunnelSpec{
+					AccountId: testAccountId,
+					Config:    &cfv1alpha1.CloudflareTunnelConfig{WarpRouting: &cfv1alpha1.CloudflareTunnelWarpRouting{Enable: true}},
+				},
+			}
 			gw.Spec.Listeners = []gatewayv1.Listener{
 				{Name: "tcp", Port: 5353, Protocol: gatewayv1.TCPProtocolType},
 				{Name: "udp", Port: 5353, Protocol: gatewayv1.UDPProtocolType},

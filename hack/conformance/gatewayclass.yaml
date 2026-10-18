@@ -8,6 +8,17 @@ metadata:
   name: conformance
   namespace: cloudflare-operator-system
 spec:
+  # Every class names a tunnel. This one is never created, because the token
+  # setup.sh installs is a dummy, and the suite reaches each Envoy at its
+  # LoadBalancer address instead. warpRouting is what lets the class accept
+  # HTTPS and UDP listeners and GRPCRoutes, so the suite exercises the Envoy
+  # translation of those too.
+  template:
+    spec:
+      accountId: conformance
+      config:
+        warpRouting:
+          enable: true
   envoy:
     serviceType: LoadBalancer
 ---
