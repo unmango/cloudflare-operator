@@ -102,6 +102,7 @@ No tunnel rule reaches them, so the operator rejects them: such a listener repor
 Enabling `config.warpRouting` in the template routes the Envoy Service's cluster IPs through the tunnel as private network routes, so a WARP client enrolled in the account can reach every listener at the cluster IP and listener port, and the operator then accepts those listeners and routes.
 The operator configures no DNS for WARP clients, so they dial the address, or resolve the hostname through a resolver policy of their own.
 This path has not been verified end to end through Cloudflare, so gRPC and UDP stay off the supported list until it has.
+Managing those routes needs the token to edit the account's Cloudflare Tunnel settings, which covers private network routes; a tunnel whose `spec.routes` is set reports `Degraded` when the token lacks it, and one with no routes is unaffected.
 
 An HTTP listener's hostname is served on the public internet as usual.
 A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy picks a `TLSRoute` by server name.

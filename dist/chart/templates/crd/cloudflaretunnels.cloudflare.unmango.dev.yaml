@@ -9641,7 +9641,8 @@ spec:
                   Private networks routed through this tunnel to WARP clients. The tunnel owns
                   every route that points at it: a route Cloudflare holds for this tunnel and
                   this list omits is deleted. WARP clients reach a network only when
-                  spec.config.warpRouting is enabled.
+                  spec.config.warpRouting is enabled. A network appears at most once per
+                  virtual network.
                 items:
                   description: A private network a tunnel routes to WARP clients.
                   properties:
@@ -9651,20 +9652,26 @@ spec:
                     network:
                       description: The private network, in CIDR notation, such as
                         10.96.0.10/32.
+                      maxLength: 43
                       minLength: 1
                       type: string
                     virtualNetworkId:
                       description: |-
                         The virtual network the route belongs to. When unset, Cloudflare uses the
                         account's default virtual network.
+                      maxLength: 36
                       type: string
                   required:
                   - network
                   type: object
+                maxItems: 64
                 type: array
-                x-kubernetes-list-map-keys:
-                - network
-                x-kubernetes-list-type: map
+                x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: a network appears at most once per virtual network
+                  rule: 'self.all(r, self.exists_one(o, o.network == r.network &&
+                    (has(o.virtualNetworkId) ? o.virtualNetworkId : '''') == (has(r.virtualNetworkId)
+                    ? r.virtualNetworkId : '''')))'
               tunnelSecret:
                 description: |-
                   Sets the password required to run a locally-managed tunnel. Must decode to at least

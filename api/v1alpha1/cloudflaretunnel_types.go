@@ -319,6 +319,7 @@ type CloudflareTunnelRoute struct {
 	// The private network, in CIDR notation, such as 10.96.0.10/32.
 	//
 	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=43
 	// +required
 	Network string `json:"network"`
 
@@ -330,6 +331,7 @@ type CloudflareTunnelRoute struct {
 	// The virtual network the route belongs to. When unset, Cloudflare uses the
 	// account's default virtual network.
 	//
+	// +kubebuilder:validation:MaxLength:=36
 	// +optional
 	VirtualNetworkId string `json:"virtualNetworkId,omitempty"`
 }
@@ -400,10 +402,12 @@ type CloudflareTunnelSpec struct {
 	// Private networks routed through this tunnel to WARP clients. The tunnel owns
 	// every route that points at it: a route Cloudflare holds for this tunnel and
 	// this list omits is deleted. WARP clients reach a network only when
-	// spec.config.warpRouting is enabled.
+	// spec.config.warpRouting is enabled. A network appears at most once per
+	// virtual network.
 	//
-	// +listType=map
-	// +listMapKey=network
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:XValidation:rule="self.all(r, self.exists_one(o, o.network == r.network && (has(o.virtualNetworkId) ? o.virtualNetworkId : '') == (has(r.virtualNetworkId) ? r.virtualNetworkId : '')))",message="a network appears at most once per virtual network"
 	// +optional
 	Routes []CloudflareTunnelRoute `json:"routes,omitempty"`
 

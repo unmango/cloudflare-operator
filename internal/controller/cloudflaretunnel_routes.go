@@ -46,7 +46,15 @@ func (r *CloudflareTunnelReconciler) reconcileRoutes(ctx context.Context, tunnel
 	}
 
 	existing, err := r.listRoutes(ctx, tunnel, tunnelId)
-	if err != nil {
+	switch {
+	case cfclient.IsForbidden(err) && len(tunnel.Spec.Routes) == 0:
+		// A token without access to routes manages none, and a tunnel that
+		// asks for none needs it to manage none.
+		return result, nil
+	case cfclient.IsForbidden(err):
+		result.problems = append(result.problems, "the API token cannot manage private network routes")
+		return result, nil
+	case err != nil:
 		return result, fmt.Errorf("listing routes: %w", err)
 	}
 
@@ -101,10 +109,12 @@ func (r *CloudflareTunnelReconciler) reconcileRoutes(ctx context.Context, tunnel
 }
 
 // deleteRoutes deletes every route that points at the tunnel, so none outlives
-// it.
+// it. A token that cannot see routes created none, so it has none to delete.
 func (r *CloudflareTunnelReconciler) deleteRoutes(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, tunnelId string) error {
 	existing, err := r.listRoutes(ctx, tunnel, tunnelId)
-	if err != nil {
+	if cfclient.IsForbidden(err) {
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("listing routes: %w", err)
 	}
 
