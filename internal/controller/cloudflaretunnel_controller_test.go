@@ -78,8 +78,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		var (
 			cfmock           *testing.MockClient
 			cloudflaretunnel *cfv1alpha1.CloudflareTunnel
-			// routes is what the API lists as pointing at the tunnel.
-			routes []zero_trust.Teamnet
+			// routes is what the API lists as pointing at the tunnel, and
+			// routesErr what it fails listing them with.
+			routes    []zero_trust.Teamnet
+			routesErr error
 		)
 
 		reconcileOnce := func() reconcile.Result {
@@ -118,11 +120,11 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			GinkgoT().Setenv("CLOUDFLARE_API_TOKEN", "test-token")
 
 			cfmock = testing.NewMockClient(gomock.NewController(GinkgoT()))
-			routes = nil
+			routes, routesErr = nil, nil
 			cfmock.EXPECT().
 				ListRoutes(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(context.Context, zero_trust.NetworkRouteListParams) ([]zero_trust.Teamnet, error) {
-					return routes, nil
+					return routes, routesErr
 				}).
 				AnyTimes()
 
@@ -706,6 +708,66 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					reconcileOnce()
 
 					degraded("route 10.0.0.5/32 was refused")
+				})
+
+				It("should accept a network once per virtual network", func() {
+					setRoutes(
+						cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute, VirtualNetworkId: "a"},
+						cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute, VirtualNetworkId: "b"},
+					)
+				})
+
+				It("should reject a network repeated in one virtual network", func() {
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Routes = []cfv1alpha1.CloudflareTunnelRoute{
+						{Network: envoyRoute},
+						{Network: envoyRoute, Comment: "again"},
+					}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(MatchError(
+						ContainSubstring("a network appears at most once per virtual network"),
+					))
+				})
+
+				Context("and the token cannot manage routes", func() {
+					BeforeEach(func() {
+						routesErr = &cloudflare.Error{
+							StatusCode: http.StatusForbidden,
+							Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+							Response:   &http.Response{StatusCode: http.StatusForbidden},
+						}
+					})
+
+					It("should carry on when the spec asks for no routes", func() {
+						reconcileOnce()
+
+						Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionFalse),
+						)))
+					})
+
+					It("should report the missing permission when the spec asks for routes", func() {
+						setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+
+						reconcileOnce()
+
+						degraded("the API token cannot manage private network routes")
+					})
+
+					It("should still delete the tunnel", func() {
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+						cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+						Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+						Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
+						cfmock.EXPECT().
+							DeleteTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+							Return(found, nil)
+
+						reconcileOnce()
+
+						err := k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
+						Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("the tunnel was deleted"))
+					})
 				})
 
 				It("should report a network that is not a CIDR", func() {
