@@ -254,6 +254,21 @@ func (mr *MockClientMockRecorder) ListTunnels(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTunnels", reflect.TypeOf((*MockClient)(nil).ListTunnels), ctx, params)
 }
 
+// ListVirtualNetworks mocks base method.
+func (m *MockClient) ListVirtualNetworks(ctx context.Context, params zero_trust.NetworkVirtualNetworkListParams) ([]zero_trust.VirtualNetwork, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVirtualNetworks", ctx, params)
+	ret0, _ := ret[0].([]zero_trust.VirtualNetwork)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVirtualNetworks indicates an expected call of ListVirtualNetworks.
+func (mr *MockClientMockRecorder) ListVirtualNetworks(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualNetworks", reflect.TypeOf((*MockClient)(nil).ListVirtualNetworks), ctx, params)
+}
+
 // UpdateConfiguration mocks base method.
 func (m *MockClient) UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error) {
 	m.ctrl.T.Helper()

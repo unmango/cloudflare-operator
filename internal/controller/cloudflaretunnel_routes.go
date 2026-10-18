@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v7"
@@ -57,6 +58,23 @@ func (r *CloudflareTunnelReconciler) reconcileRoutes(ctx context.Context, tunnel
 	case err != nil:
 		return result, fmt.Errorf("listing routes: %w", err)
 	}
+
+	if desired, err = r.resolveVirtualNetworks(ctx, tunnel, desired, existing); err != nil {
+		return result, err
+	}
+
+	var unique []cfv1alpha1.CloudflareTunnelRoute
+	seen := map[cfv1alpha1.CloudflareTunnelRoute]bool{}
+	for _, route := range desired {
+		key := cfv1alpha1.CloudflareTunnelRoute{Network: route.Network, VirtualNetworkId: route.VirtualNetworkId}
+		if seen[key] {
+			result.problems = append(result.problems, fmt.Sprintf("spec.routes lists network %s more than once in one virtual network", route.Network))
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, route)
+	}
+	desired = unique
 
 	matched := make([]bool, len(desired))
 	for _, route := range existing {
@@ -148,9 +166,38 @@ func (r *CloudflareTunnelReconciler) listRoutes(ctx context.Context, tunnel *cfv
 	})
 }
 
-// matchRoute finds the unmatched entry of desired that route satisfies. An
-// entry without a virtual network matches any, since Cloudflare files it under
-// the account's default.
+// resolveVirtualNetworks fills in the account's default virtual network on
+// each entry of desired that names none, since that is where Cloudflare files
+// it. It asks only when an existing route could be compared against one.
+func (r *CloudflareTunnelReconciler) resolveVirtualNetworks(ctx context.Context, tunnel *cfv1alpha1.CloudflareTunnel, desired []cfv1alpha1.CloudflareTunnelRoute, existing []zero_trust.Teamnet) ([]cfv1alpha1.CloudflareTunnelRoute, error) {
+	if len(existing) == 0 || !slices.ContainsFunc(desired, func(d cfv1alpha1.CloudflareTunnelRoute) bool { return d.VirtualNetworkId == "" }) {
+		return desired, nil
+	}
+
+	networks, err := r.Cloudflare.ListVirtualNetworks(ctx, zero_trust.NetworkVirtualNetworkListParams{
+		AccountID: cloudflare.F(routeAccount(tunnel)),
+		IsDefault: cloudflare.F(true),
+		IsDeleted: cloudflare.F(false),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("finding the default virtual network: %w", err)
+	}
+	if len(networks) == 0 {
+		return desired, nil
+	}
+
+	resolved := slices.Clone(desired)
+	for i := range resolved {
+		if resolved[i].VirtualNetworkId == "" {
+			resolved[i].VirtualNetworkId = networks[0].ID
+		}
+	}
+
+	return resolved, nil
+}
+
+// matchRoute finds the unmatched entry of desired that route satisfies: the
+// same network in the same virtual network.
 func matchRoute(desired []cfv1alpha1.CloudflareTunnelRoute, matched []bool, route zero_trust.Teamnet) int {
 	network := route.Network
 	if prefix, err := netip.ParsePrefix(network); err == nil {
@@ -158,10 +205,7 @@ func matchRoute(desired []cfv1alpha1.CloudflareTunnelRoute, matched []bool, rout
 	}
 
 	for i, d := range desired {
-		if matched[i] || d.Network != network {
-			continue
-		}
-		if d.VirtualNetworkId == "" || d.VirtualNetworkId == route.VirtualNetworkID {
+		if !matched[i] && d.Network == network && d.VirtualNetworkId == route.VirtualNetworkID {
 			return i
 		}
 	}

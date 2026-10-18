@@ -127,6 +127,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					return routes, routesErr
 				}).
 				AnyTimes()
+			cfmock.EXPECT().
+				ListVirtualNetworks(gomock.Any(), gomock.Any()).
+				Return([]zero_trust.VirtualNetwork{{ID: defaultVnet, IsDefaultNetwork: true}}, nil).
+				AnyTimes()
 
 			cloudflaretunnel = &cfv1alpha1.CloudflareTunnel{
 				ObjectMeta: metav1.ObjectMeta{
@@ -683,8 +687,8 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				It("should keep a listed route and delete one the spec omits", func() {
 					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
 					routes = []zero_trust.Teamnet{
-						{ID: "keep", Network: envoyRoute, VirtualNetworkID: "default"},
-						{ID: "stale", Network: "10.0.0.6/32", VirtualNetworkID: "default"},
+						{ID: "keep", Network: envoyRoute, VirtualNetworkID: defaultVnet},
+						{ID: "stale", Network: "10.0.0.6/32", VirtualNetworkID: defaultVnet},
 					}
 					cfmock.EXPECT().
 						DeleteRoute(gomock.Any(), gomock.Eq("stale"), gomock.Any()).
@@ -708,6 +712,38 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 					reconcileOnce()
 
 					degraded("route 10.0.0.5/32 was refused")
+				})
+
+				It("should not take a route in another virtual network for one in the default", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+					routes = []zero_trust.Teamnet{{ID: otherRouteId, Network: envoyRoute, VirtualNetworkID: "custom"}}
+					cfmock.EXPECT().
+						DeleteRoute(gomock.Any(), gomock.Eq(otherRouteId), gomock.Any()).
+						Return(&zero_trust.Route{ID: otherRouteId}, nil)
+					cfmock.EXPECT().
+						CreateRoute(gomock.Any(), gomock.Eq(zero_trust.NetworkRouteNewParams{
+							AccountID:        cloudflare.F(accountId),
+							Network:          cloudflare.F(envoyRoute),
+							TunnelID:         cloudflare.F(tunnelId),
+							VirtualNetworkID: cloudflare.F(defaultVnet),
+						})).
+						Return(&zero_trust.Route{ID: routeId}, nil)
+
+					reconcileOnce()
+
+					Expect(observed().Status.RoutesReady).To(Equal(int32(1)))
+				})
+
+				It("should report networks that are the same once masked", func() {
+					setRoutes(
+						cfv1alpha1.CloudflareTunnelRoute{Network: "10.0.0.5/24"},
+						cfv1alpha1.CloudflareTunnelRoute{Network: "10.0.0.7/24"},
+					)
+					routes = []zero_trust.Teamnet{{ID: routeId, Network: "10.0.0.0/24", VirtualNetworkID: defaultVnet}}
+
+					reconcileOnce()
+
+					degraded("spec.routes lists network 10.0.0.0/24 more than once in one virtual network")
 				})
 
 				It("should accept a network once per virtual network", func() {
@@ -1243,8 +1279,10 @@ var _ = Describe("validateIngress", func() {
 const originRequestKey = "originRequest"
 
 const (
-	envoyRoute = "10.0.0.5/32"
-	routeId    = "route"
+	envoyRoute   = "10.0.0.5/32"
+	routeId      = "route"
+	defaultVnet  = "default"
+	otherRouteId = "other-route"
 )
 
 // tunnelRule builds an unstructured ingress rule. An empty hostname is omitted

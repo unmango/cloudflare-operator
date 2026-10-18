@@ -27,6 +27,7 @@ type Client interface {
 	ListDnsRecords(ctx context.Context, params dns.RecordListParams) ([]dns.RecordResponse, error)
 	ListRoutes(ctx context.Context, params zero_trust.NetworkRouteListParams) ([]zero_trust.Teamnet, error)
 	ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]shared.CloudflareTunnel, error)
+	ListVirtualNetworks(ctx context.Context, params zero_trust.NetworkVirtualNetworkListParams) ([]zero_trust.VirtualNetwork, error)
 	UpdateConfiguration(ctx context.Context, tunnelId string, params zero_trust.TunnelCloudflaredConfigurationUpdateParams) (*zero_trust.TunnelCloudflaredConfigurationUpdateResponse, error)
 	UpdateDnsRecord(ctx context.Context, recordId string, params dns.RecordUpdateParams) (*dns.RecordResponse, error)
 }
@@ -125,6 +126,17 @@ func (c *client) ListTunnels(ctx context.Context, params zero_trust.TunnelCloudf
 	}
 
 	return tunnels, iter.Err()
+}
+
+// ListVirtualNetworks implements Client.
+func (c *client) ListVirtualNetworks(ctx context.Context, params zero_trust.NetworkVirtualNetworkListParams) ([]zero_trust.VirtualNetwork, error) {
+	var networks []zero_trust.VirtualNetwork
+	iter := c.ZeroTrust.Networks.VirtualNetworks.ListAutoPaging(ctx, params)
+	for iter.Next() {
+		networks = append(networks, iter.Current())
+	}
+
+	return networks, iter.Err()
 }
 
 // UpdateConfiguration implements Client.
