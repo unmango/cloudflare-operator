@@ -50,8 +50,10 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
 
       # envtest cannot run inside the nix build sandbox, so the suites run
-      # here rather than as part of `nix flake check`.
-      - run: nix develop -c make test
+      # here rather than as part of `nix flake check`. The specs in
+      # internal/xds/envoy_test.go run a real Envoy when ENVOY names one, and
+      # are skipped otherwise; envoy-bin is upstream's release binary.
+      - run: nix develop -c bash -c 'ENVOY="$(nix build --inputs-from . --no-link --print-out-paths nixpkgs#envoy-bin)/bin/envoy" make test'
 
   test-e2e:
     runs-on: ubuntu-latest

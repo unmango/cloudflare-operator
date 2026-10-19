@@ -280,13 +280,16 @@ var _ = Describe("GatewayClass Controller", func() {
 		err := k8sClient.Create(ctx, config)
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("at most one of spec.tunnelRef and spec.template"))
+		Expect(err.Error()).To(ContainSubstring("exactly one of spec.tunnelRef and spec.template"))
 	})
 
-	// Neither serves the class's Gateways inside the cluster only.
-	It("should accept a config setting neither tunnelRef nor template", func() {
+	// Neither would leave Envoy reachable only through its own Service.
+	It("should reject a config setting neither tunnelRef nor template", func() {
 		config.Spec.TunnelRef = nil
 
-		Expect(k8sClient.Create(ctx, config)).To(Succeed())
+		err := k8sClient.Create(ctx, config)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("exactly one of spec.tunnelRef and spec.template"))
 	})
 })

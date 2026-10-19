@@ -152,19 +152,21 @@ Each hostname a route serves becomes an Envoy virtual host, which gives the host
 Backends are EDS clusters fed from EndpointSlices, and a backend that does not resolve keeps its share of traffic, answered with a 500 through `cluster_not_found_response_code`.
 It writes nothing to the API server and runs on every replica rather than only the leader, since an Envoy can reach any replica through the Service.
 Envoy finds that Service through its bootstrap, passed inline with `--config-yaml`, and the manager finds the Service by the `app.kubernetes.io/component: xds` label in its own namespace, because kustomize and the chart name it differently; `--xds-address` overrides the lookup.
-The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; run them after changing the bootstrap or the translation.
+The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; CI sets it from nixpkgs' `envoy-bin`, and they are worth running locally after changing the bootstrap or the translation.
 
 The `conformance` CI job runs the Gateway API conformance suite against a kind cluster, as a regression test of the Envoy translation and not as a conformance claim.
 The class's Envoy Services are LoadBalancers, which `cloud-provider-kind` gives addresses the runner can reach, so the suite talks to Envoy directly and never goes through Cloudflare.
+Its template enables `warpRouting`, so every listener protocol is accepted, and names a tunnel that is never created, because the token is a dummy.
 Passing it shows the bundled Envoy routes correctly, not that traffic arriving through a tunnel does, so do not describe the operator as conformant on the strength of it, in docs, release notes or a submitted report.
 `test/conformance` is behind the `conformance` build tag, and `hack/conformance/options.yaml` names the GatewayClass and the features the suite exercises; list a feature there only once its tests pass.
 
 A provisioned tunnel reaches Envoy for HTTP, TLS and TCP listeners, and `gateway.TunnelIngress` writes its rules.
 An HTTP listener's hostname goes to `http://`, and a TLS listener's hostname, or the one a `tcp.tunnel.cloudflare.unmango.dev/<listener>` annotation gives a TCP listener, goes to `tcp://`, which clients reach with `cloudflared access tcp`.
 HTTPS and UDP listeners get no rule, and a GRPCRoute on an HTTP listener does not work through a public hostname: Cloudflare carries gRPC and UDP through a tunnel only to WARP clients over private network routing.
-So the Envoy translation of HTTPS listeners, UDP listeners, GRPCRoutes and UDPRoutes is reachable only through Envoy's own Service, which bypasses Cloudflare, unless WARP routing reaches it.
-A Gateway with neither `template` nor `tunnelRef` is reachable the same way, and exists for testing the translation.
-Neither counts as a supported feature: the operator supports what reaches Envoy through a tunnel, so do not describe the rest as supported in docs, release notes or PR descriptions.
+So `gateway.Listeners` accepts only what reaches Envoy through Cloudflare: HTTP listeners with HTTPRoutes, TLS and TCP listeners, unless the class's template enables `config.warpRouting`, when HTTPS and UDP listeners and GRPCRoutes are accepted too.
+`gateway.Load` reads that from the class into `References.WarpRouting`, so the gateway, route and xDS controllers agree, and each watches `CloudflareGatewayConfig` to follow it.
+A `CloudflareGatewayConfig` must set exactly one of `template` and `tunnelRef`, by a CEL rule and again in `gateway.Resolve`, because a Gateway with neither would be reachable only through Envoy's own Service.
+Do not describe anything as supported that does not reach Envoy through a tunnel, in docs, release notes or PR descriptions.
 When the template enables `config.warpRouting`, `gateway.TunnelRoutes` adds a host route for each of the Envoy Service's cluster IPs to the tunnel's `spec.routes`, so WARP clients reach every listener at that address; the Service is read before the tunnel is written, and a Service that does not exist yet gets its routes on a later pass.
 That path is unverified through Cloudflare, so it adds nothing to the supported set until it has been.
 
