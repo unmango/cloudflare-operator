@@ -59,6 +59,21 @@ func (mr *MockClientMockRecorder) CreateDnsRecord(ctx, params any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDnsRecord", reflect.TypeOf((*MockClient)(nil).CreateDnsRecord), ctx, params)
 }
 
+// CreateRoute mocks base method.
+func (m *MockClient) CreateRoute(ctx context.Context, params zero_trust.NetworkRouteNewParams) (*zero_trust.Route, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRoute", ctx, params)
+	ret0, _ := ret[0].(*zero_trust.Route)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateRoute indicates an expected call of CreateRoute.
+func (mr *MockClientMockRecorder) CreateRoute(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRoute", reflect.TypeOf((*MockClient)(nil).CreateRoute), ctx, params)
+}
+
 // CreateTunnel mocks base method.
 func (m *MockClient) CreateTunnel(ctx context.Context, params zero_trust.TunnelCloudflaredNewParams) (*shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
@@ -87,6 +102,21 @@ func (m *MockClient) DeleteDnsRecord(ctx context.Context, recordId string, param
 func (mr *MockClientMockRecorder) DeleteDnsRecord(ctx, recordId, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDnsRecord", reflect.TypeOf((*MockClient)(nil).DeleteDnsRecord), ctx, recordId, params)
+}
+
+// DeleteRoute mocks base method.
+func (m *MockClient) DeleteRoute(ctx context.Context, routeId string, params zero_trust.NetworkRouteDeleteParams) (*zero_trust.Route, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRoute", ctx, routeId, params)
+	ret0, _ := ret[0].(*zero_trust.Route)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRoute indicates an expected call of DeleteRoute.
+func (mr *MockClientMockRecorder) DeleteRoute(ctx, routeId, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRoute", reflect.TypeOf((*MockClient)(nil).DeleteRoute), ctx, routeId, params)
 }
 
 // DeleteTunnel mocks base method.
@@ -194,6 +224,21 @@ func (mr *MockClientMockRecorder) ListDnsRecords(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDnsRecords", reflect.TypeOf((*MockClient)(nil).ListDnsRecords), ctx, params)
 }
 
+// ListRoutes mocks base method.
+func (m *MockClient) ListRoutes(ctx context.Context, params zero_trust.NetworkRouteListParams) ([]zero_trust.Teamnet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRoutes", ctx, params)
+	ret0, _ := ret[0].([]zero_trust.Teamnet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRoutes indicates an expected call of ListRoutes.
+func (mr *MockClientMockRecorder) ListRoutes(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRoutes", reflect.TypeOf((*MockClient)(nil).ListRoutes), ctx, params)
+}
+
 // ListTunnels mocks base method.
 func (m *MockClient) ListTunnels(ctx context.Context, params zero_trust.TunnelCloudflaredListParams) ([]shared.CloudflareTunnel, error) {
 	m.ctrl.T.Helper()
@@ -207,6 +252,21 @@ func (m *MockClient) ListTunnels(ctx context.Context, params zero_trust.TunnelCl
 func (mr *MockClientMockRecorder) ListTunnels(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTunnels", reflect.TypeOf((*MockClient)(nil).ListTunnels), ctx, params)
+}
+
+// ListVirtualNetworks mocks base method.
+func (m *MockClient) ListVirtualNetworks(ctx context.Context, params zero_trust.NetworkVirtualNetworkListParams) ([]zero_trust.VirtualNetwork, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVirtualNetworks", ctx, params)
+	ret0, _ := ret[0].([]zero_trust.VirtualNetwork)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVirtualNetworks indicates an expected call of ListVirtualNetworks.
+func (mr *MockClientMockRecorder) ListVirtualNetworks(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualNetworks", reflect.TypeOf((*MockClient)(nil).ListVirtualNetworks), ctx, params)
 }
 
 // UpdateConfiguration mocks base method.

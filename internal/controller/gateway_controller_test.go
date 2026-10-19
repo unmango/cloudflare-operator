@@ -502,6 +502,35 @@ var _ = Describe("Gateway Controller", func() {
 		})
 	})
 
+	Context("When a tunnel routes WARP clients to Envoy", func() {
+		BeforeEach(func() {
+			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
+				Spec: cfv1alpha1.CloudflareTunnelSpec{
+					AccountId: testAccountId,
+					Config: &cfv1alpha1.CloudflareTunnelConfig{
+						WarpRouting: &cfv1alpha1.CloudflareTunnelWarpRouting{Enable: true},
+					},
+				},
+			}
+			createAll()
+		})
+
+		It("should route Envoy's cluster IP through the tunnel", func() {
+			reconcileOnce()
+
+			svc := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "web-envoy", Namespace: key.Namespace}, svc)).To(Succeed())
+			Expect(svc.Spec.ClusterIP).NotTo(BeEmpty())
+
+			t := &cfv1alpha1.CloudflareTunnel{}
+			Expect(k8sClient.Get(ctx, key, t)).To(Succeed())
+			Expect(t.Spec.Routes).To(ConsistOf(cfv1alpha1.CloudflareTunnelRoute{
+				Network: svc.Spec.ClusterIP + "/32",
+				Comment: "Envoy for Gateway default/web",
+			}))
+		})
+	})
+
 	Context("When the class provisions a tunnel per Gateway", func() {
 		BeforeEach(func() {
 			config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
