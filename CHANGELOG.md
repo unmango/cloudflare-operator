@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.0](https://github.com/unmango/cloudflare-operator/compare/v0.8.0...v0.9.0) (2026-10-23)
+
+
+### Features
+
+* **gateway:** carry TLS and TCP listeners through the tunnel ([#274](https://github.com/unmango/cloudflare-operator/issues/274)) ([5db408f](https://github.com/unmango/cloudflare-operator/commit/5db408fba4c5f799e3819baafc3ce6384c2aa4b1))
+* **gateway:** reject what never reaches Envoy through Cloudflare ([#280](https://github.com/unmango/cloudflare-operator/issues/280)) ([c937eea](https://github.com/unmango/cloudflare-operator/commit/c937eea3f34755739a28e74aaf1c8fec27f5e516))
+* **tunnel:** route WARP clients to a Gateway's Envoy ([#276](https://github.com/unmango/cloudflare-operator/issues/276)) ([86d1d90](https://github.com/unmango/cloudflare-operator/commit/86d1d9031b7f2de8a2cd480c2328276a8d366a3a))
+
 ## [0.8.0](https://github.com/unmango/cloudflare-operator/compare/v0.7.0...v0.8.0) (2026-10-17)
 
 
