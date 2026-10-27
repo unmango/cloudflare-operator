@@ -45,7 +45,7 @@
           ...
         }:
         let
-          version = "0.3.1"; # x-release-please-version
+          version = "0.9.0"; # x-release-please-version
 
           # The Kubernetes minor the envtest control plane runs. Bumping it is a
           # deliberate edit; kubepkgs supports 1.34 through 1.37.
@@ -79,6 +79,7 @@
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
+              cloud-provider-kind
               cloudflared
               ginkgo
               gnumake

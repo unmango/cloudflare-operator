@@ -1,0 +1,36 @@
+# Options for the Gateway API conformance suite, read by test/conformance
+# through --conformance-options-file. The suite runs every test whose features
+# are all listed here. It talks to Envoy directly, never through Cloudflare, so
+# a listed feature is one whose Envoy translation it exercises, not one the
+# operator claims; README.md says what is supported.
+gatewayClassName: cloudflare-conformance
+conformanceProfiles:
+  - GATEWAY-HTTP
+  - GATEWAY-GRPC
+  - GATEWAY-TLS
+  - GATEWAY-TCP
+  - GATEWAY-UDP
+supportedFeatures:
+  - Gateway
+  - GatewayPort8080
+  - HTTPRoute
+  - HTTPRouteMethodMatching
+  - HTTPRouteQueryParamMatching
+  - HTTPRouteResponseHeaderModification
+  - GRPCRoute
+  - TLSRoute
+  - TLSRouteModeTerminate
+  - TLSRouteModeMixed
+  - TCPRoute
+  - UDPRoute
+  - ReferenceGrant
+cleanupBaseResources: true
+cleanupTestResources: true
+debug: false
+implementation:
+  organization: unmango
+  project: cloudflare-operator
+  url: https://github.com/unmango/cloudflare-operator
+  version: main
+  contact:
+    - "@UnstoppableMango"

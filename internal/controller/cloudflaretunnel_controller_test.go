@@ -31,6 +31,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/shared"
 	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
+	"github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/unmango/cloudflare-operator/internal/testing"
 	"go.uber.org/mock/gomock"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -77,6 +78,10 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 		var (
 			cfmock           *testing.MockClient
 			cloudflaretunnel *cfv1alpha1.CloudflareTunnel
+			// routes is what the API lists as pointing at the tunnel, and
+			// routesErr what it fails listing them with.
+			routes    []zero_trust.Teamnet
+			routesErr error
 		)
 
 		reconcileOnce := func() reconcile.Result {
@@ -115,6 +120,17 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 			GinkgoT().Setenv("CLOUDFLARE_API_TOKEN", "test-token")
 
 			cfmock = testing.NewMockClient(gomock.NewController(GinkgoT()))
+			routes, routesErr = nil, nil
+			cfmock.EXPECT().
+				ListRoutes(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, zero_trust.NetworkRouteListParams) ([]zero_trust.Teamnet, error) {
+					return routes, routesErr
+				}).
+				AnyTimes()
+			cfmock.EXPECT().
+				ListVirtualNetworks(gomock.Any(), gomock.Any()).
+				Return([]zero_trust.VirtualNetwork{{ID: defaultVnet, IsDefaultNetwork: true}}, nil).
+				AnyTimes()
 
 			cloudflaretunnel = &cfv1alpha1.CloudflareTunnel{
 				ObjectMeta: metav1.ObjectMeta{
@@ -627,6 +643,438 @@ var _ = Describe("CloudflareTunnel Controller", func() {
 				})
 			})
 
+			Context("and routes are configured", func() {
+				setRoutes := func(routes ...cfv1alpha1.CloudflareTunnelRoute) {
+					GinkgoHelper()
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Routes = routes
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+				}
+
+				degraded := func(message string) {
+					GinkgoHelper()
+					Expect(observed().Status.Conditions).To(ContainElements(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+						HaveField("Message", ContainSubstring(message)),
+					)))
+				}
+
+				BeforeEach(func() {
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil).
+						AnyTimes()
+				})
+
+				It("should create a missing route pointing at the tunnel", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute, Comment: "envoy"})
+					cfmock.EXPECT().
+						CreateRoute(gomock.Any(), gomock.Eq(zero_trust.NetworkRouteNewParams{
+							AccountID: cloudflare.F(accountId),
+							Network:   cloudflare.F(envoyRoute),
+							TunnelID:  cloudflare.F(tunnelId),
+							Comment:   cloudflare.F("envoy"),
+						})).
+						Return(&zero_trust.Route{ID: routeId}, nil)
+
+					reconcileOnce()
+
+					Expect(observed().Status.RoutesReady).To(Equal(int32(1)))
+				})
+
+				It("should keep a listed route and delete one the spec omits", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+					routes = []zero_trust.Teamnet{
+						{ID: "keep", Network: envoyRoute, VirtualNetworkID: defaultVnet},
+						{ID: "stale", Network: "10.0.0.6/32", VirtualNetworkID: defaultVnet},
+					}
+					cfmock.EXPECT().
+						DeleteRoute(gomock.Any(), gomock.Eq("stale"), gomock.Any()).
+						Return(&zero_trust.Route{ID: "stale"}, nil)
+
+					reconcileOnce()
+
+					Expect(observed().Status.RoutesReady).To(Equal(int32(1)))
+				})
+
+				It("should report a route the API refuses", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+					cfmock.EXPECT().
+						CreateRoute(gomock.Any(), gomock.Any()).
+						Return(nil, &cloudflare.Error{
+							StatusCode: http.StatusConflict,
+							Request:    httptest.NewRequest(http.MethodPost, "/", nil),
+							Response:   &http.Response{StatusCode: http.StatusConflict},
+						})
+
+					reconcileOnce()
+
+					degraded("route 10.0.0.5/32 was refused")
+				})
+
+				It("should not take a route in another virtual network for one in the default", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+					routes = []zero_trust.Teamnet{{ID: otherRouteId, Network: envoyRoute, VirtualNetworkID: "custom"}}
+					cfmock.EXPECT().
+						DeleteRoute(gomock.Any(), gomock.Eq(otherRouteId), gomock.Any()).
+						Return(&zero_trust.Route{ID: otherRouteId}, nil)
+					cfmock.EXPECT().
+						CreateRoute(gomock.Any(), gomock.Eq(zero_trust.NetworkRouteNewParams{
+							AccountID:        cloudflare.F(accountId),
+							Network:          cloudflare.F(envoyRoute),
+							TunnelID:         cloudflare.F(tunnelId),
+							VirtualNetworkID: cloudflare.F(defaultVnet),
+						})).
+						Return(&zero_trust.Route{ID: routeId}, nil)
+
+					reconcileOnce()
+
+					Expect(observed().Status.RoutesReady).To(Equal(int32(1)))
+				})
+
+				It("should report networks that are the same once masked", func() {
+					setRoutes(
+						cfv1alpha1.CloudflareTunnelRoute{Network: "10.0.0.5/24"},
+						cfv1alpha1.CloudflareTunnelRoute{Network: "10.0.0.7/24"},
+					)
+					routes = []zero_trust.Teamnet{{ID: routeId, Network: "10.0.0.0/24", VirtualNetworkID: defaultVnet}}
+
+					reconcileOnce()
+
+					degraded("spec.routes lists network 10.0.0.0/24 more than once in one virtual network")
+				})
+
+				It("should accept a network once per virtual network", func() {
+					setRoutes(
+						cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute, VirtualNetworkId: "a"},
+						cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute, VirtualNetworkId: "b"},
+					)
+				})
+
+				It("should reject a network repeated in one virtual network", func() {
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Routes = []cfv1alpha1.CloudflareTunnelRoute{
+						{Network: envoyRoute},
+						{Network: envoyRoute, Comment: "again"},
+					}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(MatchError(
+						ContainSubstring("a network appears at most once per virtual network"),
+					))
+				})
+
+				Context("and the token cannot manage routes", func() {
+					BeforeEach(func() {
+						routesErr = &cloudflare.Error{
+							StatusCode: http.StatusForbidden,
+							Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+							Response:   &http.Response{StatusCode: http.StatusForbidden},
+						}
+					})
+
+					It("should carry on when the spec asks for no routes", func() {
+						reconcileOnce()
+
+						Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+							HaveField("Type", typeDegradedCloudflareTunnel),
+							HaveField("Status", metav1.ConditionFalse),
+						)))
+					})
+
+					It("should report the missing permission when the spec asks for routes", func() {
+						setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: envoyRoute})
+
+						reconcileOnce()
+
+						degraded("the API token cannot manage private network routes")
+					})
+
+					It("should still delete the tunnel", func() {
+						Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+						cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+						Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+						Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
+						cfmock.EXPECT().
+							DeleteTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+							Return(found, nil)
+
+						reconcileOnce()
+
+						err := k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
+						Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("the tunnel was deleted"))
+					})
+				})
+
+				It("should report a network that is not a CIDR", func() {
+					setRoutes(cfv1alpha1.CloudflareTunnelRoute{Network: "not-a-cidr"})
+
+					reconcileOnce()
+
+					degraded(`spec.routes network "not-a-cidr" is not a CIDR`)
+				})
+
+				It("should delete the tunnel's routes before the tunnel", func() {
+					routes = []zero_trust.Teamnet{{ID: routeId, Network: envoyRoute}}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Finalizers = []string{cloudflareTunnelFinalizer}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+					Expect(k8sClient.Delete(ctx, cloudflaretunnel)).To(Succeed())
+
+					gomock.InOrder(
+						cfmock.EXPECT().
+							DeleteRoute(gomock.Any(), gomock.Eq(routeId), gomock.Any()).
+							Return(&zero_trust.Route{ID: routeId}, nil),
+						cfmock.EXPECT().
+							DeleteTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+							Return(found, nil),
+					)
+
+					reconcileOnce()
+
+					err := k8sClient.Get(ctx, typeNamespacedName, &cfv1alpha1.CloudflareTunnel{})
+					Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("the tunnel was deleted"))
+				})
+			})
+
+			Context("and DNS is configured", func() {
+				const (
+					service  = "http://test.default.svc.cluster.local:80"
+					zoneName = "example.com"
+					webHost  = "web.example.com"
+					apiHost  = "api.example.com"
+				)
+
+				var zoneErr error
+
+				entry := func(host, path string, dns *cfv1alpha1.CloudflareTunnelDns) cfv1alpha1.CloudflareTunnelConfigIngress {
+					return cfv1alpha1.CloudflareTunnelConfigIngress{
+						Hostname:      host,
+						Path:          path,
+						Service:       service,
+						OriginRequest: originRequest,
+						Dns:           dns,
+					}
+				}
+
+				setIngress := func(rules ...cfv1alpha1.CloudflareTunnelConfigIngress) {
+					GinkgoHelper()
+					Expect(k8sClient.Get(ctx, typeNamespacedName, cloudflaretunnel)).To(Succeed())
+					cloudflaretunnel.Spec.Dns = &cfv1alpha1.CloudflareTunnelDns{ZoneId: testZoneId}
+					cloudflaretunnel.Spec.Config = &cfv1alpha1.CloudflareTunnelConfig{
+						Ingress: append(rules, cfv1alpha1.CloudflareTunnelConfigIngress{
+							Service:       testCatchAllService,
+							OriginRequest: originRequest,
+						}),
+						OriginRequest: originRequest,
+					}
+					Expect(k8sClient.Update(ctx, cloudflaretunnel)).To(Succeed())
+				}
+
+				record := func(host string) *cfv1alpha1.DnsRecord {
+					GinkgoHelper()
+					record := &cfv1alpha1.DnsRecord{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      dnsRecordName(cloudflaretunnel, host),
+						Namespace: testNamespace,
+					}, record)).To(Succeed())
+					return record
+				}
+
+				recordAbsent := func(host string) {
+					GinkgoHelper()
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      dnsRecordName(cloudflaretunnel, host),
+						Namespace: testNamespace,
+					}, &cfv1alpha1.DnsRecord{})
+					Expect(apierrors.IsNotFound(err)).To(BeTrueBecause("no record should exist for %s", host))
+				}
+
+				BeforeEach(func() {
+					zoneErr = nil
+					cfmock.EXPECT().
+						GetTunnel(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(found, nil).
+						AnyTimes()
+					cfmock.EXPECT().
+						UpdateConfiguration(gomock.Any(), gomock.Eq(tunnelId), gomock.Any()).
+						Return(nil, nil).
+						AnyTimes()
+					cfmock.EXPECT().
+						GetZone(gomock.Any(), gomock.Eq(zones.ZoneGetParams{ZoneID: cloudflare.F(testZoneId)})).
+						DoAndReturn(func(context.Context, zones.ZoneGetParams) (*zones.Zone, error) {
+							if zoneErr != nil {
+								return nil, zoneErr
+							}
+							return &zones.Zone{ID: testZoneId, Name: zoneName}, nil
+						}).
+						AnyTimes()
+				})
+
+				AfterEach(func() {
+					for _, host := range []string{webHost, apiHost, "other.test"} {
+						deleteIfExists(ctx, types.NamespacedName{
+							Name:      dnsRecordName(cloudflaretunnel, host),
+							Namespace: testNamespace,
+						}, &cfv1alpha1.DnsRecord{})
+					}
+				})
+
+				It("should own one CNAME per hostname, pointing at the tunnel", func() {
+					setIngress(
+						entry(webHost, "/a", nil),
+						entry(webHost, "/b", nil),
+						entry(apiHost, "", &cfv1alpha1.CloudflareTunnelDns{Proxied: new(false)}),
+					)
+
+					reconcileOnce()
+
+					web := record(webHost)
+					Expect(metav1.IsControlledBy(web, observed())).To(BeTrue())
+					Expect(web.Spec.ZoneId).To(Equal(testZoneId))
+					Expect(web.Spec.CNAMERecord).To(HaveValue(SatisfyAll(
+						HaveField("Name", webHost),
+						HaveField("TunnelRef", Equal(&cfv1alpha1.DnsRecordTunnelReference{Name: resourceName})),
+						HaveField("Proxied", true),
+						HaveField("Ttl", int64(1)),
+					)))
+					Expect(record(apiHost).Spec.CNAMERecord.Proxied).To(BeFalse())
+				})
+
+				It("should report records as desired before they are ready", func() {
+					setIngress(entry(webHost, "", nil), entry(apiHost, "", nil))
+
+					reconcileOnce()
+
+					status := observed().Status
+					Expect(status.DnsRecords).To(Equal(int32(2)))
+					Expect(status.DnsRecordsReady).To(BeZero())
+					Expect(status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDnsReadyCloudflareTunnel),
+						HaveField("Status", metav1.ConditionFalse),
+					)))
+
+					for _, host := range []string{webHost, apiHost} {
+						web := record(host)
+						web.Status.Id = new("record-" + host)
+						web.Status.Content = ptr.To(tunnelId + ".cfargotunnel.com")
+						Expect(k8sClient.Status().Update(ctx, web)).To(Succeed())
+					}
+
+					reconcileOnce()
+
+					status = observed().Status
+					Expect(status.DnsRecordsReady).To(Equal(int32(2)))
+					Expect(status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDnsReadyCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+					)))
+				})
+
+				It("should delete the record of a hostname that left the config", func() {
+					setIngress(entry(webHost, "", nil), entry(apiHost, "", nil))
+					reconcileOnce()
+					record(apiHost)
+
+					setIngress(entry(webHost, "", nil))
+					reconcileOnce()
+
+					record(webHost)
+					recordAbsent(apiHost)
+					Expect(observed().Status.DnsRecords).To(Equal(int32(1)))
+				})
+
+				It("should write nothing for a hostname whose entries disagree", func() {
+					setIngress(
+						entry(webHost, "/a", nil),
+						entry(webHost, "/b", &cfv1alpha1.CloudflareTunnelDns{Proxied: new(false)}),
+						entry(apiHost, "", nil),
+					)
+
+					reconcileOnce()
+
+					recordAbsent(webHost)
+					record(apiHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Reason", reasonInvalidSpec),
+						HaveField("Message", ContainSubstring(webHost)),
+					)))
+				})
+
+				It("should write nothing for a hostname outside the zone", func() {
+					setIngress(entry("other.test", "", nil), entry(webHost, "", nil))
+
+					reconcileOnce()
+
+					recordAbsent("other.test")
+					record(webHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Status", metav1.ConditionTrue),
+						HaveField("Message", ContainSubstring("other.test is not in zone example.com")),
+					)))
+				})
+
+				It("should skip the zone check when the token cannot read the zone", func() {
+					zoneErr = &cloudflare.Error{
+						StatusCode: http.StatusForbidden,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusForbidden},
+					}
+					setIngress(entry("other.test", "", nil))
+
+					reconcileOnce()
+
+					record("other.test")
+				})
+
+				It("should keep its records while the zone reads as missing", func() {
+					setIngress(entry(webHost, "", nil))
+					reconcileOnce()
+					record(webHost)
+
+					zoneErr = &cloudflare.Error{
+						StatusCode: http.StatusNotFound,
+						Request:    httptest.NewRequest(http.MethodGet, "/", nil),
+						Response:   &http.Response{StatusCode: http.StatusNotFound},
+					}
+					reconcileOnce()
+
+					record(webHost)
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Message", ContainSubstring("does not exist")),
+					)))
+				})
+
+				It("should leave alone a record it does not own", func() {
+					Expect(k8sClient.Create(ctx, &cfv1alpha1.DnsRecord{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      dnsRecordName(cloudflaretunnel, webHost),
+							Namespace: testNamespace,
+						},
+						Spec: cfv1alpha1.DnsRecordSpec{
+							ZoneId: testZoneId,
+							Record: cfv1alpha1.Record{CNAMERecord: &cfv1alpha1.CNAMERecord{
+								Name:    webHost,
+								Content: "elsewhere.example.com",
+							}},
+						},
+					})).To(Succeed())
+					setIngress(entry(webHost, "", nil))
+
+					reconcileOnce()
+
+					Expect(record(webHost).Spec.CNAMERecord.Content).To(Equal("elsewhere.example.com"))
+					Expect(observed().Status.Conditions).To(ContainElement(SatisfyAll(
+						HaveField("Type", typeDegradedCloudflareTunnel),
+						HaveField("Message", ContainSubstring("is not owned by the tunnel")),
+					)))
+				})
+			})
+
 			Context("and a cloudflared template is provided", func() {
 				const labelKey = "app"
 
@@ -829,6 +1277,13 @@ var _ = Describe("validateIngress", func() {
 
 // originRequestKey is the originRequest field name in an unstructured spec.
 const originRequestKey = "originRequest"
+
+const (
+	envoyRoute   = "10.0.0.5/32"
+	routeId      = "route"
+	defaultVnet  = "default"
+	otherRouteId = "other-route"
+)
 
 // tunnelRule builds an unstructured ingress rule. An empty hostname is omitted
 // so the rule serializes as the catch-all Cloudflare requires last.

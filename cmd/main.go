@@ -17,21 +17,32 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -44,6 +55,9 @@ import (
 	cloudflarev1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
 	cfclient "github.com/unmango/cloudflare-operator/internal/client"
 	"github.com/unmango/cloudflare-operator/internal/controller"
+	"github.com/unmango/cloudflare-operator/internal/gateway"
+	"github.com/unmango/cloudflare-operator/internal/secrets"
+	"github.com/unmango/cloudflare-operator/internal/xds"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,6 +86,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var xdsBindAddr, xdsAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -89,6 +104,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&xdsBindAddr, "xds-bind-address", fmt.Sprintf(":%d", xds.DefaultPort),
+		"The address the xDS server, which programs the Envoy proxies serving Gateways, binds to.")
+	flag.StringVar(&xdsAddr, "xds-address", "",
+		"The host:port Envoy proxies dial to reach the xDS server. "+
+			"Leave empty to use the Service labelled "+xds.ComponentLabel+"="+xds.ComponentValue+" in the manager's namespace.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -164,8 +184,33 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
+	cfg := ctrl.GetConfigOrDie()
+
+	features, gatewayAPI, err := discoverGatewayAPI(cfg)
+	if err != nil {
+		setupLog.Error(err, "Failed to discover the Gateway API")
+		os.Exit(1)
+	}
+
+	var secretRole *rbacv1.ClusterRole
+	var secretSubject rbacv1.Subject
+	if gatewayAPI {
+		secretRole, secretSubject, err = discoverSecretAccess(cfg)
+		if err != nil {
+			setupLog.Error(err, "Failed to discover access to TLS Secrets")
+			os.Exit(1)
+		}
+	}
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme,
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				// Only the RoleBindings that let the operator read TLS
+				// Secrets, rather than every RoleBinding in the cluster.
+				&rbacv1.RoleBinding{}: {Label: secretAccessSelector},
+			},
+		},
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -220,17 +265,133 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "ingress")
 		os.Exit(1)
 	}
-	gatewayAPI, err := gatewayAPIInstalled(mgr.GetConfig())
-	if err != nil {
-		setupLog.Error(err, "Failed to discover the Gateway API")
-		os.Exit(1)
-	}
 	if gatewayAPI {
+		if secretRole == nil {
+			setupLog.Info("Found no ClusterRole to read TLS Secrets with, "+
+				"so HTTPS listeners will not resolve their certificates",
+				"label", secretReaderLabel+"="+secretReaderValue,
+				"hint", "install the operator with the Helm chart, which ships the role, and restart the manager",
+			)
+		} else {
+			features.Secrets = &secrets.Access{
+				Config:     cfg,
+				HTTPClient: mgr.GetHTTPClient(),
+				Mapper:     mgr.GetRESTMapper(),
+				Scheme:     mgr.GetScheme(),
+				Log:        ctrl.Log.WithName("secrets"),
+			}
+			if err := mgr.Add(features.Secrets); err != nil {
+				setupLog.Error(err, "Failed to add the TLS Secret watcher")
+				os.Exit(1)
+			}
+			if err := (&controller.GatewaySecretWatchReconciler{
+				Client: mgr.GetClient(),
+				Access: features.Secrets,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "gateway-secret-watch")
+				os.Exit(1)
+			}
+			if err := (&controller.GatewaySecretAccessReconciler{
+				Client:    mgr.GetClient(),
+				Role:      secretRole,
+				Subject:   secretSubject,
+				APIReader: mgr.GetAPIReader(),
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "gateway-secret-access")
+				os.Exit(1)
+			}
+		}
+
 		if err := (&controller.GatewayClassReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create controller", "controller", "gatewayclass")
+			os.Exit(1)
+		}
+
+		resolver := &xds.Resolver{Reader: mgr.GetClient()}
+		if xdsAddr != "" {
+			addr, err := xds.ParseAddress(xdsAddr)
+			if err != nil {
+				setupLog.Error(err, "Invalid --xds-address", "value", xdsAddr)
+				os.Exit(1)
+			}
+			resolver.Static = &addr
+		}
+		if err := (&controller.GatewayReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			XDS:      resolver,
+			Features: features,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gateway")
+			os.Exit(1)
+		}
+
+		snapshots := xds.NewCache(ctrl.Log.WithName("xds"))
+		if err := (&controller.GatewayXDSReconciler{
+			Client:   mgr.GetClient(),
+			Cache:    snapshots,
+			Features: features,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gateway-xds")
+			os.Exit(1)
+		}
+		if err := (&controller.RouteReconciler[*gatewayv1.HTTPRoute]{
+			Client:   mgr.GetClient(),
+			Features: features,
+			New:      func() *gatewayv1.HTTPRoute { return &gatewayv1.HTTPRoute{} },
+		}).SetupWithManager(mgr, "httproute"); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "httproute")
+			os.Exit(1)
+		}
+		if features.GRPCRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.GRPCRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.GRPCRoute { return &gatewayv1.GRPCRoute{} },
+			}).SetupWithManager(mgr, "grpcroute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "grpcroute")
+				os.Exit(1)
+			}
+		}
+		if features.TLSRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.TLSRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.TLSRoute { return &gatewayv1.TLSRoute{} },
+			}).SetupWithManager(mgr, "tlsroute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "tlsroute")
+				os.Exit(1)
+			}
+		}
+		if features.TCPRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.TCPRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.TCPRoute { return &gatewayv1.TCPRoute{} },
+			}).SetupWithManager(mgr, "tcproute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "tcproute")
+				os.Exit(1)
+			}
+		}
+		if features.UDPRoutes {
+			if err := (&controller.RouteReconciler[*gatewayv1.UDPRoute]{
+				Client:   mgr.GetClient(),
+				Features: features,
+				New:      func() *gatewayv1.UDPRoute { return &gatewayv1.UDPRoute{} },
+			}).SetupWithManager(mgr, "udproute"); err != nil {
+				setupLog.Error(err, "Failed to create controller", "controller", "udproute")
+				os.Exit(1)
+			}
+		}
+		if err := mgr.Add(&xds.Server{
+			Address: xdsBindAddr,
+			Cache:   snapshots,
+			Log:     ctrl.Log.WithName("xds"),
+		}); err != nil {
+			setupLog.Error(err, "Failed to add the xDS server")
 			os.Exit(1)
 		}
 	} else {
@@ -257,24 +418,106 @@ func main() {
 	}
 }
 
-// gatewayAPIInstalled reports whether the cluster serves the Gateway API.
+// discoverGatewayAPI reports whether the cluster serves the Gateway API, and
+// what of it the Gateway controllers can use.
 //
 // Registering a controller for a kind the API server does not serve makes the
 // manager fail to start, so the Gateway controllers are wired up only when the
-// CRDs are present. Installing them later needs a restart.
-func gatewayAPIInstalled(cfg *rest.Config) (bool, error) {
-	client, err := discovery.NewDiscoveryClientForConfig(cfg)
+// CRDs are present, and the controller of each route kind besides HTTPRoute
+// only when that kind's CRD is.
+// Installing them later needs a restart.
+func discoverGatewayAPI(cfg *rest.Config) (gateway.Features, bool, error) {
+	features := gateway.Features{}
+
+	disco, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
-		return false, err
+		return features, false, err
 	}
 
-	_, err = client.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
+	resources, err := disco.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
 	if apierrors.IsNotFound(err) {
-		return false, nil
+		return features, false, nil
 	}
 	if err != nil {
-		return false, err
+		return features, false, err
+	}
+	for _, r := range resources.APIResources {
+		switch r.Name {
+		case "grpcroutes":
+			features.GRPCRoutes = true
+		case "tlsroutes":
+			features.TLSRoutes = true
+		case "tcproutes":
+			features.TCPRoutes = true
+		case "udproutes":
+			features.UDPRoutes = true
+		}
 	}
 
-	return true, nil
+	return features, true, nil
+}
+
+// The ClusterRole the operator binds, in each namespace Gateways take listener
+// certificates from, to read TLS Secrets there. The chart names it after the
+// release, so the manager finds it by label, as it does the xDS Service.
+const (
+	secretReaderLabel = "app.kubernetes.io/component"
+	secretReaderValue = "gateway-tls-secret-reader"
+)
+
+// secretAccessSelector matches the RoleBindings the operator creates with that
+// role.
+var secretAccessSelector = func() labels.Selector {
+	req, err := labels.NewRequirement(controller.SecretAccessLabel, selection.Exists, nil)
+	if err != nil {
+		panic(err)
+	}
+	return labels.NewSelector().Add(*req)
+}()
+
+// discoverSecretAccess finds the ClusterRole granting read access to Secrets,
+// which the operator may bind but holds no access through itself, and the
+// identity to bind it to. It returns a nil role when there is no such role or
+// the operator may not look for one.
+func discoverSecretAccess(cfg *rest.Config) (*rbacv1.ClusterRole, rbacv1.Subject, error) {
+	ctx := context.Background()
+	subject := rbacv1.Subject{}
+
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, subject, err
+	}
+
+	roles, err := clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{
+		LabelSelector: secretReaderLabel + "=" + secretReaderValue,
+	})
+	if apierrors.IsForbidden(err) {
+		return nil, subject, nil
+	}
+	if err != nil {
+		return nil, subject, err
+	}
+	switch len(roles.Items) {
+	case 0:
+		return nil, subject, nil
+	case 1:
+	default:
+		return nil, subject, fmt.Errorf("found %d ClusterRoles labelled %s=%s, expected at most one",
+			len(roles.Items), secretReaderLabel, secretReaderValue)
+	}
+
+	review, err := clientset.AuthenticationV1().SelfSubjectReviews().Create(ctx,
+		&authenticationv1.SelfSubjectReview{}, metav1.CreateOptions{})
+	if err != nil {
+		return nil, subject, fmt.Errorf("finding the operator's own identity: %w", err)
+	}
+
+	username := review.Status.UserInfo.Username
+	if parts := strings.Split(username, ":"); len(parts) == 4 && parts[0] == "system" && parts[1] == "serviceaccount" {
+		subject = rbacv1.Subject{Kind: rbacv1.ServiceAccountKind, Namespace: parts[2], Name: parts[3]}
+	} else {
+		subject = rbacv1.Subject{Kind: rbacv1.UserKind, APIGroup: rbacv1.GroupName, Name: username}
+	}
+
+	return &roles.Items[0], subject, nil
 }

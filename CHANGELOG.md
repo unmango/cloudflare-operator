@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.9.0](https://github.com/unmango/cloudflare-operator/compare/v0.8.0...v0.9.0) (2026-10-23)
+
+
+### Features
+
+* **gateway:** carry TLS and TCP listeners through the tunnel ([#274](https://github.com/unmango/cloudflare-operator/issues/274)) ([5db408f](https://github.com/unmango/cloudflare-operator/commit/5db408fba4c5f799e3819baafc3ce6384c2aa4b1))
+* **gateway:** reject what never reaches Envoy through Cloudflare ([#280](https://github.com/unmango/cloudflare-operator/issues/280)) ([c937eea](https://github.com/unmango/cloudflare-operator/commit/c937eea3f34755739a28e74aaf1c8fec27f5e516))
+* **tunnel:** route WARP clients to a Gateway's Envoy ([#276](https://github.com/unmango/cloudflare-operator/issues/276)) ([86d1d90](https://github.com/unmango/cloudflare-operator/commit/86d1d9031b7f2de8a2cd480c2328276a8d366a3a))
+
+## [0.8.0](https://github.com/unmango/cloudflare-operator/compare/v0.7.0...v0.8.0) (2026-10-17)
+
+
+### Features
+
+* **gateway:** grant TLS Secret access per namespace through ReferenceGrants ([#271](https://github.com/unmango/cloudflare-operator/issues/271)) ([b23b732](https://github.com/unmango/cloudflare-operator/commit/b23b732ab73354376e5b5db560986f03899290c5))
+
+## [0.7.0](https://github.com/unmango/cloudflare-operator/compare/v0.6.0...v0.7.0) (2026-10-11)
+
+
+### Features
+
+* **dns:** create a tunnel's DNS records and let DnsRecord name a tunnel ([#266](https://github.com/unmango/cloudflare-operator/issues/266)) ([ebfd2b9](https://github.com/unmango/cloudflare-operator/commit/ebfd2b9c36eb76e3728e8954d77d6abbdb283ecd))
+* **gateway:** route TLSRoute, TCPRoute and UDPRoute through Envoy ([#263](https://github.com/unmango/cloudflare-operator/issues/263)) ([665a95f](https://github.com/unmango/cloudflare-operator/commit/665a95fb6bcc86426011bd071896bff4fe025995))
+
+## [0.6.0](https://github.com/unmango/cloudflare-operator/compare/v0.5.0...v0.6.0) (2026-10-10)
+
+
+### Features
+
+* **gateway:** route HTTPRoute and GRPCRoute through Envoy and run HTTP conformance ([#259](https://github.com/unmango/cloudflare-operator/issues/259)) ([8d75813](https://github.com/unmango/cloudflare-operator/commit/8d75813a935efc84fee92e9c7c3ce1a721d105b5))
+
+
+### Bug Fixes
+
+* **gateway:** pass the remaining HTTP conformance tests ([#261](https://github.com/unmango/cloudflare-operator/issues/261)) ([ff99aa1](https://github.com/unmango/cloudflare-operator/commit/ff99aa15fa407f3b3588288f8d71d4b3c56f853e))
+
+## [0.5.0](https://github.com/unmango/cloudflare-operator/compare/v0.4.0...v0.5.0) (2026-10-10)
+
+
+### Features
+
+* **gateway:** provision an Envoy proxy per Gateway and program it over xDS ([#254](https://github.com/unmango/cloudflare-operator/issues/254)) ([bf084f1](https://github.com/unmango/cloudflare-operator/commit/bf084f1ca2130093de25a76b8d837129a993f52a))
+
+
+### Bug Fixes
+
+* **renovate:** reference shared presets by name ([#242](https://github.com/unmango/cloudflare-operator/issues/242)) ([3503499](https://github.com/unmango/cloudflare-operator/commit/3503499bdf38dee55fcca82e8af7b09aa9f5e39b)), closes [#241](https://github.com/unmango/cloudflare-operator/issues/241)
+
+## [0.4.0](https://github.com/unmango/cloudflare-operator/compare/v0.3.1...v0.4.0) (2026-09-20)
+
+
+### Features
+
+* **tunnel:** add DNS settings at the tunnel and per ingress entry ([#234](https://github.com/unmango/cloudflare-operator/issues/234)) ([2c68954](https://github.com/unmango/cloudflare-operator/commit/2c68954778d7da8857b4a2325637081ac2c41515))
+
 ## [0.3.1](https://github.com/unmango/cloudflare-operator/compare/v0.3.0...v0.3.1) (2026-09-19)
 
 

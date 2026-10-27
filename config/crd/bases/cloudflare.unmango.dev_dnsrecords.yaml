@@ -270,11 +270,27 @@ spec:
                           Value must be between 60 and 86400, with the minimum reduced to 30 for Enterprise zones.
                         format: int64
                         type: integer
+                      tunnelRef:
+                        description: |-
+                          The CloudflareTunnel the record points at. The content becomes
+                          <status.id>.cfargotunnel.com once the tunnel has an id, and nothing is
+                          written to Cloudflare before then.
+                        properties:
+                          name:
+                            description: Name of the CloudflareTunnel.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
                       type:
                         default: CNAME
                         description: Record type.
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: content and tunnelRef are mutually exclusive
+                      rule: '!(has(self.content) && has(self.tunnelRef))'
                   txtRecord:
                     properties:
                       comment:

@@ -1,5 +1,7 @@
 # cloudflare-operator
 
+[![Hercules CI](https://hercules-ci.com/api/v1/site/github/account/unmango/project/cloudflare-operator/badge)](https://hercules-ci.com/github/unmango/cloudflare-operator)
+
 A Kubernetes operator for Cloudflare.
 
 It manages Cloudflare tunnels, the `cloudflared` daemons that run them, and DNS records, as Kubernetes resources.
@@ -79,8 +81,81 @@ That applies the standard channel CRDs from the pinned `sigs.k8s.io/gateway-api`
 Any other install of the same version works equally well.
 `GATEWAY_API_CRDS` overrides the directory the target applies, for a checkout outside the module cache.
 
-The manager registers no Gateway API controller, so the CRDs on their own change nothing the operator does.
-They make the types available to the envtest suites and to a cluster preparing for that support.
+The manager checks for the CRDs at startup and registers its Gateway controllers only when they are present, so installing them later needs a restart.
+
+A `Gateway` of a class this operator owns is served through a Cloudflare tunnel.
+The class's `CloudflareGatewayConfig` sets `template`, and the operator provisions a `CloudflareTunnel` per Gateway in front of an Envoy proxy it runs in the Gateway's namespace and programs over xDS.
+Envoy is there because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matches, weighted backends and filters.
+
+Only these reach a Gateway through Cloudflare, and only these are supported:
+
+| Listener | Route | Client |
+| --- | --- | --- |
+| `HTTP` | `HTTPRoute` | Any HTTP client, at the listener's hostname |
+| `TLS`, `Passthrough` or `Terminate` | `TLSRoute` | `cloudflared access tcp` |
+| `TCP`, named by annotation | `TCPRoute` | `cloudflared access tcp` |
+
+HTTPS and UDP listeners, `GRPCRoute` and `UDPRoute` are not supported.
+Cloudflare carries gRPC and UDP through a tunnel only to WARP clients, over private network routing.
+No tunnel rule reaches them, so the operator rejects them: such a listener reports `Accepted: False` with reason `UnsupportedProtocol`, and an HTTP listener does not list `GRPCRoute` among its supported kinds.
+
+Enabling `config.warpRouting` in the template routes the Envoy Service's cluster IPs through the tunnel as private network routes, so a WARP client enrolled in the account can reach every listener at the cluster IP and listener port, and the operator then accepts those listeners and routes.
+The operator configures no DNS for WARP clients, so they dial the address, or resolve the hostname through a resolver policy of their own.
+This path has not been verified end to end through Cloudflare, so gRPC and UDP stay off the supported list until it has.
+Managing those routes needs the token to edit the account's Cloudflare Tunnel settings, which covers private network routes; a tunnel whose `spec.routes` is set reports `Degraded` when the token lacks it, and one with no routes is unaffected.
+
+An HTTP listener's hostname is served on the public internet as usual.
+A TLS listener's hostname is routed as raw TCP, so the client connects through `cloudflared access tcp --hostname <hostname> --url localhost:<port>` and Envoy picks a `TLSRoute` by server name.
+`cloudflared` only forwards bytes and does not set that name, so the TLS client must send the listener's hostname as its server name while dialing the local port, for example `openssl s_client -connect localhost:<port> -servername <hostname>` or `curl --connect-to <hostname>:443:localhost:<port> https://<hostname>/`.
+A TCP listener has no hostname, so the Gateway names one with an annotation, `tcp.tunnel.cloudflare.unmango.dev/<listener>: <hostname>`, and clients reach it the same way.
+When an HTTP and a TLS listener share a hostname, the tunnel sends it to the HTTP listener.
+
+A TLS listener in `Passthrough` mode forwards the connection still encrypted.
+One in `Terminate` mode terminates TLS with a `kubernetes.io/tls` Secret in the Gateway's namespace, or in another namespace whose `ReferenceGrant` lets the Gateway use it.
+The operator holds no standing access to Secrets: it grants itself read access with a RoleBinding in exactly those namespaces, and removes it when no Gateway needs them.
+Routes reach backends in other namespaces through a `ReferenceGrant` as well.
+Setting `dns.zoneId` in the template gives every listener hostname a CNAME to the Gateway's tunnel, as described under [DNS](#dns).
+
+A shared tunnel through `tunnelRef` is not wired up yet.
+A `CloudflareGatewayConfig` must set exactly one of `template` and `tunnelRef`; with neither, nothing would reach its Gateways through Cloudflare, so the API server refuses it.
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: CloudflareGatewayConfig
+metadata:
+  name: gateway-config
+  namespace: cloudflare-operator-system
+spec:
+  template:
+    spec:
+      accountId: <cloudflare-account-id>
+      dns:
+        zoneId: <cloudflare-zone-id>
+      cloudflared:
+        selector:
+          matchLabels:
+            app: gateway-cloudflared
+        template:
+          metadata:
+            labels:
+              app: gateway-cloudflared
+          spec:
+            kind: Deployment
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+spec:
+  gatewayClassName: cloudflare
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: app.example.com
+```
+
+Enable the class with `gatewayClass.enabled=true` and point `gatewayClass.parametersRef` at the config.
 
 To install from source without Helm, apply the kustomize output instead.
 This path does not wire up the token; set it yourself afterwards.
@@ -114,6 +189,36 @@ spec:
 ```
 
 More examples are in [`config/samples`](config/samples).
+
+### DNS
+
+A tunnel whose `spec.dns.zoneId` is set owns a `DnsRecord` for each hostname in `spec.config.ingress`, a CNAME to `<status.id>.cfargotunnel.com`.
+An ingress entry's own `dns` overrides the tunnel's field by field, so one hostname can drop out of the proxy or move to another zone.
+Records follow the config: a hostname removed from it, or left without a zone, loses its record.
+`status.dnsRecords` and `status.dnsRecordsReady` count the records the tunnel wants and those Cloudflare holds, and the `DnsReady` condition is True once they match.
+
+A hostname is skipped, and the tunnel reports `Degraded`, when its entries resolve to different DNS settings, when it lies outside the zone, or when a `DnsRecord` the tunnel does not own already has the record's name.
+The zone check needs the token to read the zone; a token scoped to DNS alone skips it, and Cloudflare rejects a misplaced record on the `DnsRecord` instead.
+
+A standalone `DnsRecord` can point at a tunnel too, through `tunnelRef` in place of `content`:
+
+```yaml
+apiVersion: cloudflare.unmango.dev/v1alpha1
+kind: DnsRecord
+metadata:
+  name: app
+spec:
+  zoneId: <cloudflare-zone-id>
+  record:
+    cnameRecord:
+      name: app.example.com
+      tunnelRef:
+        name: example
+      proxied: true
+      ttl: 1
+```
+
+Nothing is written to Cloudflare until the tunnel, in the record's namespace, has an id.
 
 ## Development
 

@@ -1,0 +1,161 @@
+package gateway
+
+import (
+	"fmt"
+	"net/netip"
+	"slices"
+	"strings"
+
+	"k8s.io/apimachinery/pkg/util/validation"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	cfv1alpha1 "github.com/unmango/cloudflare-operator/api/v1alpha1"
+)
+
+// notFoundService is what cloudflared answers with when no rule matches.
+const notFoundService = "http_status:404"
+
+// TunnelHostnamePrefix is the annotation prefix that gives a Gateway's TCP
+// listeners a public hostname on its tunnel. A TCP listener has no hostname of
+// its own, so `tcp.tunnel.cloudflare.unmango.dev/<listener>: db.example.com`
+// supplies the one clients name to `cloudflared access tcp`.
+const TunnelHostnamePrefix = "tcp.tunnel.cloudflare.unmango.dev/"
+
+// TunnelHostnames reads the public hostnames gw's annotations give its TCP
+// listeners, keyed by listener name. A value that is not a hostname, or a
+// wildcard one such as *.example.com, is ignored: cloudflared refuses the whole
+// configuration over a malformed or bare * rule that is not last.
+func TunnelHostnames(gw *gatewayv1.Gateway) map[gatewayv1.SectionName]string {
+	hostnames := map[gatewayv1.SectionName]string{}
+	for key, value := range gw.Annotations {
+		name, ok := strings.CutPrefix(key, TunnelHostnamePrefix)
+		if !ok || name == "" {
+			continue
+		}
+		if len(validation.IsDNS1123Subdomain(value)) > 0 && len(validation.IsWildcardDNS1123Subdomain(value)) > 0 {
+			continue
+		}
+		hostnames[gatewayv1.SectionName(name)] = value
+	}
+
+	return hostnames
+}
+
+// TunnelIngress assembles the ingress rules of a tunnel provisioned for a
+// Gateway. Hand-written rules come first, in their order, so they win over the
+// Gateway. Then each valid listener with a public hostname gets a rule sending
+// that hostname to Envoy, exact hostnames ahead of wildcards because cloudflared
+// takes the first match. An HTTP listener is reached over http://. A TLS
+// listener, or a TCP listener given a hostname by tcpHostnames, is reached over
+// tcp://, which clients connect to with `cloudflared access tcp`; Envoy still
+// sees the client's own bytes, so a TLS listener routes by server name as it
+// would without the tunnel. A hostname two listeners claim goes to the HTTP
+// listener, then to the lower port. The catch-all goes to the first HTTP
+// listener without a hostname, or answers 404 when there is none. A catch-all
+// among the hand-written rules would make every rule after it unreachable, so
+// it is dropped. HTTPS and UDP listeners get no rule: Cloudflare terminates
+// TLS for HTTP itself, and carries UDP only to WARP clients.
+//
+// envoyHost is the cluster DNS name of the Service in front of Envoy.
+func TunnelIngress(handwritten []cfv1alpha1.CloudflareTunnelConfigIngress, listeners []Listener, tcpHostnames map[gatewayv1.SectionName]string, envoyHost string) []cfv1alpha1.CloudflareTunnelConfigIngress {
+	rules := []cfv1alpha1.CloudflareTunnelConfigIngress{}
+	for _, rule := range handwritten {
+		if rule.Hostname == "" && rule.Path == "" {
+			continue
+		}
+		rules = append(rules, rule)
+	}
+
+	var exact, wildcard []cfv1alpha1.CloudflareTunnelConfigIngress
+	seen := map[string]bool{}
+	catchAll := notFoundService
+
+	route := func(host, service string) {
+		if seen[host] {
+			return
+		}
+		seen[host] = true
+
+		rule := cfv1alpha1.CloudflareTunnelConfigIngress{Hostname: host, Service: service}
+		if strings.HasPrefix(host, "*.") {
+			wildcard = append(wildcard, rule)
+		} else {
+			exact = append(exact, rule)
+		}
+	}
+
+	// Listeners are taken in port order so the rule a hostname on two ports gets
+	// does not depend on spec order.
+	valid := slices.DeleteFunc(slices.Clone(listeners), func(l Listener) bool { return !l.Valid })
+	slices.SortStableFunc(valid, func(a, b Listener) int {
+		return int(a.Port) - int(b.Port)
+	})
+
+	for _, l := range valid {
+		if l.Protocol != gatewayv1.HTTPProtocolType {
+			continue
+		}
+
+		service := fmt.Sprintf("http://%s:%d", envoyHost, l.Port)
+		if l.Hostname == nil {
+			if catchAll == notFoundService {
+				catchAll = service
+			}
+			continue
+		}
+
+		route(string(*l.Hostname), service)
+	}
+
+	for _, l := range valid {
+		var host string
+		switch l.Protocol {
+		case gatewayv1.TLSProtocolType:
+			if l.Hostname != nil {
+				host = string(*l.Hostname)
+			}
+		case gatewayv1.TCPProtocolType:
+			host = tcpHostnames[l.Name]
+		}
+		if host == "" {
+			continue
+		}
+
+		route(host, fmt.Sprintf("tcp://%s:%d", envoyHost, l.Port))
+	}
+
+	// cloudflared takes the first rule that matches, so a wildcard covering
+	// another, *.example.com over *.db.example.com, has to come after it.
+	slices.SortStableFunc(wildcard, func(a, b cfv1alpha1.CloudflareTunnelConfigIngress) int {
+		return len(b.Hostname) - len(a.Hostname)
+	})
+
+	rules = append(rules, exact...)
+	rules = append(rules, wildcard...)
+
+	return append(rules, cfv1alpha1.CloudflareTunnelConfigIngress{Service: catchAll})
+}
+
+// TunnelRoutes assembles the private network routes of a tunnel provisioned for
+// a Gateway whose template enables WARP routing: the hand-written routes, then
+// one host route per cluster IP of the Service in front of Envoy, so a WARP
+// client reaches every listener, gRPC and UDP included, at that address. An
+// address a hand-written route already covers exactly is not repeated, since
+// the tunnel keys its routes by network.
+func TunnelRoutes(handwritten []cfv1alpha1.CloudflareTunnelRoute, clusterIPs []string, comment string) []cfv1alpha1.CloudflareTunnelRoute {
+	routes := slices.Clone(handwritten)
+	for _, ip := range clusterIPs {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			continue
+		}
+
+		network := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if slices.ContainsFunc(routes, func(r cfv1alpha1.CloudflareTunnelRoute) bool { return r.Network == network }) {
+			continue
+		}
+		routes = append(routes, cfv1alpha1.CloudflareTunnelRoute{Network: network, Comment: comment})
+	}
+
+	return routes
+}

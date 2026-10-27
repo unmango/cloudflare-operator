@@ -1,0 +1,33 @@
+{{- /*
+Hand-owned: the helm plugin scaffolds network-policy/ itself rather than from
+config/network-policy, so it never renders this policy. Without it, enabling
+networkPolicy cuts the Envoy proxies provisioned for Gateways off from the xDS
+server they are configured from.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "cloudflare-operator.name" . }}
+  name: {{ include "cloudflare-operator.resourceName" (dict "suffix" "allow-xds-traffic" "context" $) }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: {{ include "cloudflare-operator.name" . }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: envoy
+            app.kubernetes.io/managed-by: cloudflare-operator
+      ports:
+        - port: 18000
+          protocol: TCP
+{{- end }}

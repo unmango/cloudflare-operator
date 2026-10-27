@@ -59,6 +59,9 @@ Keep the deliberate swallows where the failure is terminal, and comment them.
 
 Close the manual step: make a hostname routed by a tunnel get its CNAME automatically.
 
+Done: 2.1 through 2.3 have shipped, and the README's DNS section describes the result.
+`DnsRecord` also gained `cnameRecord.tunnelRef`, which the owned records use instead of a copied id.
+
 ### 2.1 Add DNS settings, at the tunnel and per ingress entry
 
 Both levels, not one or the other.

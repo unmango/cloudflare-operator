@@ -5,6 +5,8 @@ Guidance for AI agents working in this repository.
 A Kubernetes operator for Cloudflare, scaffolded with kubebuilder and built with Nix.
 It manages three resources in the `cloudflare.unmango.dev` group: `CloudflareTunnel` creates and reconciles a Cloudflare tunnel through the API, `Cloudflared` runs the `cloudflared` daemon for a tunnel as a DaemonSet or Deployment, and `DnsRecord` manages a single DNS record in a zone.
 A fourth controller watches core `Ingress` objects and creates a `CloudflareTunnel` for any Ingress whose class is `cloudflare`.
+The Gateway API controllers, registered only when its CRDs are installed, give each `Gateway` of a class the operator owns an Envoy proxy programmed over xDS, and, when the class's `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` in front of it.
+Only HTTP, TLS and TCP listeners, with HTTPRoutes, TLSRoutes and TCPRoutes, reach a Gateway through Cloudflare, and only those are supported; see [Gateway API](#gateway-api).
 
 ## Commands
 
@@ -19,6 +21,8 @@ make check       # nix flake check, which also compiles the operator
 make fmt         # nix fmt (treefmt: gofmt, nixfmt, shfmt)
 make tidy        # go mod tidy and regenerate gomod2nix.toml
 make test-e2e    # create a kind cluster and run the e2e-tagged suite
+make setup-test-conformance  # kind cluster with the operator and a conformance GatewayClass
+make test-conformance        # run the Gateway API conformance suite against it
 make kind-load   # stream the Nix-built image into the kind cluster
 make dist        # render config/default into dist/install.yaml
 make helm        # regenerate dist/chart from that
@@ -33,7 +37,7 @@ After changing `*_types.go` or any kubebuilder marker, run `make manifests gener
 After changing `go.mod`, run `make tidy` so `gomod2nix.toml` stays in sync, or the Nix build will fail.
 
 Do not edit generated files: `config/crd/bases/*`, `config/rbac/role.yaml`, `**/zz_generated.*.go`, `internal/testing/client.go`, or `PROJECT`.
-`dist/chart` is generated too, with five exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, and `templates/rbac/tunnel-secret-reader.yaml`.
+`dist/chart` is generated too, with seven exceptions the plugin never touches and which are owned by hand: `Chart.yaml`, `values.yaml`, `templates/ingress-class/`, `templates/gateway-class/`, `templates/xds/`, `templates/rbac/tunnel-secret-reader.yaml`, and `templates/rbac/gateway-tls-secret-reader.yaml`.
 Run `make helm` after changing anything under `config/` or any kubebuilder marker, and commit the result.
 CI reruns it and fails on any diff in `dist/chart`, `PROJECT`, or `Makefile`, all three of which the plugin rewrites.
 Do not delete `// +kubebuilder:scaffold:*` comments; the CLI injects code at those markers.
@@ -69,7 +73,7 @@ They come from the `kubepkgs` flake input, which exposes a package set per Kuber
 `flake.nix` pins one minor in `k8sMinor`, so the suites run against a known API server and against the etcd release that minor itself pins, rather than two unrelated `nixpkgs` versions.
 Moving `k8sMinor` is a deliberate edit; kubepkgs supports four minors at a time.
 The input does not follow this repo's `nixpkgs`: kubepkgs' CI pushes these builds to the shared `unstoppablemango` cachix cache, and a follow would change every derivation hash and force a from-source build of the control plane.
-Every CI job that runs `nix develop` realises the assets, so each one configures `cachix/cachix-action` for that cache.
+Every CI job that runs `nix develop` or `nix flake check` realises the assets, so each one configures `cachix/cachix-action` for that cache.
 
 The container image is built by `nix/image.nix` using `streamLayeredImage`, which produces a script that writes the tarball to stdout rather than a tarball in the store.
 There is no Dockerfile.
@@ -123,10 +127,57 @@ The SDK reads `CLOUDFLARE_API_TOKEN` from the environment, and the tunnel contro
 The Helm chart wires it from a Secret the user already owns, through `cloudflare.auth.apiTokenRef`, and never creates a Secret of its own.
 `config/manager/manager.yaml` supplies nothing, so a kustomize install has no credentials until someone sets them; that path is for development.
 
-The manager role grants no access to core Secrets or ConfigMaps.
+The manager role grants no access to core Secrets or ConfigMaps; it does manage Services, for the Envoy proxies it provisions.
 `spec.tunnelSecret.valueFrom` is the one thing that reads them, and it does so through `CloudflareTunnelReconciler.Sources`, an uncached reader, so `get` alone is enough and no controller watches Secrets.
 The chart grants it through `rbac.tunnelSecrets.enabled`, off by default and narrowable to named resources with `rbac.tunnelSecrets.resourceNames`.
 Without it a tunnel that references a Secret or ConfigMap goes Degraded with `InvalidSpec` and never reaches the Cloudflare API; an inline value and an absent tunnel secret are unaffected.
+
+HTTPS listeners on a Gateway are the other reader, and their access follows the Gateway API's own trust model rather than a chart value.
+The chart ships a ClusterRole that reads Secrets, labelled `app.kubernetes.io/component: gateway-tls-secret-reader` and bound by nothing, and lets the manager `bind` it but not hold it.
+The `gateway-secret-access` controller binds it with a RoleBinding in each namespace a Gateway of ours may take certificates from: the Gateway's own, and any whose ReferenceGrants let a Gateway name a Secret there; it deletes the bindings of namespaces that drop out.
+A ValidatingAdmissionPolicy in the same template holds the manager to that one binding: every RoleBinding it creates, updates or deletes must reference the reader role, and name only its own service account.
+`secrets.Access`, fed by the `gateway-secret-watch` controller on every replica, runs one cache of `kubernetes.io/tls` Secrets per such namespace, because a cluster-wide cache would never sync.
+The manager finds the role by its label when it starts, so a kustomize install, which has no such role, leaves every HTTPS listener reporting `InvalidCertificateRef`.
+
+### Gateway API
+
+Envoy does the routing, because a tunnel's ingress rules match only a hostname and a path, while Gateway API needs header matching, weighted backends and filters.
+The `gateway` controller provisions, per Gateway, an Envoy Deployment and Service named by `gateway.EnvoyObjectName`, and for a class whose `CloudflareGatewayConfig` sets `template`, a `CloudflareTunnel` named after the Gateway whose rules point at that Service.
+It reports Envoy's state as `Programmed` and the tunnel's as `cloudflare.unmango.dev/TunnelProgrammed`, separately.
+
+Everything a Gateway's configuration depends on is read by `gateway.Load` and turned into a `gateway.Model` by `gateway.Build`, a pure function: validated listeners, the routes of every kind that name the Gateway with the listeners each attaches to, and their backends resolved to Service ports.
+The `gateway` controller writes listener status and `attachedRoutes` from it, one route controller per kind writes each route's `status.parents` from it, and the `gateway-xds` controller translates it, so all three always agree.
+A GRPCRoute is reduced to an HTTPRoute on the way in: a method match is a path, and its backends are HTTP/2.
+TLSRoutes, TCPRoutes and UDPRoutes are reduced to a single rule holding only backends, and translated in `internal/xds/l4.go`.
+A connection matches nothing beyond its listener and, for TLS, its server name, so when several routes claim the same connections the oldest wins.
+Envoy's UDP proxy has no weighted clusters, so a UDPRoute with several backends gets a cluster of its own with one locality per backend, weighted like the backend.
+The controller of each route kind other than HTTPRoute is registered only when that kind's CRD is installed.
+
+The `gateway-xds` controller translates each Gateway into an xDS snapshot in `internal/xds`, keyed by the node id `<namespace>/<name>`, and the manager serves it over ADS on port 18000.
+Each hostname a route serves becomes an Envoy virtual host, which gives the hostname precedence Gateway API asks for, and matches within one are ordered by match precedence.
+Backends are EDS clusters fed from EndpointSlices, and a backend that does not resolve keeps its share of traffic, answered with a 500 through `cluster_not_found_response_code`.
+It writes nothing to the API server and runs on every replica rather than only the leader, since an Envoy can reach any replica through the Service.
+Envoy finds that Service through its bootstrap, passed inline with `--config-yaml`, and the manager finds the Service by the `app.kubernetes.io/component: xds` label in its own namespace, because kustomize and the chart name it differently; `--xds-address` overrides the lookup.
+The specs in `internal/xds/envoy_test.go` run a real Envoy against the server when `ENVOY` names a binary, and are skipped otherwise; CI sets it from nixpkgs' `envoy-bin`, and they are worth running locally after changing the bootstrap or the translation.
+
+The `conformance` CI job runs the Gateway API conformance suite against a kind cluster, as a regression test of the Envoy translation and not as a conformance claim.
+The class's Envoy Services are LoadBalancers, which `cloud-provider-kind` gives addresses the runner can reach, so the suite talks to Envoy directly and never goes through Cloudflare.
+Its template enables `warpRouting`, so every listener protocol is accepted, and names a tunnel that is never created, because the token is a dummy.
+Passing it shows the bundled Envoy routes correctly, not that traffic arriving through a tunnel does, so do not describe the operator as conformant on the strength of it, in docs, release notes or a submitted report.
+`test/conformance` is behind the `conformance` build tag, and `hack/conformance/options.yaml` names the GatewayClass and the features the suite exercises; list a feature there only once its tests pass.
+
+A provisioned tunnel reaches Envoy for HTTP, TLS and TCP listeners, and `gateway.TunnelIngress` writes its rules.
+An HTTP listener's hostname goes to `http://`, and a TLS listener's hostname, or the one a `tcp.tunnel.cloudflare.unmango.dev/<listener>` annotation gives a TCP listener, goes to `tcp://`, which clients reach with `cloudflared access tcp`.
+HTTPS and UDP listeners get no rule, and a GRPCRoute on an HTTP listener does not work through a public hostname: Cloudflare carries gRPC and UDP through a tunnel only to WARP clients over private network routing.
+So `gateway.Listeners` accepts only what reaches Envoy through Cloudflare: HTTP listeners with HTTPRoutes, TLS and TCP listeners, unless the class's template enables `config.warpRouting`, when HTTPS and UDP listeners and GRPCRoutes are accepted too.
+`gateway.Load` reads that from the class into `References.WarpRouting`, so the gateway, route and xDS controllers agree, and each watches `CloudflareGatewayConfig` to follow it.
+A `CloudflareGatewayConfig` must set exactly one of `template` and `tunnelRef`, by a CEL rule and again in `gateway.Resolve`, because a Gateway with neither would be reachable only through Envoy's own Service.
+Do not describe anything as supported that does not reach Envoy through a tunnel, in docs, release notes or PR descriptions.
+When the template enables `config.warpRouting`, `gateway.TunnelRoutes` adds a host route for each of the Envoy Service's cluster IPs to the tunnel's `spec.routes`, so WARP clients reach every listener at that address; the Service is read before the tunnel is written, and a Service that does not exist yet gets its routes on a later pass.
+That path is unverified through Cloudflare, so it adds nothing to the supported set until it has been.
+
+Listener ports below 1024 are bound 10000 higher inside the pod, because Envoy runs unprivileged, and the Service maps the listener port onto it.
+The helm plugin does not render `config/network-policy`, so the policy letting Envoy reach the manager lives in the hand-owned `templates/xds/`.
 
 ### Reconciliation
 
@@ -137,6 +188,12 @@ Tests that assert on a converged state have to reconcile more than once.
 A `CloudflareTunnel` whose create returns 409 adopts the one non-deleted tunnel with that name; several matches leave it Degraded.
 
 All three resource controllers add a finalizer so the Cloudflare-side object is deleted before the Kubernetes object goes away.
+
+A `CloudflareTunnel` owns every private network route that points at it, the `spec.routes` it lists and any created elsewhere: it creates the missing ones, deletes the rest, and deletes all of them before the tunnel.
+A route Cloudflare refuses, such as a network another tunnel already routes, leaves the tunnel Degraded rather than retrying.
+
+A `CloudflareTunnel` whose `spec.dns` resolves a zone owns one `DnsRecord` per routed hostname, named `<tunnel>-<first 80 bits of the hostname's sha256>`, and deletes the ones whose hostname left the config.
+Those records name the tunnel through `cnameRecord.tunnelRef` rather than carrying its id, and the `DnsRecord` controller resolves the content and watches tunnels to re-resolve it.
 
 ### Tests
 
@@ -158,3 +215,20 @@ Keep reconciliation coverage in the envtest suites.
 - Kubebuilder book: https://book.kubebuilder.io
 - API conventions: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md
 - Logging conventions: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/logging.md#message-style-guidelines
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in this repo's GitHub Issues, through the `gh` CLI.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels, each named after its role: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root.
+See `docs/agents/domain.md`.

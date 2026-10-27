@@ -274,7 +274,7 @@ var _ = Describe("GatewayClass Controller", func() {
 
 	It("should reject a config setting both tunnelRef and template", func() {
 		config.Spec.Template = &cfv1alpha1.CloudflareGatewayTunnelTemplate{
-			Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: "test-account"},
+			Spec: cfv1alpha1.CloudflareTunnelSpec{AccountId: testAccountId},
 		}
 
 		err := k8sClient.Create(ctx, config)
@@ -283,6 +283,7 @@ var _ = Describe("GatewayClass Controller", func() {
 		Expect(err.Error()).To(ContainSubstring("exactly one of spec.tunnelRef and spec.template"))
 	})
 
+	// Neither would leave Envoy reachable only through its own Service.
 	It("should reject a config setting neither tunnelRef nor template", func() {
 		config.Spec.TunnelRef = nil
 

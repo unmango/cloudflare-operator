@@ -2,6 +2,9 @@ name: PR Title
 
 # PRs are squash-merged, so the title becomes the commit subject on main and is
 # what release-please parses to decide the next version.
+# `deps` is on top of the conventional defaults because the shared Renovate
+# preset (UnstoppableMango/renovate-config:release-please) titles dependency
+# bumps `deps:`, which release-please releases under "Dependencies".
 on:
   pull_request:
     types:
@@ -19,3 +22,17 @@ jobs:
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            deps
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert

@@ -136,10 +136,14 @@ type CloudflareTunnelOriginRequestAccess struct {
 
 // Configuration parameters for the public hostname specific connection settings between cloudflared and origin server.
 type CloudflareTunnelOriginRequest struct {
+	// Access is omitzero rather than omitempty, which never omits a struct: an
+	// unset access block would otherwise serialize with a null audTag and fail
+	// the CRD's required check, so no rule could be written without one.
+
 	// For all L7 requests to this hostname, cloudflared will validate each request's Cf-Access-Jwt-Assertion request header.
 	//
 	// +optional
-	Access CloudflareTunnelOriginRequestAccess `json:"access,omitempty"`
+	Access CloudflareTunnelOriginRequestAccess `json:"access,omitzero"`
 
 	// Path to the certificate authority (CA) for the certificate of your origin.
 	// This option should be used only if your certificate is not signed by Cloudflare.
@@ -310,6 +314,28 @@ type CloudflareTunnelConfig struct {
 	WarpRouting *CloudflareTunnelWarpRouting `json:"warpRouting,omitempty"`
 }
 
+// A private network a tunnel routes to WARP clients.
+type CloudflareTunnelRoute struct {
+	// The private network, in CIDR notation, such as 10.96.0.10/32.
+	//
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=43
+	// +required
+	Network string `json:"network"`
+
+	// A description of the route.
+	//
+	// +optional
+	Comment string `json:"comment,omitempty"`
+
+	// The virtual network the route belongs to. When unset, Cloudflare uses the
+	// account's default virtual network.
+	//
+	// +kubebuilder:validation:MaxLength:=36
+	// +optional
+	VirtualNetworkId string `json:"virtualNetworkId,omitempty"`
+}
+
 // CloudflareTunnelSpec defines the desired state of CloudflareTunnel.
 // https://developers.cloudflare.com/api/resources/zero_trust/subresources/tunnels/subresources/cloudflared/methods/create/
 //
@@ -373,6 +399,18 @@ type CloudflareTunnelSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
+	// Private networks routed through this tunnel to WARP clients. The tunnel owns
+	// every route that points at it: a route Cloudflare holds for this tunnel and
+	// this list omits is deleted. WARP clients reach a network only when
+	// spec.config.warpRouting is enabled. A network appears at most once per
+	// virtual network.
+	//
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:XValidation:rule="self.all(r, self.exists_one(o, o.network == r.network && (has(o.virtualNetworkId) ? o.virtualNetworkId : '') == (has(r.virtualNetworkId) ? r.virtualNetworkId : '')))",message="a network appears at most once per virtual network"
+	// +optional
+	Routes []CloudflareTunnelRoute `json:"routes,omitempty"`
+
 	// Sets the password required to run a locally-managed tunnel. Must decode to at least
 	// 32 bytes and be encoded as a base64 string. When unset, Cloudflare generates one.
 	//
@@ -419,6 +457,22 @@ type CloudflareTunnelStatus struct {
 	// +optional
 	Id *string `json:"id,omitempty" format:"uuid"`
 
+	// Number of hostnames in spec.config.ingress that resolve a DNS zone, each of
+	// which gets a DnsRecord owned by this tunnel.
+	//
+	// +optional
+	DnsRecords int32 `json:"dnsRecords,omitempty"`
+
+	// Number of those DnsRecords that Cloudflare holds pointing at this tunnel.
+	//
+	// +optional
+	DnsRecordsReady int32 `json:"dnsRecordsReady,omitempty"`
+
+	// Number of spec.routes that Cloudflare holds pointing at this tunnel.
+	//
+	// +optional
+	RoutesReady int32 `json:"routesReady,omitempty"`
+
 	// Total number of cloudflared instances targeted by this tunnel (their labels match the selector).
 	//
 	// +optional
@@ -459,6 +513,8 @@ type CloudflareTunnelStatus struct {
 // +kubebuilder:printcolumn:name="Active At",type=string,JSONPath=".status.connsActiveAt"
 // +kubebuilder:printcolumn:name="Inactive At",type=string,JSONPath=".status.connsInactiveAt"
 // +kubebuilder:printcolumn:name="Instances",type=string,JSONPath=".status.instances"
+// +kubebuilder:printcolumn:name="DNS",type=integer,JSONPath=".status.dnsRecords"
+// +kubebuilder:printcolumn:name="DNS Ready",type=integer,JSONPath=".status.dnsRecordsReady"
 
 // CloudflareTunnel is the Schema for the cloudflaretunnels API.
 type CloudflareTunnel struct {

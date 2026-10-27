@@ -52,7 +52,7 @@ var _ = Describe("Ingress Controller", func() {
 				Namespace: typeNamespacedName.Namespace,
 				Annotations: map[string]string{
 					annotation.Definitions.ConfigSource.String(): "cloudflare",
-					annotation.Definitions.AccountId.String():    "test-account",
+					annotation.Definitions.AccountId.String():    testAccountId,
 				},
 			},
 			Spec: networkingv1.IngressSpec{

@@ -36,6 +36,12 @@ var (
 
 	// ErrNotFound reports a parametersRef pointing at an object that is not there.
 	ErrNotFound = errors.New("spec.parametersRef names an object that does not exist")
+
+	// ErrNoTunnel reports a CloudflareGatewayConfig with neither a template nor
+	// a tunnelRef. Its Gateways would be reachable only through Envoy's own
+	// Service, which bypasses Cloudflare.
+	ErrNoTunnel = errors.New("the CloudflareGatewayConfig sets neither template nor tunnelRef, " +
+		"so no traffic would reach its Gateways through Cloudflare")
 )
 
 // Resolve reads the CloudflareGatewayConfig a GatewayClass points at.
@@ -60,8 +66,23 @@ func Resolve(ctx context.Context, reader client.Reader, class *gatewayv1.Gateway
 
 		return nil, err
 	}
+	if config.Spec.Template == nil && config.Spec.TunnelRef == nil {
+		return nil, fmt.Errorf("%w: %s", ErrNoTunnel, key)
+	}
 
 	return config, nil
+}
+
+// WarpRouting reports whether config provisions tunnels that route WARP
+// clients to Envoy, which carries listeners and routes a tunnel's public
+// hostnames cannot.
+func WarpRouting(config *cfv1alpha1.CloudflareGatewayConfig) bool {
+	if config == nil || config.Spec.Template == nil || config.Spec.Template.Spec.Config == nil {
+		return false
+	}
+	warp := config.Spec.Template.Spec.Config.WarpRouting
+
+	return warp != nil && warp.Enable
 }
 
 // IsParametersError reports whether err describes a parametersRef the user has
@@ -70,5 +91,6 @@ func IsParametersError(err error) bool {
 	return errors.Is(err, ErrNoParameters) ||
 		errors.Is(err, ErrWrongKind) ||
 		errors.Is(err, ErrNoNamespace) ||
-		errors.Is(err, ErrNotFound)
+		errors.Is(err, ErrNotFound) ||
+		errors.Is(err, ErrNoTunnel)
 }

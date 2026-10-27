@@ -1,0 +1,27 @@
+# This NetworkPolicy allows the Envoy proxies the manager provisions for
+# Gateways, in any namespace, to reach the xDS server they are configured from.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: cloudflare-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: allow-xds-traffic
+  namespace: system
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: cloudflare-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: envoy
+            app.kubernetes.io/managed-by: cloudflare-operator
+      ports:
+        - port: 18000
+          protocol: TCP
