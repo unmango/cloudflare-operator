@@ -5,6 +5,11 @@
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     systems.url = "github:UnstoppableMango/nix-systems";
 
+    # nixpkgs is deliberately not followed: kubepkgs' CI pushes these builds to
+    # the shared unstoppablemango cachix cache, and following would change every
+    # derivation hash and force a from-source build of the control plane.
+    kubepkgs.url = "github:unmango/kubepkgs";
+
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -26,22 +31,39 @@
     inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = [
-        inputs.systems.flakeModule
-        inputs.treefmt-nix.flakeModule
+
+      imports = with inputs; [
+        systems.flakeModule
+        treefmt-nix.flakeModule
       ];
 
       perSystem =
-        { pkgs, system, ... }:
+        {
+          pkgs,
+          system,
+          inputs',
+          ...
+        }:
         let
           version = "0.9.0"; # x-release-please-version
-          envtest-assets = pkgs.callPackage ./nix/envtest.nix { };
+
+          # The Kubernetes minor the envtest control plane runs. Bumping it is a
+          # deliberate edit; kubepkgs supports 1.34 through 1.37.
+          k8sMinor = "1.34";
+          k8s = inputs'.kubepkgs.legacyPackages.kubernetes.${k8sMinor};
+
+          envtest-assets = pkgs.callPackage ./nix/envtest.nix {
+            inherit (k8s) kube-apiserver kubectl;
+            inherit (k8s.deps) etcd;
+          };
           operator = pkgs.callPackage ./nix { inherit envtest-assets version; };
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
-            overlays = [ inputs.gomod2nix.overlays.default ];
+            overlays = with inputs; [
+              gomod2nix.overlays.default
+            ];
           };
 
           packages = {
