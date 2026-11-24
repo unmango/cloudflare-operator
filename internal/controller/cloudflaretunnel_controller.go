@@ -56,7 +56,6 @@ const (
 	typeProgressingCloudflareTunnel = "Progressing"
 )
 
-// CloudflareTunnelReconciler reconciles a CloudflareTunnel object
 type CloudflareTunnelReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -75,8 +74,6 @@ type CloudflareTunnelReconciler struct {
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=cloudflaretunnels/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cloudflare.unmango.dev,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
 func (r *CloudflareTunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -652,7 +649,6 @@ func (r *CloudflareTunnelReconciler) mapConfigSrc(src cfv1alpha1.CloudflareTunne
 	}
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *CloudflareTunnelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.CloudflareTunnel{}).

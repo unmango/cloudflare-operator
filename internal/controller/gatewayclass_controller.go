@@ -35,7 +35,6 @@ import (
 
 const gatewayClassFinalizer = "gatewayclass.cloudflare.unmango.dev/finalizer"
 
-// GatewayClassReconciler reconciles a GatewayClass object
 type GatewayClassReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

@@ -245,4 +245,5 @@ See [AGENTS.md](AGENTS.md) for the architecture and the reasoning behind the les
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0.
+See [LICENSE](LICENSE).

@@ -43,7 +43,6 @@ const (
 	dnsRecordFinalizer = "dnsrecord.cloudflare.unmango.dev/finalizer"
 )
 
-// DnsRecordReconciler reconciles a DnsRecord object
 type DnsRecordReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -288,7 +287,6 @@ func (r *DnsRecordReconciler) recordsForTunnel(ctx context.Context, obj client.O
 	return requests
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *DnsRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cfv1alpha1.DnsRecord{}).
