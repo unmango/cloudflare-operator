@@ -61,7 +61,6 @@ type tunnel struct {
 	Token     *string
 }
 
-// CloudflaredReconciler reconciles a Cloudflared object
 type CloudflaredReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -76,8 +75,6 @@ type CloudflaredReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=daemonsets;deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
 func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -104,7 +101,6 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	// Kind hasn't been set, we need to create the app
 	if cloudflared.Status.Kind == nil {
 		if err := r.createApp(ctx, cloudflared); err != nil {
 			log.Error(err, "Failed to create app for Cloudflared")
@@ -145,7 +141,6 @@ func (r *CloudflaredReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	// Kind has changed, we need to re-create the app
 	if *cloudflared.Status.Kind != cloudflared.Spec.Kind {
 		log.Info("Spec app Kind does not match observed app Kind, deleting app",
 			"spec", cloudflared.Spec.Kind,
@@ -299,7 +294,6 @@ func (r *CloudflaredReconciler) updateApp(ctx context.Context, app client.Object
 
 	template := tunnel.podTemplateSpec(cloudflared)
 
-	// For now, we'll blindly apply the spec and let the app controller reconcile differences.
 	// TODO: Is there a clean way to check for a diff to avoid unnecessary operations?
 	switch app := app.(type) {
 	case *appsv1.DaemonSet:
@@ -308,7 +302,6 @@ func (r *CloudflaredReconciler) updateApp(ctx context.Context, app client.Object
 		})
 	case *appsv1.Deployment:
 		return patch(ctx, r, app, func(obj *appsv1.Deployment) {
-			// Blindly apply the spec and let the Deployment controller reconcile differences
 			obj.Spec.Template = tunnel.podTemplateSpec(cloudflared)
 			if replicas := cloudflared.Spec.Replicas; replicas != app.Spec.Replicas {
 				obj.Spec.Replicas = replicas
@@ -333,13 +326,11 @@ func (r *CloudflaredReconciler) lookupTunnel(ctx context.Context, cloudflared *c
 		return tunnel, nil
 	}
 
-	// Prefer inline configuration
 	if tunnel.Id = config.TunnelId; tunnel.Id != nil {
 		if tunnel.AccountId = config.AccountId; tunnel.AccountId == nil {
 			return tunnel, fmt.Errorf("accountId is required when tunnelId != nil")
 		}
 	} else if ref := config.TunnelRef; ref != nil {
-		// Fallback to a tunnel reference if provided
 		cftunnel, err := r.getTunnelRef(ctx, cloudflared)
 		if err != nil {
 			return tunnel, fmt.Errorf("get tunnel ref: %w", err)
@@ -453,7 +444,6 @@ func (tunnel tunnel) podTemplateSpec(cloudflared *cfv1alpha1.Cloudflared) corev1
 
 	version := strings.TrimPrefix(cloudflared.Spec.Version, "v")
 
-	// create the base container
 	container := corev1.Container{
 		Name:  cloudflaredContainerName,
 		Image: "docker.io/cloudflare/cloudflared:" + version,
@@ -532,7 +522,6 @@ func (tunnel) labels(ctr corev1.Container) map[string]string {
 	}
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *CloudflaredReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(),
 		&cfv1alpha1.Cloudflared{},

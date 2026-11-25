@@ -39,7 +39,6 @@ const (
 	ingressControllerName   = cfingress.ControllerName
 )
 
-// IngressReconciler reconciles a Ingress object
 type IngressReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -126,7 +125,6 @@ func (r *IngressReconciler) createTunnel(ctx context.Context, ingress *networkin
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&networkingv1.Ingress{}).

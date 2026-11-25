@@ -383,7 +383,6 @@ func serviceAddresses(svc *corev1.Service) []gatewayv1.GatewayStatusAddress {
 	return addresses
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).

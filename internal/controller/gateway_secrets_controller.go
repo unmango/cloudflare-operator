@@ -49,7 +49,6 @@ func (r *GatewaySecretWatchReconciler) Reconcile(ctx context.Context, _ ctrl.Req
 	return ctrl.Result{}, r.Access.SetNamespaces(ctx, namespaces)
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *GatewaySecretWatchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return watchCertificateNamespaces(ctrl.NewControllerManagedBy(mgr)).
 		WithOptions(controller.Options{NeedLeaderElection: new(false)}).
@@ -159,7 +158,6 @@ func (r *GatewaySecretAccessReconciler) bind(ctx context.Context, ns string) err
 	return r.Update(ctx, binding)
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *GatewaySecretAccessReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return watchCertificateNamespaces(ctrl.NewControllerManagedBy(mgr)).
 		Watches(&rbacv1.RoleBinding{}, handler.EnqueueRequestsFromMapFunc(

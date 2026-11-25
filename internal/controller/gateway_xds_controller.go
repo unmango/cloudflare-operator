@@ -61,7 +61,6 @@ func (r *GatewayXDSReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, r.Cache.SetSnapshot(ctx, node, snapshot)
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *GatewayXDSReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).

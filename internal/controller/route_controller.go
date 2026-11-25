@@ -168,7 +168,6 @@ func mergeParents(existing, desired []gatewayv1.RouteParentStatus, generation in
 	return out
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *RouteReconciler[T]) SetupWithManager(mgr ctrl.Manager, name string) error {
 	reader := mgr.GetClient()
 	all := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
